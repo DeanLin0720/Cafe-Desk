@@ -107,7 +107,7 @@ A coffee machine desktop toy. A transparent, borderless window holds an espresso
 - 繁體中文 / English
 
 <p align="center">
-  <img src="docs/images/desk01.png" alt="Café Desk: a finished latte with the extraction curve and latte art cards above" width="480">
+  <img src="docs/images/desk01_en.png" alt="Café Desk: a finished latte with the extraction curve and latte art cards above" width="480">
 </p>
 
 ## Screenshots
@@ -116,7 +116,7 @@ A coffee machine desktop toy. A transparent, borderless window holds an espresso
 
 | Brew | Steam | Pour |
 |:---:|:---:|:---:|
-| <img src="docs/images/brew.png" alt="Brewing" width="260"> | <img src="docs/images/steam.png" alt="Steaming milk" width="260"> | <img src="docs/images/pour.png" alt="Pouring latte art" width="260"> |
+| <img src="docs/images/brew_en.png" alt="Brewing" width="260"> | <img src="docs/images/steam_en.png" alt="Steaming milk" width="260"> | <img src="docs/images/pour_en.png" alt="Pouring latte art" width="260"> |
 | Espresso flows into the cup; the scale shows weight and time | The steam wand heats the milk; temperature and foam amount shape the art | Pouring milk; the art card shows the pattern live |
 
 When a drink is done, the status bar shows stars, a score and a comment. Hover over the machine to see the extraction curve and latte art cards.
@@ -125,9 +125,9 @@ When a drink is done, the status bar shows stars, a score and a comment. Hover o
 
 | DESK·01 dual-gauge steel machine | Vintage lever machine |
 |:---:|:---:|
-| <img src="docs/images/desk01.png" alt="DESK·01 dual-gauge steel machine" width="360"> | <img src="docs/images/lever.png" alt="Vintage lever machine" width="360"> |
+| <img src="docs/images/desk01_en.png" alt="DESK·01 dual-gauge steel machine" width="360"> | <img src="docs/images/lever_en.png" alt="Vintage lever machine" width="360"> |
 | **Compact single-boiler machine** | **All-in-one with built-in grinder** |
-| <img src="docs/images/compact.png" alt="Compact single-boiler machine" width="360"> | <img src="docs/images/allinone.png" alt="All-in-one with built-in grinder" width="360"> |
+| <img src="docs/images/compact_en.png" alt="Compact single-boiler machine" width="360"> | <img src="docs/images/allinone_en.png" alt="All-in-one with built-in grinder" width="360"> |
 
 ## Install and run
 
