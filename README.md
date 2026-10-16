@@ -18,20 +18,28 @@
 
 ### 一杯拿鐵的過程
 
-| 萃取 | 打奶 | 拉花 |
-|:---:|:---:|:---:|
-| <img src="docs/images/brew.png" alt="萃取中" width="260"> | <img src="docs/images/steam.png" alt="打奶泡" width="260"> | <img src="docs/images/pour.png" alt="拉花" width="260"> |
-| 咖啡液流進杯中，磅秤顯示重量與時間 | 蒸汽管打奶，溫度與奶泡量影響拉花 | 傾倒牛奶，拉花卡片即時顯示圖案 |
+<table width="100%">
+  <tr>
+    <td width="33%" align="center" valign="top"><img src="docs/images/brew.png" alt="萃取中" width="100%"><br><b>萃取</b><br>咖啡液流進杯中，磅秤顯示重量與時間</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/steam.png" alt="打奶泡" width="100%"><br><b>打奶</b><br>蒸汽管打奶，溫度與奶泡量影響拉花</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/pour.png" alt="拉花" width="100%"><br><b>拉花</b><br>傾倒牛奶，拉花卡片即時顯示圖案</td>
+  </tr>
+</table>
 
 做完後狀態列給星等、分數與評語；滑鼠停在機身上會顯示萃取曲線與拉花卡片。
 
 ### 四台咖啡機
 
-| DESK·01 雙錶不鏽鋼機 | 復古拉桿機 |
-|:---:|:---:|
-| <img src="docs/images/desk01.png" alt="DESK·01 雙錶不鏽鋼機" width="360"> | <img src="docs/images/lever.png" alt="復古拉桿機" width="360"> |
-| **小型單鍋爐機** | **內建磨豆的一體機** |
-| <img src="docs/images/compact.png" alt="小型單鍋爐機" width="360"> | <img src="docs/images/allinone.png" alt="內建磨豆的一體機" width="360"> |
+<table width="100%">
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/desk01.png" alt="DESK·01 雙錶不鏽鋼機" width="100%"><br><b>DESK·01 雙錶不鏽鋼機</b></td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/lever.png" alt="復古拉桿機" width="100%"><br><b>復古拉桿機</b></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/compact.png" alt="小型單鍋爐機" width="100%"><br><b>小型單鍋爐機</b></td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/allinone.png" alt="內建磨豆的一體機" width="100%"><br><b>內建磨豆的一體機</b></td>
+  </tr>
+</table>
 
 ## 安裝與執行
 
@@ -114,20 +122,28 @@ A coffee machine desktop toy. A transparent, borderless window holds an espresso
 
 ### Making a latte
 
-| Brew | Steam | Pour |
-|:---:|:---:|:---:|
-| <img src="docs/images/brew_en.png" alt="Brewing" width="260"> | <img src="docs/images/steam_en.png" alt="Steaming milk" width="260"> | <img src="docs/images/pour_en.png" alt="Pouring latte art" width="260"> |
-| Espresso flows into the cup; the scale shows weight and time | The steam wand heats the milk; temperature and foam amount shape the art | Pouring milk; the art card shows the pattern live |
+<table width="100%">
+  <tr>
+    <td width="33%" align="center" valign="top"><img src="docs/images/brew_en.png" alt="Brewing" width="100%"><br><b>Brew</b><br>Espresso flows into the cup; the scale shows weight and time</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/steam_en.png" alt="Steaming milk" width="100%"><br><b>Steam</b><br>The steam wand heats the milk; temperature and foam amount shape the art</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/pour_en.png" alt="Pouring latte art" width="100%"><br><b>Pour</b><br>Pouring milk; the art card shows the pattern live</td>
+  </tr>
+</table>
 
 When a drink is done, the status bar shows stars, a score and a comment. Hover over the machine to see the extraction curve and latte art cards.
 
 ### Four machines
 
-| DESK·01 dual-gauge steel machine | Vintage lever machine |
-|:---:|:---:|
-| <img src="docs/images/desk01_en.png" alt="DESK·01 dual-gauge steel machine" width="360"> | <img src="docs/images/lever_en.png" alt="Vintage lever machine" width="360"> |
-| **Compact single-boiler machine** | **All-in-one with built-in grinder** |
-| <img src="docs/images/compact_en.png" alt="Compact single-boiler machine" width="360"> | <img src="docs/images/allinone_en.png" alt="All-in-one with built-in grinder" width="360"> |
+<table width="100%">
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/desk01_en.png" alt="DESK·01 dual-gauge steel machine" width="100%"><br><b>DESK·01 dual-gauge steel machine</b></td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/lever_en.png" alt="Vintage lever machine" width="100%"><br><b>Vintage lever machine</b></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/compact_en.png" alt="Compact single-boiler machine" width="100%"><br><b>Compact single-boiler machine</b></td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/allinone_en.png" alt="All-in-one with built-in grinder" width="100%"><br><b>All-in-one with built-in grinder</b></td>
+  </tr>
+</table>
 
 ## Install and run
 
