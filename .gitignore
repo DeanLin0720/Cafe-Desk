@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# PyInstaller 輸出
+build/
+dist/
+
+# 執行時產生的檔案（音效、設定檔、紀錄資料庫、錯誤紀錄、備份）
+sound/
+*.json
+*.db
+*.db-journal
+*.log
+*.bak
+*.lock
+
+# 測試工具產出
+tools/out/
