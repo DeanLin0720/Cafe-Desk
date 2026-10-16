@@ -171,6 +171,7 @@ cafe_desk/
 - `tools/render_regression.py`：固定狀態渲染，新舊版逐像素比對
 - `tools/tamper_test.py`：紀錄資料庫防竄改測試
 - `tools/i18n_check.py`：列出缺英文翻譯的文字（全部翻好時沒有輸出、exit 0）
+- `tools/render_frames.py`、`tools/compare_frames.py`：固定亂數與時間做兩杯飲品逐段截圖，比對繪圖修改前後（同一份程式兩次完全相同）
 - 產出放在 `tools/out/`（不要提交）
 - 環境變數設 `QT_QPA_PLATFORM=offscreen` 和 `CAFE_DESK_NO_AUDIO=1`（舊名 ESPRESSO_DESK_NO_AUDIO 也有效）。把 `paths.CONFIG_PATH` 改到暫存檔。
 - 截圖要用 `w.host.grab()`；`w.grab()` 會畫成灰底。
@@ -180,6 +181,10 @@ cafe_desk/
 - 單一執行個體的測試用子行程當第二個實例：同一個 process 裡測不到，因為 Windows 具名管道要對方的事件迴圈在跑。
 
 ## 已知陷阱
+- 畫筆／筆刷會延續到下一個繪圖函式：只描線的路徑（把手、壺嘴）一定要先 `setBrush(Qt.NoBrush)`；
+  `paint_steam` 結束時筆是 NoPen，後面的磅秤與容器沿用。改繪圖程式時用 `tools/render_frames.py`＋`compare_frames.py` 比對前後畫面。
+- 狀態列有快取（`_status_cache`）：內容由 `status_content()` 算出並當 key；要加新的顯示內容就放進 status_content 的回傳值，
+  直接在 draw_status 裡讀會變的狀態會造成畫面不更新。
 - `gfx.C()` 有快取，回傳的 QColor 是共用的：不要對它 setAlpha 等修改，要改就 `QColor(C(...))` 複製一份。
 - 成就通知（`toasts`）畫在狀態列的位置並讓狀態列淡出，不要再畫回機器上方（會蓋到磅秤與滴水盤）。
 - 打包瘦身寫在 `CafeDesk.spec` 的 `_DROP`；Multimedia 與 ffmpeg（音效）、Network（單一執行個體）不能拿掉。

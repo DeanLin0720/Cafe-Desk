@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import QPen, QBrush, QFont, QFontMetricsF, QPainterPath, QColor, QPolygonF
+from PySide6.QtGui import QPen, QBrush, QFont, QFontMetricsF, QPainterPath, QColor, QPolygonF, QPixmap, QPainter
 
 from ..gfx import C, mix, rrect
 from ..layout import WIN_H, TOP_PAD
@@ -12,6 +12,8 @@ from ..model import STYLES
 from ..i18n import T
 from .. import maintenance, festivals
 from ..util import clamp, lerp
+
+STATUS_H = 52               # 狀態列快取圖的高度（視窗底部往上；膠囊在 WIN_H-50 到 WIN_H-6）
 
 # 環境光關鍵時刻：(小時, 色調, 覆蓋強度, 夜晚程度)
 LIGHT_KEYS = [
@@ -111,35 +113,30 @@ class OverlayRenderer:
                    comment=r.comment), "#efe6da")]
 
     def paint_status(self, p):
+        """狀態列：內容沒變就直接貼上次畫好的圖（文字排版每幀重畫很花時間）"""
         fade = 1 - self.toast_now()[1]          # 成就通知出現時，狀態列淡出讓位
         if fade <= 0:
             return
+        content = self.status_content()
+        ratio = self.devicePixelRatioF() * self.scale_f
+        key = (content, self.machine.scene_w, self.ui, ratio)
+        cache = getattr(self, "_status_cache", None)
+        if cache is None or cache[0] != key:
+            pm = QPixmap(int(self.machine.scene_w * ratio), int(STATUS_H * ratio))
+            pm.setDevicePixelRatio(ratio)
+            pm.fill(Qt.transparent)
+            q = QPainter(pm)
+            q.setRenderHint(QPainter.Antialiasing)
+            q.translate(0, -(WIN_H - STATUS_H))
+            self.draw_status(q, *content)
+            q.end()
+            cache = self._status_cache = (key, pm)
         p.setOpacity(fade)
-        top = WIN_H - 50
-        WIN_W = self.machine.scene_w
-        pill = rrect(20, top, WIN_W - 20, WIN_H - 6, 14)
-        p.setBrush(QBrush(C("#120f0d", 180)))
-        p.setPen(QPen(C("#ffffff", 28), 1))
-        p.drawPath(pill)
-        p.setBrush(Qt.NoBrush)
+        p.drawPixmap(QPointF(0, WIN_H - STATUS_H), cache[1])
 
-        f = QFont(self.ui, 9.5)
-        f.setBold(True)
-        p.setFont(f)
+    def status_content(self):
+        """狀態列要顯示的內容：(主要文字段落, 參數列, 參數列顏色, 節日圖示)；可以當快取的 key"""
         parts = self.status_parts()
-        fm = QFontMetricsF(f)
-        total = sum(fm.horizontalAdvance(t) for t, _ in parts)
-        room = WIN_W - 56
-        if total > room:                         # 太長：最後一段加刪節號
-            head = total - fm.horizontalAdvance(parts[-1][0])
-            parts = parts[:-1] + [(fm.elidedText(parts[-1][0], Qt.ElideRight, room - head), parts[-1][1])]
-            total = sum(fm.horizontalAdvance(t) for t, _ in parts)
-        x = WIN_W / 2 - total / 2
-        for text, col in parts:
-            p.setPen(C(col))
-            p.drawText(QPointF(x, top + 20), text)
-            x += fm.horizontalAdvance(text)
-
         s = self.shot
         p_ = s.p if (s and not self.workflow) else self.params
         o = self.order
@@ -195,10 +192,38 @@ class OverlayRenderer:
         if due and not self.busy():                  # 清潔保養提醒
             names = T("、").join(T(maintenance.task_name(k, self.machine.traits)) for k in due)
             info = T("⚠ 該{task}了 · ", task=names) + info
+        info_col = "#e0b060" if due and not self.busy() else "#a89a8a"
+        return tuple(parts), info, info_col, self.status_festival()
+
+    def draw_status(self, p, parts, info, info_col, fest):
+        top = WIN_H - 50
+        WIN_W = self.machine.scene_w
+        pill = rrect(20, top, WIN_W - 20, WIN_H - 6, 14)
+        p.setBrush(QBrush(C("#120f0d", 180)))
+        p.setPen(QPen(C("#ffffff", 28), 1))
+        p.drawPath(pill)
+        p.setBrush(Qt.NoBrush)
+
+        f = QFont(self.ui, 9.5)
+        f.setBold(True)
+        p.setFont(f)
+        parts = list(parts)
+        fm = QFontMetricsF(f)
+        total = sum(fm.horizontalAdvance(t) for t, _ in parts)
+        room = WIN_W - 56
+        if total > room:                         # 太長：最後一段加刪節號
+            head = total - fm.horizontalAdvance(parts[-1][0])
+            parts = parts[:-1] + [(fm.elidedText(parts[-1][0], Qt.ElideRight, room - head), parts[-1][1])]
+            total = sum(fm.horizontalAdvance(t) for t, _ in parts)
+        x = WIN_W / 2 - total / 2
+        for text, col in parts:
+            p.setPen(C(col))
+            p.drawText(QPointF(x, top + 20), text)
+            x += fm.horizontalAdvance(text)
+
         small = QFont(self.ui, 7)
         p.setFont(small)
-        p.setPen(C("#e0b060") if due and not self.busy() else C("#a89a8a"))
-        fest = self.status_festival()
+        p.setPen(C(info_col))
         pad = 26 if fest else 0
         info = QFontMetricsF(small).elidedText(info, Qt.ElideRight, WIN_W - 56 - pad * 2)
         p.drawText(QRectF(20, top + 25, WIN_W - 40, 14), Qt.AlignCenter, info)

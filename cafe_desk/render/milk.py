@@ -1008,6 +1008,7 @@ class MilkRenderer:
         p.drawLine(QPointF(1, 0.5), QPointF(34, 4.3))
         hd = QPainterPath(QPointF(36, 9))
         hd.cubicTo(QPointF(47, 9), QPointF(48, 30), QPointF(38, 32))
+        p.setBrush(Qt.NoBrush)                  # 把手只描線（不設的話會沿用前面的筆刷，把手內側被填色）
         p.setPen(QPen(C("#5d646b"), 3.5, Qt.SolidLine, Qt.RoundCap))
         p.drawPath(hd)
         p.setPen(QPen(C("#d9dde0"), 1.2, Qt.SolidLine, Qt.RoundCap))
@@ -1027,6 +1028,7 @@ class MilkRenderer:
         spout = QPainterPath(QPointF(0, 0))
         spout.cubicTo(QPointF(8, 2), QPointF(14, 18), QPointF(22, 34))
         spout.lineTo(30, 42)
+        p.setBrush(Qt.NoBrush)                  # 壺嘴只描線
         p.setPen(QPen(C("#5d646b"), 4.2, Qt.SolidLine, Qt.RoundCap))
         p.drawPath(spout)
         p.setPen(QPen(C("#dfe3e6"), 1.4, Qt.SolidLine, Qt.RoundCap))

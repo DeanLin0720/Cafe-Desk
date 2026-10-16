@@ -147,12 +147,16 @@ class LiquidRenderer:
         clip = QPainterPath()
         clip.addEllipse(QPointF(cx, ly), rx, ry_w)
         p.setClipPath(clip)
+        # 同顏色的斑點合成一條路徑一次填色（80 顆分開畫太慢）
+        dark_path, light_path = QPainterPath(), QPainterPath()
+        swirl = self.swirl
         for rr, th, sz, dark in self.speckles:
-            a = th + self.swirl * (1.2 - rr)
+            a = th + swirl * (1.2 - rr)
             x = cx + rx * rr * 0.95 * math.cos(a)
             y = ly + ry_w * rr * 0.95 * math.sin(a)
-            p.setBrush(C("#5a2c10" if dark else "#f2c890", 90 if dark else 70))
-            p.drawEllipse(QPointF(x, y), sz, sz * 0.35)
+            (dark_path if dark else light_path).addEllipse(QPointF(x, y), sz, sz * 0.35)
+        p.fillPath(dark_path, C("#5a2c10", 90))
+        p.fillPath(light_path, C("#f2c890", 70))
         self.paint_bubbles(p, cx, ly, rx, ry_w)
         p.restore()
         self.paint_wall_film(p, ly, crema)
@@ -230,22 +234,24 @@ class LiquidRenderer:
 
     def paint_bubbles(self, p, cx, ly, rx, ry):
         """crema 表面的氣泡（新鮮豆較多較大），會隨旋轉漂移，之後一顆顆破掉"""
+        if not self.bubbles:
+            return
         p.setBrush(Qt.NoBrush)
         k = ry / max(1.0, rx)
+        rims, shines = QPainterPath(), QPainterPath()   # 完整的氣泡：外框、反光各合成一條路徑一次畫
         for b in self.bubbles:
             a = b["th"] + self.swirl * (1.2 - b["r"])
             x = cx + rx * b["r"] * 0.95 * math.cos(a)
             y = ly + ry * b["r"] * 0.95 * math.sin(a)
             sz = b["size"]
-            if b["pop"] > 0:                       # 破掉：外擴的淡圈
+            if b["pop"] > 0:                       # 破掉：外擴的淡圈（每顆透明度不同，分開畫）
                 rr = sz * (1 + 2.2 * b["pop"])
                 p.setPen(QPen(C("#f6dcb0", int(120 * (1 - b["pop"]))), 0.6))
                 p.drawEllipse(QPointF(x, y), rr, max(0.4, rr * k * 2.2))
                 continue
-            p.setPen(QPen(C("#f6dcb0", 150), 0.6))
-            p.drawEllipse(QPointF(x, y), sz, max(0.45, sz * k * 2.2))
-            p.setPen(Qt.NoPen)
-            p.setBrush(C("#ffffff", 120))
-            p.drawEllipse(QPointF(x - sz * 0.35, y - sz * k * 0.6), sz * 0.3, sz * k * 0.7)
-            p.setBrush(Qt.NoBrush)
+            rims.addEllipse(QPointF(x, y), sz, max(0.45, sz * k * 2.2))
+            shines.addEllipse(QPointF(x - sz * 0.35, y - sz * k * 0.6), sz * 0.3, sz * k * 0.7)
+        p.strokePath(rims, QPen(C("#f6dcb0", 150), 0.6))
+        p.fillPath(shines, C("#ffffff", 120))
+        p.setPen(Qt.NoPen)
 

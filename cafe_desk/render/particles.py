@@ -3,11 +3,30 @@ import math
 import random
 import time
 
-from PySide6.QtCore import Qt, QPointF
-from PySide6.QtGui import QRadialGradient
+from PySide6.QtCore import Qt, QPointF, QRectF
+from PySide6.QtGui import QRadialGradient, QImage, QPainter
 
 from ..gfx import C
 from ..util import clamp, lerp
+
+STEAM_SPRITE = 128          # 蒸氣霧團貼圖的邊長（像素）；最大的霧團在 2 倍大小、150% 縮放時半徑約 66 px
+
+
+def _steam_sprite():
+    """一團蒸氣：中心不透明、往外線性淡到透明的圓（之後縮放並用透明度貼上，取代每團各建一個放射漸層）"""
+    img = QImage(STEAM_SPRITE, STEAM_SPRITE, QImage.Format_ARGB32_Premultiplied)
+    img.fill(Qt.transparent)
+    r = STEAM_SPRITE / 2
+    g = QRadialGradient(r, r, r)
+    g.setColorAt(0, C("#f2ede6"))
+    g.setColorAt(1, C("#f2ede6", 0))
+    q = QPainter(img)
+    q.setRenderHint(QPainter.Antialiasing)
+    q.setPen(Qt.NoPen)
+    q.setBrush(g)
+    q.drawEllipse(QPointF(r, r), r, r)
+    q.end()
+    return img
 
 
 class ParticleSystem:
@@ -112,19 +131,25 @@ class ParticleSystem:
             p.drawEllipse(QPointF(sp["x"], sp["y"]), 0.9, 0.9)
 
     def paint_steam(self, p):
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.NoPen)                      # 之後畫的磅秤、容器沿用這個筆（原本的行為）
+        if not self.steam:
+            return
+        sprite = getattr(self, "_steam_sprite", None)
+        if sprite is None:
+            sprite = self._steam_sprite = _steam_sprite()
         k = getattr(self, "steam_intensity", 0.0)
+        p.save()
         for s in self.steam:
             a = s["age"] / s["life"]
             if a <= 0:
                 continue
             size = lerp(s.get("s0", 5), s.get("s1", 22), a)
             alpha = s.get("boost", 46 * max(k, 0.25)) * math.sin(math.pi * a)
-            g = QRadialGradient(s["x"], s["y"], size)
-            g.setColorAt(0, C("#f2ede6", alpha))
-            g.setColorAt(1, C("#f2ede6", 0))
-            p.setBrush(g)
-            p.drawEllipse(QPointF(s["x"], s["y"]), size, size)
+            if alpha < 0.5:
+                continue
+            p.setOpacity(min(alpha, 255) / 255)
+            p.drawImage(QRectF(s["x"] - size, s["y"] - size, size * 2, size * 2), sprite)
+        p.restore()
 
     # ───────────── crema 氣泡 ─────────────
     def update_bubbles(self, sdt):
