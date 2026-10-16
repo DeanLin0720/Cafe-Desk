@@ -1,5 +1,4 @@
 """主視窗：設定、選單、系統匣、滑鼠、模擬推進與繪圖排程"""
-import json
 import math
 import random
 import time
@@ -9,7 +8,7 @@ from PySide6.QtCore import Qt, QTimer, QElapsedTimer, QPointF
 from PySide6.QtGui import QPainter, QPixmap, QImage, QActionGroup, QLinearGradient, QRadialGradient, QColor
 from PySide6.QtWidgets import QApplication, QWidget, QMenu, QSystemTrayIcon
 
-from . import paths
+from . import config
 from .gfx import pick_family
 from .host import HostWindow
 from .cups import Cup
@@ -187,21 +186,9 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
     # ───────────── 設定檔 ─────────────
     @staticmethod
     def load_config():
-        try:
-            with open(paths.CONFIG_PATH, encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-        for old in paths.OLD_CONFIG_PATHS:   # 第一次使用新版：沿用舊版（Espresso Desk）的設定
-            try:
-                with open(old, encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-        return {}
+        return config.load()                 # 含舊版設定沿用與格式遷移（config.py）
 
     def save_config(self):
-        self.cfg.pop("cups", None)            # 舊版的溫杯架杯子已移除
         self.cfg.update(params=asdict(self.params), x=self.host.geometry().x(), y=self.host.geometry().y(), auto=self.auto,
                         interval=self.interval, speed=self.speed, topmost=self.topmost, windowed=self.windowed,
                         scale=self.scale_f, sound=self.sound.user_on, volume=self.sound.master,
@@ -209,11 +196,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
                         pf_used=self.pf_used, machine=self.machine.key, bean_bag=self.bag, maintenance=self.maint,
                         drink=self.drink, drink_params=asdict(self.dp), order_mode=self.order_mode, lang=self.lang,
                         order_no=self.order_no)
-        try:
-            with open(paths.CONFIG_PATH, "w", encoding="utf-8") as f:
-                json.dump(self.cfg, f, ensure_ascii=False, indent=1)
-        except Exception:
-            pass
+        config.save(self.cfg)
 
     # ───────────── 視窗 ─────────────
     def build_host(self, x, y, show=True):

@@ -1,4 +1,4 @@
-# CLAUDE.md — Café Desk 桌上咖啡吧（舊名 Espresso Desk）1.0.0 Beta 8
+# CLAUDE.md — Café Desk 桌上咖啡吧（舊名 Espresso Desk）1.0.0
 
 ## 專案概要
 用 Python + PySide6 寫的桌面擺件：透明無邊框視窗裡有咖啡機、磨豆機、奶泡機與各種器具，以圖形動畫加音效模擬做咖啡。
@@ -9,28 +9,40 @@
 - 參考實機繪製造型時，不要放真實品牌名稱或 logo。
 
 ## 目前狀態
-- **Beta**：`__version__ = "1.0.0b8"`（對話裡的 v4–v8 都是 Beta 的內部版本）。下一個目標是正式版 1.0.0。
-- 開發歷程、決策理由、已知問題與正式版待辦清單在 **`handoff.md`**，接手時先讀它。
-- 測試工具在 `tools/`（見下方「測試」）。
+- **正式版**：`__version__ = "1.0.0"`。Beta 最後一版是 `1.0.0b8`（git tag `v1.0.0-beta.8`，對話裡的 v4–v8 都是 Beta）。
+- 開發歷程、決策理由、已知問題與待辦清單在 **`handoff.md`**，接手時先讀它；版本變更寫在 `CHANGELOG.md`。
+- 改版本號時同步：`cafe_desk/__init__.py`、`CHANGELOG.md`、`main.py` docstring 標題、本檔標題，並打 git tag。
+- 自動測試在 `tests/`（pytest），開發工具在 `tools/`（見下方「測試」）。
 
 ## 執行與打包
 ```
 pip install PySide6
 python main.py                      # Windows 建議用 pythonw
 python main.py --make-logo          # 重新產生 logo/cafe_desk.png、.ico
-pyinstaller -D -w --noconfirm --name CafeDesk --icon logo/cafe_desk.ico --add-data "logo;logo" main.py
+pyinstaller --noconfirm CafeDesk.spec   # 打包設定都在 spec 裡（-D、-w、logo、icon、exe 版本資訊）
+python -m pytest                    # 自動測試（無頭）
 ```
-- `--add-data` 的分隔符號：Windows 用 `;`，macOS／Linux 用 `:`。
+- spec 從 `__version__` 產生 exe 的版本資訊；新增要打包的資源時加到 spec 的 `datas`。
 - 設定檔存在程式旁的 `cafe_desk.json`（打包後在 exe 旁）；無法寫入時改存使用者資料夾的 `.cafe_desk.json`。
-  新設定檔不存在時，依序沿用 `paths.OLD_CONFIG_PATHS`（舊版 espresso_desk 的設定檔）。
+  讀寫都經過 `config.py`：新設定檔不存在時依序沿用 `paths.OLD_CONFIG_PATHS`（舊版 espresso_desk 的設定檔）。
+- 設定檔有 `"schema"` 版本號（目前 1）。**要改名、刪除或改變欄位意義時**：`config.SCHEMA` 加一，在 `_MIGRATIONS`
+  加一個 n→n+1 的函式，並在 `tests/test_config.py` 加測試。只是新增欄位（讀取時有預設值）不需要升版。
+- 設定檔旁還有：`*_records.db`（紀錄）、`*.log`（錯誤紀錄，`errlog.py`）、`*.lock`（單一執行個體，`single.py`）。
+  全部以 `paths.CONFIG_PATH` 推算，測試只要改這個路徑就會一起換到暫存資料夾。
 - 音效是第一次執行時用程式合成的 WAV，存在程式旁的 `sound/`；`SFX_VERSION` 改了會重建。
 - `main.py` 開頭的 docstring 是給使用者看的完整說明。新增功能時要一起更新，版本號在 `cafe_desk/__init__.py`。
 
 ## 檔案結構
 ```
 main.py                     進入點＋使用說明 docstring
+CafeDesk.spec               PyInstaller 打包設定
+CHANGELOG.md                更新紀錄
+tests/                      pytest 自動測試（conftest.py 設好無頭環境與暫存設定檔）
 cafe_desk/
-  app.py                    QApplication、命令列參數
+  app.py                    QApplication、命令列參數；安裝錯誤紀錄、檢查單一執行個體
+  config.py                 設定檔讀寫、schema 版本與遷移、壞檔改名 .bad
+  errlog.py                 錯誤紀錄 cafe_desk.log（sys.excepthook、threading、Qt 訊息、faulthandler）
+  single.py                 單一執行個體：QLockFile＋QLocalServer，第二次啟動改成叫出第一個（wake 信號）
   host.py                   外層承載視窗。切換視窗化／置頂時整個重建，避免 Windows DWM 殘留邊框
   desk.py                   EspressoDesk 主元件：設定檔、選單、系統匣、滑鼠、模擬推進、自動幀率、繪圖順序、點單生命週期
   model.py                  萃取模型 simulate()、STYLES（Ristretto／Lungo 評分基準）、Shot 時間軸、Barista 自動調參、Boiler
@@ -150,6 +162,9 @@ cafe_desk/
 8. 更新 `main.py` 的 docstring。
 
 ## 測試（無頭環境）
+- **`python -m pytest`**：自動測試，改完程式一定要跑。`conftest.py` 的 `cfg_path` fixture 把設定檔、資料庫、紀錄檔、
+  鎖檔都換到暫存資料夾，`desk` fixture 給一個預熱好的 CafeDesk，`run_until_idle(w)` 推進到流程結束（卡住會失敗）。
+  日期固定 2026-08-01（沒有節日）。新增飲品、機器、設定欄位、成就時，記得補對應的測試。
 - `tools/stress.py`：所有機器 × 所有飲品、清潔、豆子用完、點單、紀錄視窗（有錯誤會丟例外）
 - `tools/run_drinks.py`：做指定飲品並在各階段截圖
 - `tools/render_regression.py`：固定狀態渲染，新舊版逐像素比對
@@ -160,9 +175,12 @@ cafe_desk/
 - 截圖要用 `w.host.grab()`；`w.grab()` 會畫成灰底。
 - 快速驗證時，直接迴圈呼叫 `w.step(0.05, 0.5)` 推進到 `not w.busy()`，中間偶爾呼叫 `w.host.grab()` 觸發繪圖。
 - 回歸測試：舊版與新版用同一組固定狀態渲染，再用 ImageMagick 的 `compare -metric AE` 比對，應為 0。v7 對 v5 的結果是 0（固定在沒有節日的日期，避免狀態列節日圖示）。
-- 無法在沙盒驗證的項目：實際聲音播放、Windows 系統匣、視窗化模式的邊框。
+- 無法在無頭環境驗證的項目：實際聲音播放、Windows 系統匣、視窗化模式的邊框（要在 Windows 實機看）。
+- 單一執行個體的測試用子行程當第二個實例：同一個 process 裡測不到，因為 Windows 具名管道要對方的事件迴圈在跑。
 
 ## 已知陷阱
+- 單一執行個體的喚醒：送出端要等伺服器讀完後斷線（`waitForDisconnected`）才離開；先斷線的話 Windows 具名管道裡
+  還沒讀的資料會被丟掉。不要用 `QLockFile.removeStaleLockFile()`，它會連活著的鎖一起刪；`tryLock` 本身就會接手失效的鎖。
 - `QSoundEffect.setLoopCount` 要傳 int：`int(getattr(inf, "value", inf))`。
 - `WA_TranslucentBackground` 必須在視窗第一次顯示前設定，所以切換模式時要重建 HostWindow。
 - 每個 tick 只呼叫一次 `sound.loop("pour", vol)`。每幀重設會讓音效一直重頭播放。

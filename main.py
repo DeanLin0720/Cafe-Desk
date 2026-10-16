@@ -1,6 +1,6 @@
 """
-桌上咖啡吧  Café Desk（舊名 Espresso Desk）  1.0.0 Beta 8
-=====================================================
+桌上咖啡吧  Café Desk（舊名 Espresso Desk）  1.0.0
+==============================================
 透明無邊框的小咖啡機、磨豆機與各種器具，直接站在桌面上。點一下就開始做咖啡，畫面與聲音會隨參數變化。
 介面語言：繁體中文／English（右鍵「Language」切換，立即生效；這一項不翻譯，看不懂目前語言也找得到）。
 
@@ -85,6 +85,9 @@
     main.py                 進入點（PyInstaller 指向這裡）
     cafe_desk/
         app.py              建立應用程式、命令列參數
+        config.py           設定檔讀寫、格式版本（schema）與舊版遷移
+        errlog.py           錯誤紀錄 cafe_desk.log
+        single.py           單一執行個體（第二次啟動改成叫出原本那一個）
         host.py             外層承載視窗（切換無邊框／視窗化、置頂時整個重建，避免殘留邊框）
         desk.py             主視窗：設定、選單、系統匣、滑鼠、模擬推進、自動幀率、繪圖順序
         model.py            萃取模型（含機器特性）、單杯時間軸、自動模式咖啡師、鍋爐水溫
@@ -117,8 +120,12 @@
             overlay.py      磅秤顯示、狀態列、萃取曲線卡片、點單紙、環境光
     logo/                   圖示
     sound/                  音效（自動產生）
+    tests/                  pytest 自動測試
+    tools/                  開發用工具（壓力測試、截圖、畫面回歸比對、竄改測試、翻譯檢查）
+    CafeDesk.spec           PyInstaller 打包設定
     cafe_desk.json          設定檔（自動產生）
     cafe_desk_records.db    每杯紀錄、成就、清潔紀錄（SQLite，自動產生）
+    cafe_desk.log           錯誤紀錄（有錯誤或警告時才會變大）
 
 操作
     左鍵點咖啡機或磨豆機    開始沖煮（預設跑完整流程，可在選單關閉改為直接萃取）
@@ -143,6 +150,8 @@
     顧客點單模式與訂單編號、語言、目前這包豆子、清潔保養計數、咖啡機、視窗位置、自動模式、速度、置頂、大小、聲音與音量；刪除即恢復預設。
     該資料夾無法寫入時改存「使用者資料夾/.cafe_desk.json」。
     改名前（Espresso Desk）的 espresso_desk.json、.espresso_desk.json、.espresso_desk_qt.json 會在第一次啟動時自動沿用。
+    設定檔裡的 "schema" 是格式版本；舊格式在讀取時自動升級。設定檔壞掉（不是正確的 JSON）時改名成 .bad 保留，
+    改用預設值啟動。寫入時先寫暫存檔再取代，寫到一半當掉也不會留下半個設定檔。
 
 圖示（logo）
     程式會到「程式所在資料夾/logo/」讀取 cafe_desk.ico（或 cafe_desk.png；舊檔名 espresso_desk.* 也認得），
@@ -150,14 +159,25 @@
     重新產生圖示檔：
         python main.py --make-logo        （輸出到 ./logo/cafe_desk.png 與 ./logo/cafe_desk.ico）
 
-PyInstaller 打包（-D：輸出成資料夾；-w：不開主控台）
+PyInstaller 打包（設定寫在 CafeDesk.spec：資料夾模式、不開主控台、附 logo 與 exe 版本資訊）
     pip install pyinstaller
-    pyinstaller -D -w --noconfirm --name CafeDesk --icon logo/cafe_desk.ico --add-data "logo;logo" main.py
+    pyinstaller --noconfirm CafeDesk.spec
 
     · 在 main.py 所在資料夾執行，且 logo/cafe_desk.ico 必須已存在
     · 完成後執行 dist/CafeDesk/CafeDesk.exe；logo 會被複製到 dist/CafeDesk/_internal/logo
     · 從舊版升級：把舊的 espresso_desk.json 放到 CafeDesk.exe 旁，第一次啟動會自動沿用
-    · --add-data 的分隔符號：Windows 用分號「;」，macOS / Linux 用冒號「:」
+
+同時只會有一個在跑
+    同一份設定檔只允許一個 Café Desk；再開一次時不會多出第二台咖啡機，而是把原本那台叫出來（從系統匣或最小化恢復）。
+    鎖檔是設定檔旁的 cafe_desk.lock，程式結束（包含當掉）後自動失效。
+
+錯誤紀錄
+    沒有被處理的錯誤、Qt 的警告、程式當掉時的呼叫堆疊，會寫到設定檔旁的 cafe_desk.log（超過 1 MB 時舊的改名 .log.1）。
+    每次啟動會記一行版本與環境。回報問題時請附上這個檔案。
+
+測試
+    pip install pytest
+    python -m pytest                   （無頭執行，不會開視窗也不出聲）
 """
 from cafe_desk.app import main
 

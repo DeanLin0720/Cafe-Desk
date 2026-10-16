@@ -13,11 +13,12 @@
 點一下就用圖形動畫加合成音效模擬做一杯咖啡，最後給一個簡單的分數。
 **評分不必精準，重點是畫面與聲音的質感。**
 
-- 目前版本：`cafe_desk/__init__.py` → `__version__ = "1.0.0b8"`（Beta）
+- 目前版本：`cafe_desk/__init__.py` → `__version__ = "1.0.0"`（正式版；P0 已在 Claude Code 完成，見第 7 節）
 - 規模：約 9,100 行 Python（`cafe_desk/` 30 多個模組）
 - 執行：`pip install PySide6` → `pythonw main.py`
-- 打包：`pyinstaller -D -w --noconfirm --name CafeDesk --icon logo/cafe_desk.ico --add-data "logo;logo" main.py`
-  （Windows 用 `;`，Linux/macOS 用 `:`）
+- 打包：`pyinstaller --noconfirm CafeDesk.spec`
+- 測試：`python -m pytest`
+- 開發環境：專案上一層 `CafeDesk/` 是 venv（Python 3.14），用 `..\Scripts\python.exe` 執行；git repo 在 `Code/`
 
 ## 2. 使用者（DeanLin）與合作方式
 
@@ -125,19 +126,18 @@ python tools/i18n_check.py       # 沒有輸出 = 英文都翻好了
 - 各處對舊名 `espresso_desk` 的相容程式（設定檔、圖示、環境變數）：正式版要不要保留由使用者決定
 
 **架構面的缺口：**
-- 沒有 git 歷史（程式碼是在對話裡一版一版交付的 zip）
-- 沒有 pytest 單元測試，只有 `tools/` 的腳本
-- 設定檔沒有 schema 版本號，欄位增減靠 `fields()` 過濾
-- 沒有單一執行個體檢查：開兩個會同時寫同一份設定檔與資料庫
-- `-w` 打包後沒有主控台，例外會無聲消失，沒有錯誤紀錄檔
-- 紀錄資料庫的 HMAC 金鑰寫死在 `stats.py`
+- ~~沒有 git 歷史~~、~~沒有 pytest~~、~~設定檔沒有 schema~~、~~沒有單一執行個體~~、~~沒有錯誤紀錄檔~~：1.0.0 已補上
+- 紀錄資料庫的 HMAC 金鑰寫死在 `stats.py`（已向使用者說明，維持現狀）
+- 打包後約 147 MB：PySide6 的 Qml／Quick／Pdf／VirtualKeyboard 等用不到的 DLL 也被收進來，可在 spec 裡排除（P1）
 
 ## 7. 從 Beta 到正式版 1.0.0
 
 > 使用者的要求：「前面是 beta 版本，Claude Code 之後要變成正式版」。
 > 下面是建議的清單；**開工前先跟使用者確認範圍**（他習慣先看評估再決定）。
 
-### P0：發佈前必做
+### P0：發佈前必做（2026-10-16 在 Claude Code 完成，第 2 項還要使用者在實機驗收）
+> 狀態：1、3–8 完成並通過 `pytest`（72 項）與 exe 實際啟動測試（單一實例、當掉後重開、版本資訊、log）。
+> 第 2 項需要使用者在 Windows 實機操作並回報截圖。
 1. **建立 git repo**：`git init`、`.gitignore`（`__pycache__/`、`build/`、`dist/`、`sound/`、`*.json`、`*.db`、`tools/out/`、`*.bak`），把 1.0.0b8 當第一個 commit 並打 tag `v1.0.0-beta.8`。
 2. **Windows 實機驗收**：依第 6 節的清單逐項跑，請使用者回報截圖。
 3. **錯誤紀錄**：未捕捉例外寫到程式旁的 `cafe_desk.log`（`sys.excepthook` 加上 Qt 訊息處理），避免 `-w` 版本無聲當掉。

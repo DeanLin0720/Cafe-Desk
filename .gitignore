@@ -13,7 +13,10 @@ sound/
 *.db
 *.db-journal
 *.log
+*.log.1
 *.bak
+*.bad
+*.tmp
 *.lock
 
 # 測試工具產出
