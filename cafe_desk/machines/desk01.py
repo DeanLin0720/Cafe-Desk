@@ -160,10 +160,9 @@ class Desk01(Machine):
         p.setPen(C("#4b5157"))
         p.drawText(QRectF(bx - 20, by + 22, 40, 10), Qt.AlignCenter, "BREW")
 
-        # 沖煮頭與分水網（把手拿走時看得到）
-        gh = rrect(112, 106, 188, 130, 6)
-        p.fillPath(gh, vgrad(106, 130, [(0, C("#6e757c")), (0.35, C("#e3e7ea")),
-                                        (0.6, C("#a7aeb5")), (1, C("#5c6369"))]))
+        # 沖煮頭與分水網（把手拿走時看得到）：從機身底部垂下並貼齊
+        p.fillRect(QRectF(112, 111.5, 76, 18.5), vgrad(111.5, 130, [(0, C("#6e757c")), (0.35, C("#e3e7ea")),
+                                                                    (0.6, C("#a7aeb5")), (1, C("#5c6369"))]))
         p.fillPath(rrect(118, 124, 182, 133, 3), vgrad(124, 133, [(0, C("#5c6369")), (1, C("#2c3034"))]))
         p.setPen(Qt.NoPen)
         p.setBrush(C("#1a1c1f"))

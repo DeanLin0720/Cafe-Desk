@@ -1,4 +1,4 @@
-# CLAUDE.md — Café Desk 桌上咖啡吧（舊名 Espresso Desk）1.0.0
+# CLAUDE.md — Café Desk 桌上咖啡吧（舊名 Espresso Desk）1.0.1
 
 ## 專案概要
 用 Python + PySide6 寫的桌面擺件：透明無邊框視窗裡有咖啡機、磨豆機、奶泡機與各種器具，以圖形動畫加音效模擬做咖啡。
@@ -9,7 +9,7 @@
 - 參考實機繪製造型時，不要放真實品牌名稱或 logo。
 
 ## 目前狀態
-- **正式版**：`__version__ = "1.0.0"`。Beta 最後一版是 `1.0.0b8`（git tag `v1.0.0-beta.8`，對話裡的 v4–v8 都是 Beta）。
+- **正式版**：`__version__ = "1.0.1"`。Beta 最後一版是 `1.0.0b8`（git tag `v1.0.0-beta.8`，對話裡的 v4–v8 都是 Beta）。
 - 開發歷程、決策理由、已知問題與待辦清單在 **`handoff.md`**，接手時先讀它；版本變更寫在 `CHANGELOG.md`。
 - 改版本號時同步：`cafe_desk/__init__.py`、`CHANGELOG.md`、`main.py` docstring 標題、本檔標題，並打 git tag。
 - 自動測試在 `tests/`（pytest），開發工具在 `tools/`（見下方「測試」）。
