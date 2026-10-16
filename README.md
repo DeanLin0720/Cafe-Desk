@@ -124,9 +124,9 @@ A coffee machine desktop toy. A transparent, borderless window holds an espresso
 
 <table width="100%">
   <tr>
-    <td width="33%" align="center" valign="top"><img src="docs/images/brew_en.png" alt="Brewing" width="240" height="278"><br><b>Brew</b><br>Espresso flows into the cup; the scale shows weight and time</td>
-    <td width="33%" align="center" valign="top"><img src="docs/images/steam_en.png" alt="Steaming milk" width="240" height="278"><br><b>Steam</b><br>The steam wand heats the milk; temperature and foam amount shape the art</td>
-    <td width="33%" align="center" valign="top"><img src="docs/images/pour_en.png" alt="Pouring latte art" width="240" height="278"><br><b>Pour</b><br>Pouring milk; the art card shows the pattern live</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/brew_en.png" alt="Brewing" width="240" height="278"><br><b>Brew</b><br>Espresso flows into the cup, the scale shows weight and time</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/steam_en.png" alt="Steaming milk" width="240" height="278"><br><b>Steam</b><br>The steam wand heats the milk, temperature and foam amount shape the art</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/pour_en.png" alt="Pouring latte art" width="240" height="278"><br><b>Pour</b><br>Pouring milk, the art card shows the pattern live</td>
   </tr>
 </table>
 
@@ -154,7 +154,7 @@ pip install PySide6
 pythonw main.py
 ```
 
-On Windows, `pythonw` avoids opening an extra console window; use `python` when you need to see error messages.
+On Windows, `pythonw` avoids opening an extra console window, use `python` when you need to see error messages.
 
 ## Controls
 
@@ -164,9 +164,9 @@ On Windows, `pythonw` avoids opening an extra console window; use `python` when 
 | Hover over the machine | Show the extraction curve card (with latte art for milk drinks) |
 | Left-drag | Move the window (position is remembered) |
 | Right-click | Menu: drinks, machine, settings, beans, cleaning, records and collection, auto mode, customer orders, size, Language, About… |
-| Tray icon | Click to bring the machine back; right-click for brew, auto mode, quit |
+| Tray icon | Click to bring the machine back, right-click for brew, auto mode, quit |
 
-Only one Café Desk runs per config file; launching it again brings the running one to the front. A full feature description is at the top of `main.py`.
+Only one Café Desk runs per config file, launching it again brings the running one to the front. A full feature description is at the top of `main.py`.
 
 ## Data files
 
