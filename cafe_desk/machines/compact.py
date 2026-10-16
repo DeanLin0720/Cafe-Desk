@@ -47,8 +47,8 @@ class Compact(Machine):
 
     def silhouette(self):
         path = QPainterPath()
-        path.addPath(rrect(40, 22, 230, 128, 10))
-        path.addRect(QRectF(40, 110, 190, 232))
+        path.addPath(rrect(40, 22, 230, 112, 10))
+        path.addRect(QRectF(40, 100, 190, 242))
         path.addPath(rrect(44, 338, 226, 364, 8))
         return path
 
@@ -56,14 +56,14 @@ class Compact(Machine):
         self.paint_soft_shadow(p, self.silhouette(), 300, 426)
         self.paint_shadow(a, p, 135, 368, 120, 260)
         # 背板凹槽
-        p.fillRect(QRectF(58, 118, 154, 224), vgrad(118, 342, [(0, C("#0d0b0a")), (0.3, C("#1f1a17")),
+        p.fillRect(QRectF(58, 104, 154, 238), vgrad(104, 342, [(0, C("#0d0b0a")), (0.3, C("#1f1a17")),
                                                                (1, C("#2d2622"))]))
-        p.fillRect(QRectF(58, 118, 154, 24), vgrad(118, 142, [(0, C("#000000", 150)), (1, C("#000000", 0))]))
+        p.fillRect(QRectF(58, 104, 154, 30), vgrad(104, 134, [(0, C("#000000", 160)), (1, C("#000000", 0))]))
         for x1, x2 in ((40, 58), (212, 230)):
-            p.fillRect(QRectF(x1, 112, x2 - x1, 230), hgrad(x1, x2, [(pos, C(col)) for pos, col in STEEL]))
+            p.fillRect(QRectF(x1, 100, x2 - x1, 242), hgrad(x1, x2, [(pos, C(col)) for pos, col in STEEL]))
         # 上方機身
-        body = rrect(40, 22, 230, 128, 10)
-        self.paint_brushed(p, body, 40, 22, 230, 128, [(0, "#f2f4f5"), (0.1, "#dfe3e6"), (0.6, "#b4bac0"),
+        body = rrect(40, 22, 230, 112, 10)
+        self.paint_brushed(p, body, 40, 22, 230, 112, [(0, "#f2f4f5"), (0.1, "#dfe3e6"), (0.6, "#b4bac0"),
                                                        (1, "#7a8188")], seed=17, n=180)
         p.fillRect(QRectF(40, 22, 190, 2.5), C("#ffffff", 150))
         p.setPen(QPen(C("#5d646b"), 1))
@@ -96,9 +96,15 @@ class Compact(Machine):
         p.setFont(QFont(a.mono, 6))
         p.setPen(C("#4b5157"))
         p.drawText(QRectF(90, 42, 90, 10), Qt.AlignCenter, "COMPACT · S1")
-        # 沖煮頭
-        p.fillPath(rrect(108, 102, 162, 124, 5), vgrad(102, 124, [(0, C("#6e757c")), (0.35, C("#e3e7ea")),
-                                                                  (0.6, C("#a7aeb5")), (1, C("#5c6369"))]))
+        # 沖煮頭：從機身底部垂下（同 DESK·01），分水網在把手拿走時看得到
+        p.fillRect(QRectF(97, 111.5, 76, 18.5), vgrad(111.5, 130, [(0, C("#6e757c")), (0.35, C("#e3e7ea")),
+                                                                 (0.6, C("#a7aeb5")), (1, C("#5c6369"))]))
+        p.fillPath(rrect(103, 124, 167, 133, 3), vgrad(124, 133, [(0, C("#5c6369")), (1, C("#2c3034"))]))
+        p.setPen(Qt.NoPen)
+        p.setBrush(C("#1a1c1f"))
+        p.drawEllipse(QPointF(135, 132), 28, 2.4)
+        p.setBrush(C("#7d848b", 150))
+        p.drawEllipse(QPointF(135, 131.6), 23, 1.3)
         # 蒸氣閥座
         p.fillPath(rrect(228, 84, 236, 120, 3), hgrad(228, 236, [(0, C("#5d646b")), (0.5, C("#dfe3e6")),
                                                                  (1, C("#5d646b"))]))
