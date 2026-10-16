@@ -1,5 +1,7 @@
 # Café Desk 桌上咖啡吧
 
+**繁體中文** ｜ [English](#english)
+
 放在桌面上的咖啡機擺件。透明無邊框的視窗裡站著咖啡機、磨豆機和各種器具，點一下就用動畫和合成音效做一杯咖啡，最後給一個簡單的分數。
 
 - 四台咖啡機（DESK·01 雙錶不鏽鋼機、復古拉桿機、小型單鍋爐機、內建磨豆的一體機），各有特性影響萃取
@@ -9,7 +11,7 @@
 - 繁體中文／English
 
 <p align="center">
-  <img src="docs/images/desk01.png" alt="Café Desk：做完一杯拿鐵，上方是萃取曲線與拉花卡片" width="420">
+  <img src="docs/images/desk01.png" alt="Café Desk：做完一杯拿鐵，上方是萃取曲線與拉花卡片" width="480">
 </p>
 
 ## 畫面
@@ -25,11 +27,11 @@
 
 ### 四台咖啡機
 
-| DESK·01 | 復古拉桿機 |
+| DESK·01 雙錶不鏽鋼機 | 復古拉桿機 |
 |:---:|:---:|
-| <img src="docs/images/desk01.png" alt="DESK·01 雙錶不鏽鋼機" width="300"> | <img src="docs/images/lever.png" alt="復古拉桿機" width="300"> |
+| <img src="docs/images/desk01.png" alt="DESK·01 雙錶不鏽鋼機" width="360"> | <img src="docs/images/lever.png" alt="復古拉桿機" width="360"> |
 | **小型單鍋爐機** | **內建磨豆的一體機** |
-| <img src="docs/images/compact.png" alt="小型單鍋爐機" width="300"> | <img src="docs/images/allinone.png" alt="內建磨豆的一體機" width="300"> |
+| <img src="docs/images/compact.png" alt="小型單鍋爐機" width="360"> | <img src="docs/images/allinone.png" alt="內建磨豆的一體機" width="360"> |
 
 ## 安裝與執行
 
@@ -85,5 +87,101 @@ python -m pytest
 架構、慣例與注意事項見 `CLAUDE.md`，開發歷程與待辦見 `handoff.md`，版本變更見 `CHANGELOG.md`。
 
 ## 授權
+
+[MIT License](LICENSE) © 2026 DeanLin
+
+---
+
+<a id="english"></a>
+
+# Café Desk
+
+[繁體中文](#café-desk-桌上咖啡吧) ｜ **English**
+
+A coffee machine desktop toy. A transparent, borderless window holds an espresso machine, a grinder and assorted gear. Click once and it makes a coffee with animation and synthesized sound effects, then gives you a simple score.
+
+- Four machines (DESK·01 dual-gauge steel machine, vintage lever machine, compact single-boiler machine, all-in-one with built-in grinder), each with traits that affect extraction
+- 16 drinks including espresso, americano, latte, cappuccino, flat white, mocha, caramel macchiato, espresso tonic and affogato, plus 3 seasonal specials during festivals
+- Full prep workflow (take the portafilter → knock out → grind → distribute → tamp → lock in), milk steaming and latte art, customer orders, beans and rest days, cleaning and maintenance
+- Daily records, 17 achievements, a latte art collection
+- 繁體中文 / English
+
+<p align="center">
+  <img src="docs/images/desk01.png" alt="Café Desk: a finished latte with the extraction curve and latte art cards above" width="480">
+</p>
+
+## Screenshots
+
+### Making a latte
+
+| Brew | Steam | Pour |
+|:---:|:---:|:---:|
+| <img src="docs/images/brew.png" alt="Brewing" width="260"> | <img src="docs/images/steam.png" alt="Steaming milk" width="260"> | <img src="docs/images/pour.png" alt="Pouring latte art" width="260"> |
+| Espresso flows into the cup; the scale shows weight and time | The steam wand heats the milk; temperature and foam amount shape the art | Pouring milk; the art card shows the pattern live |
+
+When a drink is done, the status bar shows stars, a score and a comment. Hover over the machine to see the extraction curve and latte art cards.
+
+### Four machines
+
+| DESK·01 dual-gauge steel machine | Vintage lever machine |
+|:---:|:---:|
+| <img src="docs/images/desk01.png" alt="DESK·01 dual-gauge steel machine" width="360"> | <img src="docs/images/lever.png" alt="Vintage lever machine" width="360"> |
+| **Compact single-boiler machine** | **All-in-one with built-in grinder** |
+| <img src="docs/images/compact.png" alt="Compact single-boiler machine" width="360"> | <img src="docs/images/allinone.png" alt="All-in-one with built-in grinder" width="360"> |
+
+## Install and run
+
+Developed and tested on Windows 11, Python 3.14, PySide6 6.12.
+
+```
+pip install PySide6
+pythonw main.py
+```
+
+On Windows, `pythonw` avoids opening an extra console window; use `python` when you need to see error messages.
+
+## Controls
+
+| Action | What it does |
+|---|---|
+| Left-click the machine or grinder | Start brewing |
+| Hover over the machine | Show the extraction curve card (with latte art for milk drinks) |
+| Left-drag | Move the window (position is remembered) |
+| Right-click | Menu: drinks, machine, settings, beans, cleaning, records and collection, auto mode, customer orders, size, Language, About… |
+| Tray icon | Click to bring the machine back; right-click for brew, auto mode, quit |
+
+Only one Café Desk runs per config file; launching it again brings the running one to the front. A full feature description is at the top of `main.py`.
+
+## Data files
+
+Stored next to the program (next to `CafeDesk.exe` when packaged), or in the user folder if that folder is not writable. Right-click "About Café Desk…" to see the location and open the folder.
+
+| File | Contents |
+|---|---|
+| `cafe_desk.json` | Settings (delete to reset to defaults) |
+| `cafe_desk_records.db` | Per-cup records and achievements (SQLite, each row signed) |
+| `cafe_desk.log` | Error log (please attach it when reporting issues) |
+| `sound/` | Sound effects synthesized on first run |
+
+## Packaging (Windows)
+
+```
+pip install pyinstaller
+pyinstaller --noconfirm CafeDesk.spec
+```
+
+The output is in `dist/CafeDesk/`. Distribute the whole folder and run `CafeDesk.exe`.
+
+## Development
+
+```
+pip install pytest
+python -m pytest
+```
+
+Tests run headless: no windows, no sound. `tools/` has stress tests, per-stage screenshots and render regression tools.
+See `CLAUDE.md` for architecture and conventions, `handoff.md` for history and TODOs, and `CHANGELOG.md` for version changes.
+
+## License
 
 [MIT License](LICENSE) © 2026 DeanLin
