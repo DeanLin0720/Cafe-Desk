@@ -21,3 +21,6 @@ sound/
 
 # 測試工具產出
 tools/out/
+
+# 發佈說明草稿（本機用）
+release_notes.md
