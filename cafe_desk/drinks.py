@@ -75,7 +75,7 @@ SYRUPS = {
     "rose": {"name": "玫瑰糖漿", "color": "#d0607a", "label": "ROSE"},
 }
 # 撒在杯面上的粉：(顏色, 畫成小花)
-DUSTS = {"cocoa": ("#5a321a", False), "cinnamon": ("#8a4a22", False)}
+DUSTS = {"cocoa": "#5a321a", "cinnamon": "#8a4a22"}       # 撒粉的顏色
 
 
 def whip_on(drink, dp):

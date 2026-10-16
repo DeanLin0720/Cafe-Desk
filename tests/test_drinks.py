@@ -133,3 +133,21 @@ def test_maintenance_jobs_finish(desk):
         desk.start_job(k)
         run_until_idle(desk)
     assert sorted(desk.stats.data["collection"]["cleaned"]) == sorted(maintenance.TASKS)
+
+
+def test_settings_hides_art_when_mocha_has_whip(desk, qapp):
+    """摩卡擠鮮奶油時看不到拉花：設定視窗不顯示拉花圖案選項"""
+    from cafe_desk.settings import SettingsDialog
+    dlg = SettingsDialog(desk)
+    dlg.show()
+    dlg.drink.setCurrentIndex(dlg.drink.findData("mocha"))
+    dlg.whip.setChecked(True)
+    qapp.processEvents()
+    assert not dlg.art.isVisible()
+    dlg.whip.setChecked(False)
+    qapp.processEvents()
+    assert dlg.art.isVisible()
+    dlg.drink.setCurrentIndex(dlg.drink.findData("latte"))
+    qapp.processEvents()
+    assert dlg.art.isVisible()
+    dlg.close()

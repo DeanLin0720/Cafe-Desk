@@ -17,6 +17,7 @@ from .drinks import (Session, DRINKS, DRINK_ORDER, AUTO_WEIGHTS, DrinkParams, IC
 from . import orders, beans, maintenance, festivals
 from .stats import Stats, ACHIEVEMENTS
 from .records import RecordsDialog
+from .about import AboutDialog
 from .i18n import T, LANGS, set_lang
 from .layout import WIN_H, TOP_PAD, FLOOR
 from .machines import MACHINES, DEFAULT_MACHINE
@@ -41,7 +42,6 @@ FRAME_HIDDEN = 250     # 縮到系統匣：只推進模擬（自動模式照常�
 SIM_STEP = 0.05        # 模擬子步長（秒）：間隔拉長時切成多步，結果不受幀率影響
 LOG_STEP = 0.1         # 萃取曲線取樣間隔（沖煮時間，秒）
 WARMUP = 18.0          # 啟動時鍋爐比設定溫度低幾度，模擬預熱
-HOPPER_USE = 1 / 260   # 每 1 g 粉消耗的豆倉比例
 
 
 def _inside(x, y, box):
@@ -66,7 +66,6 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.full_flow = self.cfg.get("full_flow", True)
         self.light_mode = self.cfg.get("light_mode", "auto")
         self.chart_on = self.cfg.get("chart", True)
-        self.hopper = clamp(self.cfg.get("hopper", 1.0), 0.0, 1.0)
         self.machine = MACHINES.get(self.cfg.get("machine"), MACHINES[DEFAULT_MACHINE])
         self.drink = self.cfg.get("drink", "espresso")
         if self.drink not in DRINKS or (self.drink in FESTIVAL_DRINKS and self.drink != festivals.festival_drink()):
@@ -80,6 +79,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.toasts = []                         # 成就解鎖等短暫通知：(文字, 結束時間)
         self.notice = None                       # 狀態列的臨時提示：(文字, 結束時間)
         self.records_dlg = None
+        self.about_dlg = None
         self.sync_bag()
         dnames = {f.name for f in fields(DrinkParams)}
         self.dp = DrinkParams(**{k: v for k, v in self.cfg.get("drink_params", {}).items() if k in dnames})
@@ -362,6 +362,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         m.addSeparator()
         a = m.addAction(T("縮到系統匣"), self.hide_to_tray)
         a.setEnabled(QSystemTrayIcon.isSystemTrayAvailable())
+        m.addAction(T("關於 Café Desk…"), self.open_about)
         m.addAction(T("結束"), self.quit_app)
         self.menu = m
 
@@ -378,6 +379,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         tm.addAction(self.act_auto)
         tm.addAction(self.act_order)
         tm.addSeparator()
+        tm.addAction(T("關於 Café Desk…"), self.open_about)
         tm.addAction(T("結束"), self.quit_app)
         tray.setContextMenu(tm)
         tray.activated.connect(self.on_tray_activated)
@@ -483,6 +485,15 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.records_dlg = RecordsDialog(self)
         self.records_dlg.show()
         self.records_dlg.raise_()
+
+    def open_about(self):
+        if self.about_dlg is not None:             # 每次重建：語言與檔案狀態都是最新的
+            self.about_dlg.close()
+            self.about_dlg.deleteLater()
+        self.about_dlg = AboutDialog(self)
+        self.about_dlg.show()
+        self.about_dlg.raise_()
+        self.about_dlg.activateWindow()
 
     def set_art(self, v):
         self.dp.art = v
@@ -1112,7 +1123,8 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         card_moving = (0.01 < self.card_alpha < 0.99 or (self.card_alpha > 0.5 and not self.hover)
                        or 0.01 < self.art_alpha < 0.99 or (self.art_alpha > 0.5 and not self.hover)
                        or any(not c["landed"] for c in self.ice)
-                       or 0.01 < self.order_alpha < 0.99 or (self.order and self.order.state == "done"))
+                       or 0.01 < self.order_alpha < 0.99 or (self.order and self.order.state == "done")
+                       or bool(self.toasts))                # 成就通知淡入淡出
         if (self.steam or self.bubbles or card_moving or (self.ice and self.mix_t < 60)
                 or abs(self.gauge) > 0.02 or abs(self.gauge_v) > 0.05):
             return FRAME_AMBIENT

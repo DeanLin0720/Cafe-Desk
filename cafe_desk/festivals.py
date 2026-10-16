@@ -13,7 +13,6 @@ FESTIVALS = {
     "halloween": ("萬聖節", "pumpkin_latte", "pumpkin", (10, 15), (10, 31)),
     "christmas": ("聖誕節", "gingerbread_latte", "tree", (12, 10), (12, 26)),
 }
-SEASON_NAMES = {"spring": "春天", "summer": "夏天", "autumn": "秋天", "winter": "冬天"}
 
 
 def today():

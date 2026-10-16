@@ -35,7 +35,7 @@ class AllInOne(Machine):
     gauge_c, gauge_r = (170, 76), 17
     buttons_l = ((66, 76), (94, 76), (122, 76))
     buttons_r = ((218, 76), (246, 76), (274, 76))
-    hopper = (34, -24, 124, 40)            # 豆倉玻璃（機身座標）
+    hopper = (34, -14, 124, 40)            # 豆倉玻璃（機身座標）；上緣避開上方的曲線卡片
 
     # 內建磨豆區（場景座標）
     fork = (MX + 48, MY + 176)
@@ -50,8 +50,8 @@ class AllInOne(Machine):
     knob = (332, 100)
 
     machine_hit = (MX + 20, MY + 40, MX + 320, MY + 140)
-    grinder_hit = (MX + 30, MY - 34, MX + 128, MY + 50)
-    hover_area = (MX + 16, MY - 30, MX + 324, MY + 364)
+    grinder_hit = (MX + 30, MY - 24, MX + 128, MY + 50)
+    hover_area = (MX + 16, MY - 20, MX + 324, MY + 364)
 
     def gauges(self, a):
         return [(self.gauge_c, self.gauge_r, a.gauge, PRESSURE_RANGE)]
@@ -61,7 +61,7 @@ class AllInOne(Machine):
         path.addPath(rrect(20, 44, 320, 112, 14))
         path.addRect(QRectF(20, 100, 300, 240))
         path.addPath(rrect(16, 326, 324, 366, 10))
-        path.addPath(rrect(30, -34, 128, 50, 6))
+        path.addPath(rrect(30, -24, 128, 50, 6))
         return path
 
     def paint_speckled(self, p, path, x1, y1, x2, y2, seed):

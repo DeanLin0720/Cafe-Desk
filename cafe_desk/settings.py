@@ -3,7 +3,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QSlider, QLabel, QGridLayout, QComboBox, QPushButton, QHBoxLayout,
                                QCheckBox)
 
-from .drinks import DRINKS, DRINK_KEYS, DrinkParams, ART_CHOICES, MILK_KINDS, shot_params
+from .drinks import DRINKS, DRINK_KEYS, DrinkParams, ART_CHOICES, MILK_KINDS, shot_params, whip_on
 from .model import ROASTS, Params, simulate
 from .i18n import T
 from . import beans, festivals
@@ -213,7 +213,7 @@ class SettingsDialog(QDialog):
         self.whip.setVisible(d == "mocha")
         for wdg in (self.milk_kind, self.milk_label, self.milk_hint):
             wdg.setVisible(d in MILK_DRINKS or d == "iced_latte")
-        art_on = d in ART_DRINKS
+        art_on = d in ART_DRINKS and not whip_on(d, self.app.dp)     # 擠了鮮奶油就看不到拉花
         for wdg in (self.art, self.art_label, self.art_hint):
             wdg.setVisible(art_on)
         self.update_preset()
@@ -234,6 +234,7 @@ class SettingsDialog(QDialog):
     def whip_changed(self, v):
         self.app.dp.whip = bool(v)
         self.app.save_config()
+        self.update_visibility()
 
     def milk_kind_changed(self, _i):
         self.app.dp.milk_kind = self.milk_kind.currentData()

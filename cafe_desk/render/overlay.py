@@ -111,6 +111,10 @@ class OverlayRenderer:
                    comment=r.comment), "#efe6da")]
 
     def paint_status(self, p):
+        fade = 1 - self.toast_now()[1]          # 成就通知出現時，狀態列淡出讓位
+        if fade <= 0:
+            return
+        p.setOpacity(fade)
         top = WIN_H - 50
         WIN_W = self.machine.scene_w
         pill = rrect(20, top, WIN_W - 20, WIN_H - 6, 14)
@@ -194,12 +198,16 @@ class OverlayRenderer:
         small = QFont(self.ui, 7)
         p.setFont(small)
         p.setPen(C("#e0b060") if due and not self.busy() else C("#a89a8a"))
-        fest = festivals.festival()
+        fest = self.status_festival()
         pad = 26 if fest else 0
         info = QFontMetricsF(small).elidedText(info, Qt.ElideRight, WIN_W - 56 - pad * 2)
         p.drawText(QRectF(20, top + 25, WIN_W - 40, 14), Qt.AlignCenter, info)
         if fest:
             self.paint_festival_icon(p, festivals.FESTIVALS[fest][2], 38, top + 22)
+
+    def status_festival(self):
+        """狀態列要顯示哪個節日的小圖示：只有正在製作節日限定飲品時才顯示（節日 key 或 None）"""
+        return DRINKS[self.session.drink].get("festival") if self.session else None
 
     def paint_festival_icon(self, p, icon, x, y):
         """狀態列左側的節日小圖示"""
@@ -234,27 +242,33 @@ class OverlayRenderer:
             p.fillPath(path, C("#e0506a"))
         p.restore()
 
-    def paint_toasts(self, p):
-        """成就解鎖通知：狀態列上方的小橫幅，淡入淡出"""
+    def toast_now(self):
+        """目前顯示中的成就通知：(文字, 不透明度)；沒有時是 (None, 0)"""
         now = time.perf_counter()
         self.toasts = [t for t in self.toasts if t[2] > now]
-        for text, start, end in self.toasts[:1]:
-            if now < start:
-                return
-            a = clamp(min((now - start) / 0.3, (end - now) / 0.5), 0, 1)
-            f = QFont(self.ui, 8.5)
+        if not self.toasts or now < self.toasts[0][1]:
+            return None, 0.0
+        text, start, end = self.toasts[0]
+        return text, clamp(min((now - start) / 0.3, (end - now) / 0.5), 0, 1)
+
+    def paint_toasts(self, p):
+        """成就解鎖通知：暫時取代狀態列（同一個位置，交叉淡入淡出），不會蓋到咖啡機"""
+        text, a = self.toast_now()
+        if text is not None and a > 0:
+            f = QFont(self.ui, 9.5)
             f.setBold(True)
             fm = QFontMetricsF(f)
-            w = fm.horizontalAdvance(text) + 46
             W = self.machine.scene_w
-            r = QRectF(W / 2 - w / 2, TOP_PAD + WIN_H - 84 + (1 - a) * 8, w, 26)
+            r = QRectF(20, TOP_PAD + WIN_H - 50, W - 40, 44)
+            text = fm.elidedText(text, Qt.ElideRight, r.width() - 60)
+            tw = fm.horizontalAdvance(text)
             p.save()
             p.setOpacity(a)
             p.setPen(QPen(C("#ffd27a", 160), 1))
-            p.setBrush(C("#2a1f12", 235))
-            p.drawRoundedRect(r, 13, 13)
-            # 小獎盃
-            cx, cy = r.left() + 18, r.center().y()
+            p.setBrush(C("#2a1f12", 240))
+            p.drawRoundedRect(r, 14, 14)
+            # 小獎盃（和文字一起置中）
+            cx, cy = W / 2 - (tw + 22) / 2 + 6, r.center().y()
             p.setPen(Qt.NoPen)
             p.setBrush(C("#ffc24a"))
             cup = QPainterPath()
@@ -267,7 +281,7 @@ class OverlayRenderer:
             p.drawRect(QRectF(cx - 4, cy + 6, 8, 1.6))
             p.setFont(f)
             p.setPen(C("#ffe2a0"))
-            p.drawText(QRectF(r.left() + 30, r.top(), w - 36, r.height()), Qt.AlignLeft | Qt.AlignVCenter, text)
+            p.drawText(QRectF(cx + 16, r.top(), tw + 4, r.height()), Qt.AlignLeft | Qt.AlignVCenter, text)
             p.restore()
 
     # ───────────── 萃取曲線卡片（視窗座標） ─────────────

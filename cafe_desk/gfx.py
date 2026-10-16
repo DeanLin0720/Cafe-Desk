@@ -1,10 +1,11 @@
 """繪圖小工具：顏色、漸層、圓角矩形、字型"""
+from functools import lru_cache
+
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import QColor, QLinearGradient, QPainterPath, QFontDatabase
 
-from .util import clamp
 
-
+@lru_cache(maxsize=1024)
 def hex2rgb(h):
     return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
 
@@ -15,10 +16,17 @@ def mix(c1, c2, t):
     return "#%02x%02x%02x" % tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
-def C(h, a=255):
+@lru_cache(maxsize=8192)
+def _color(h, a):
     c = QColor(h)
-    c.setAlpha(int(clamp(a, 0, 255)))
+    c.setAlpha(a)
     return c
+
+
+def C(h, a=255):
+    """顏色（#rrggbb＋透明度 0–255）。每幀要建上百萬次，所以快取起來；
+    回傳的 QColor 是共用的，呼叫端不能修改它（要改請 QColor(C(...)) 複製一份）"""
+    return _color(h, 0 if a <= 0 else 255 if a >= 255 else int(a))
 
 
 def vgrad(y1, y2, stops):

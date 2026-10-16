@@ -45,3 +45,16 @@ def test_env_date_override(monkeypatch):
     assert festivals.today() == D(2030, 2, 10)
     monkeypatch.setenv("CAFE_DESK_DATE", "not-a-date")
     assert festivals.today() == D.today()
+
+
+def test_status_icon_only_while_making_festival_drink(desk, monkeypatch):
+    from conftest import run_until_idle
+    monkeypatch.setenv("CAFE_DESK_DATE", "2026-10-20")      # 萬聖節期間
+    assert desk.status_festival() is None                   # 節日期間但沒在做節日飲品
+    desk.start_session("latte", False)
+    assert desk.status_festival() is None
+    run_until_idle(desk)
+    desk.start_session("pumpkin_latte", False)
+    assert desk.status_festival() == "halloween"
+    run_until_idle(desk)
+    assert desk.status_festival() is None                   # 做完就收起來

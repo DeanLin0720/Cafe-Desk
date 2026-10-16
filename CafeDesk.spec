@@ -46,6 +46,23 @@ a = Analysis(
     excludes=["tkinter", "pytest"],
     noarchive=False,
 )
+# 用不到的 Qt 元件（PySide6 的 hook 會一起收進來，約 50 MB）：
+#   軟體 OpenGL、Qt 翻譯檔、虛擬鍵盤 → Quick → Qml／OpenGL、pdf／svg 圖檔外掛、TLS 外掛與 Qt 自帶的 OpenSSL。
+#   保留：Multimedia＋ffmpeg（QSoundEffect 播音效）、Network（單一執行個體）、Python 的 libcrypto（紀錄簽章 hashlib）
+_DROP = ("opengl32sw.dll", "Qt6Quick", "Qt6Qml", "Qt6OpenGL", "Qt6Pdf", "Qt6VirtualKeyboard", "Qt6Svg",
+         "libcrypto-3-x64.dll", "libssl-3-x64.dll", "/translations/", "/plugins/tls/",
+         "/plugins/platforminputcontexts/", "/plugins/networkinformation/", "/plugins/iconengines/qsvgicon",
+         "/plugins/imageformats/qpdf", "/plugins/imageformats/qsvg")
+
+
+def _keep(entry):
+    dest = "/" + entry[0].replace("\\", "/")
+    return not any(d in dest for d in _DROP)
+
+
+a.binaries = [b for b in a.binaries if _keep(b)]
+a.datas = [d for d in a.datas if _keep(d)]
+
 pyz = PYZ(a.pure)
 
 exe = EXE(

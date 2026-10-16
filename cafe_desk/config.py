@@ -34,7 +34,7 @@ def migrate(cfg):
 
 
 def _read(path):
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:         # 記事本等工具存檔可能加上 BOM
         cfg = json.load(f)
     if not isinstance(cfg, dict):
         raise ValueError("設定檔不是 JSON 物件")

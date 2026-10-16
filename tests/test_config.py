@@ -43,6 +43,14 @@ def test_broken_config_is_kept_aside(cfg_path):
     assert config.load() == {"schema": config.SCHEMA}
 
 
+def test_config_with_bom_is_accepted(cfg_path):
+    """用記事本或 PowerShell 編輯過的設定檔可能有 UTF-8 BOM"""
+    with open(cfg_path, "w", encoding="utf-8-sig") as f:
+        f.write('{"drink": "mocha"}')
+    assert config.load()["drink"] == "mocha"
+    assert not os.path.exists(cfg_path + ".bad")
+
+
 def test_save_roundtrip(cfg_path):
     config.save({"schema": 1, "lang": "en", "名稱": "中文"})
     assert config.load()["名稱"] == "中文"

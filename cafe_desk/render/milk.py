@@ -273,33 +273,26 @@ def _whip(p, k, seed):
 
 
 def _dusts(p, tops):
-    for kind, (col, flower) in DUSTS.items():
+    for kind, col in DUSTS.items():
         amt = tops.get(kind, 0.0)
         if amt > 0.01:
-            _dust(p, amt, col, flower)
+            _dust(p, amt, col)
 
 
-def _dust(p, amt, col=COCOA, flower=False):
-    """撒在杯面上的粉（可可、肉桂）或乾燥桂花：中間濃、外圍淡"""
+def _dust(p, amt, col=COCOA):
+    """撒在杯面上的粉（可可、肉桂）：中間濃、外圍淡"""
     tint = QRadialGradient(0, 0, 0.85)
-    tint.setColorAt(0, C(col, int((20 if flower else 70) * amt)))
+    tint.setColorAt(0, C(col, int(70 * amt)))
     tint.setColorAt(1, C(col, 0))
     p.setPen(Qt.NoPen)
     p.setBrush(tint)
     p.drawEllipse(QPointF(0, 0), 0.85, 0.85)
     r2 = random.Random(9)
-    n = int((60 if flower else 320) * amt)
-    for i in range(n):
+    for i in range(int(320 * amt)):
         a, r = r2.uniform(0, 6.28), 0.8 * r2.random() ** 0.8
         x, y = r * math.cos(a), r * math.sin(a)
-        if flower:                                            # 小小的四瓣花
-            p.setBrush(C(col, r2.randint(170, 240)))
-            for j in range(4):
-                b = j * 1.57 + a
-                p.drawEllipse(QPointF(x + 0.012 * math.cos(b), y + 0.012 * math.sin(b)), 0.011, 0.011)
-        else:
-            p.setBrush(C(col if r2.random() < 0.7 else mix(col, "#c08a50", 0.4), r2.randint(90, 190)))
-            p.drawEllipse(QPointF(x, y), 0.012, 0.012)
+        p.setBrush(C(col if r2.random() < 0.7 else mix(col, "#c08a50", 0.4), r2.randint(90, 190)))
+        p.drawEllipse(QPointF(x, y), 0.012, 0.012)
 
 
 # ═══════════════════════════ 渲染 mixin ═══════════════════════════
@@ -686,7 +679,7 @@ class MilkRenderer:
             tip.quadTo(QPointF(cx + 2, top_y), QPointF(cx + 6, top_y + 4))
             tip.closeSubpath()
             p.fillPath(tip, C("#fbf8f2"))
-        for kind, (col, flower) in DUSTS.items():
+        for kind, col in DUSTS.items():
             amt = self.topping.get(kind, 0.0)
             if amt <= 0.01:
                 continue
@@ -1235,7 +1228,7 @@ class MilkRenderer:
                     ph = (self.anim_t * 1.5 + rnd.random()) % 1.0
                     yy = lerp(y + 6, top, ph)
                     xx = x + rnd.uniform(-13, 13) * (0.6 + 0.6 * ph)
-                    p.setBrush(C(DUSTS.get(tool.get("dust"), (COCOA, False))[0], int(200 * (1 - 0.5 * ph))))
+                    p.setBrush(C(DUSTS.get(tool.get("dust"), COCOA), int(200 * (1 - 0.5 * ph))))
                     p.drawEllipse(QPointF(xx, yy), 0.7, 0.7)
             p.setPen(QPen(C("#5d646b"), 2.4, Qt.SolidLine, Qt.RoundCap))
             p.drawLine(QPointF(x + 15, y), QPointF(x + 40, y - 9))
@@ -1250,7 +1243,7 @@ class MilkRenderer:
             p.setPen(QPen(C("#3e2414", 120), 0.5))
             for i in range(-12, 13, 3):
                 p.drawLine(QPointF(x + i, y - 2), QPointF(x + i * 0.8, y + 7))
-            p.setBrush(C(DUSTS.get(tool.get("dust"), (COCOA, False))[0], 230))
+            p.setBrush(C(DUSTS.get(tool.get("dust"), COCOA), 230))
             p.setPen(Qt.NoPen)
             p.drawEllipse(QPointF(x, y - 3), 15, 3)
             p.setPen(QPen(C("#e3e7ea"), 1.2))

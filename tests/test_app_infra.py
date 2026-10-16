@@ -90,3 +90,17 @@ def test_other_config_location_is_independent(qapp, cfg_path, tmp_path, monkeypa
     finally:
         b.release()
         a.release()
+
+
+def test_about_dialog(desk, qapp):
+    from cafe_desk import __version__
+    from PySide6.QtWidgets import QLabel
+    desk.open_about()
+    qapp.processEvents()
+    dlg = desk.about_dlg
+    assert dlg.isVisible()
+    text = " ".join(lab.text() for lab in dlg.findChildren(QLabel))
+    assert __version__ in text and "cafe_desk.json" in text
+    desk.open_about()                                   # 再開一次會換成新的視窗
+    assert desk.about_dlg is not dlg
+    desk.about_dlg.close()

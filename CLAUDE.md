@@ -40,6 +40,7 @@ CHANGELOG.md                更新紀錄
 tests/                      pytest 自動測試（conftest.py 設好無頭環境與暫存設定檔）
 cafe_desk/
   app.py                    QApplication、命令列參數；安裝錯誤紀錄、檢查單一執行個體
+  about.py                  關於視窗（版本、資料檔位置、開啟資料夾）；右鍵選單與系統匣都有
   config.py                 設定檔讀寫、schema 版本與遷移、壞檔改名 .bad
   errlog.py                 錯誤紀錄 cafe_desk.log（sys.excepthook、threading、Qt 訊息、faulthandler）
   single.py                 單一執行個體：QLockFile＋QLocalServer，第二次啟動改成叫出第一個（wake 信號）
@@ -179,6 +180,9 @@ cafe_desk/
 - 單一執行個體的測試用子行程當第二個實例：同一個 process 裡測不到，因為 Windows 具名管道要對方的事件迴圈在跑。
 
 ## 已知陷阱
+- `gfx.C()` 有快取，回傳的 QColor 是共用的：不要對它 setAlpha 等修改，要改就 `QColor(C(...))` 複製一份。
+- 成就通知（`toasts`）畫在狀態列的位置並讓狀態列淡出，不要再畫回機器上方（會蓋到磅秤與滴水盤）。
+- 打包瘦身寫在 `CafeDesk.spec` 的 `_DROP`；Multimedia 與 ffmpeg（音效）、Network（單一執行個體）不能拿掉。
 - 單一執行個體的喚醒：送出端要等伺服器讀完後斷線（`waitForDisconnected`）才離開；先斷線的話 Windows 具名管道裡
   還沒讀的資料會被丟掉。不要用 `QLockFile.removeStaleLockFile()`，它會連活著的鎖一起刪；`tryLock` 本身就會接手失效的鎖。
 - `QSoundEffect.setLoopCount` 要傳 int：`int(getattr(inf, "value", inf))`。
