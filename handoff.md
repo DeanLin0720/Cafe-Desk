@@ -13,7 +13,7 @@
 點一下就用圖形動畫加合成音效模擬做一杯咖啡，最後給一個簡單的分數。
 **評分不必精準，重點是畫面與聲音的質感。**
 
-- 目前版本：`cafe_desk/__init__.py` → `__version__ = "1.0.1"`（正式版；P0 已在 Claude Code 完成，見第 7 節）
+- 目前版本：`cafe_desk/__init__.py` → `__version__ = "1.1.1"`（正式版；P0 已在 Claude Code 完成，見第 7 節）
 - 規模：約 9,100 行 Python（`cafe_desk/` 30 多個模組）
 - 執行：`pip install PySide6` → `pythonw main.py`
 - 打包：`pyinstaller --noconfirm CafeDesk.spec`
