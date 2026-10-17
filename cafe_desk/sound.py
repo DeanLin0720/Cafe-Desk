@@ -235,51 +235,73 @@ def _relay(seconds=0.05):
 
 
 def _steam(seconds=1.5):
-    """蒸氣管：寬頻嘶聲，帶一點低頻翻滾（可無縫循環）"""
+    """蒸汽棒噴氣：高速氣流的寬頻嘶聲（集中在 2–7 kHz）+ 噴嘴共鳴 + 低頻氣流轟隆 + 緩慢的壓力起伏。
+    整數週期、尾段交叉淡入開頭，可無縫循環。"""
     rnd = random.Random(91)
     n_loop, fade = int(SR * seconds), int(SR * 0.15)
-    out, a, b, lp = [], 0.0, 0.0, 0.0
+    out, l1, l2, r = [], 0.0, 0.0, 0.0
+    ba = bb = 0.0
     for i in range(n_loop + fade):
         t = i / SR
         n = rnd.uniform(-1, 1)
-        a += (n - a) * 0.75
-        b += (a - b) * 0.12
-        lp += (rnd.uniform(-1, 1) - lp) * 0.02
-        roll = 0.75 + 0.25 * math.sin(2 * math.pi * 4 * t) + lp * 2.5
-        out.append(((a - b) * 0.55 + lp * 0.9) * roll * 0.8)
-    return _loop_xfade(out, n_loop, fade)
+        l1 += (n - l1) * 0.55
+        l2 += (n - l2) * 0.12
+        jet = l1 - l2                          # 約 1.5 kHz 以上的氣流
+        ba += (n - ba) * 0.42
+        bb += (ba - bb) * 0.30
+        whistle = (ba - bb) * 1.4              # 噴嘴的窄帶共鳴
+        r += (rnd.uniform(-1, 1) - r) * 0.015
+        press = 0.85 + 0.1 * math.sin(2 * math.pi * 2 * t) + 0.05 * math.sin(2 * math.pi * 7 * t + 1)
+        out.append((jet * 0.75 + whistle * 0.35 + r * 2.4) * press)
+    out = _loop_xfade(out, n_loop, fade)
+    return [math.tanh(x * 1.1) * 0.5 for x in out]
 
 
 def _chirp(seconds=1.2):
-    """打入空氣的「嘶嘶、撕紙聲」：一陣陣短促的高頻爆裂"""
+    """蒸汽管插進牛奶、打入空氣：不規則的「滋滋、啵啵」——短促的氣流爆裂 + 牛奶裡的氣泡聲"""
     rnd = random.Random(93)
     n_loop, fade = int(SR * seconds), int(SR * 0.1)
+    n = n_loop + fade
     out, a, b = [], 0.0, 0.0
     env, nxt = 0.0, 0
-    for i in range(n_loop + fade):
+    for i in range(n):
         if i >= nxt:
-            env = rnd.uniform(0.5, 1.0)
-            nxt = i + int(SR * rnd.uniform(0.012, 0.045))
-        env *= 0.9986
-        n = rnd.uniform(-1, 1)
-        a += (n - a) * 0.95
-        b += (a - b) * 0.35
-        out.append((a - b) * env * 0.9)
-    return _loop_xfade(out, n_loop, fade)
+            env = rnd.uniform(0.3, 1.0)
+            nxt = i + int(SR * rnd.uniform(0.02, 0.07))
+        env *= 0.9992
+        x = rnd.uniform(-1, 1)
+        a += (x - a) * 0.5
+        b += (a - b) * 0.1
+        out.append((a - b) * env * 0.7)
+    for _ in range(int(seconds * 45)):          # 牛奶中冒出的氣泡
+        f0 = rnd.uniform(350, 1400)
+        _add_wrap(out, rnd.randrange(n),
+                  [x * rnd.uniform(0.08, 0.22) for x in _bubble(f0, rnd.uniform(0.012, 0.035), rnd)])
+    out = _loop_xfade(out, n_loop, fade)
+    return [math.tanh(x * 1.2) * 0.55 for x in out]
 
 
 def _frother(seconds=1.0):
-    """奶泡機：馬達嗡鳴 + 攪拌的水聲（整數週期，可無縫循環）"""
+    """電動奶泡機：小馬達的高速嗡鳴（含碳刷雜訊）+ 牛奶被打成漩渦的攪拌聲與細小氣泡。
+    所有頻率都取整數週期、氣泡繞回開頭，可無縫循環。"""
     rnd = random.Random(95)
-    n_loop, fade = int(SR * seconds), int(SR * 0.1)
-    out, lp = [], 0.0
-    for i in range(n_loop + fade):
+    n = int(SR * seconds)
+    out, lp, a, b = [], 0.0, 0.0, 0.0
+    for i in range(n):
         t = i / SR
-        hum = sum(math.sin(2 * math.pi * 220 * k * t) / k ** 1.4 for k in range(1, 6))
-        lp += (rnd.uniform(-1, 1) - lp) * 0.08
-        slosh = lp * (0.6 + 0.4 * math.sin(2 * math.pi * 6 * t))
-        out.append((math.tanh(hum * 0.8) * 0.22 + slosh * 1.6) * 0.65)
-    return _loop_xfade(out, n_loop, fade)
+        wob = 1 + 0.004 * math.sin(2 * math.pi * 3 * t)            # 轉速微幅起伏
+        whine = sum(math.sin(2 * math.pi * 480 * k * t * wob) / k ** 1.3 for k in range(1, 6))
+        lp += (rnd.uniform(-1, 1) - lp) * 0.5
+        brush = lp * (0.5 + 0.5 * math.sin(2 * math.pi * 480 * t)) * 0.25    # 隨轉速的沙沙聲
+        a += (rnd.uniform(-1, 1) - a) * 0.18
+        b += (a - b) * 0.03
+        swirl = (a - b) * (0.65 + 0.35 * math.sin(2 * math.pi * 5 * t))     # 漩渦起伏
+        out.append(whine * 0.16 + brush + swirl * 1.1)
+    for _ in range(int(seconds * 40)):
+        f0 = random.Random(rnd.random()).uniform(900, 2800)
+        _add_wrap(out, rnd.randrange(n),
+                  [x * rnd.uniform(0.04, 0.13) for x in _bubble(f0, rnd.uniform(0.008, 0.02), rnd)])
+    return [math.tanh(x * 1.3) * 0.5 for x in out]
 
 
 def _ice(seconds=0.35):
@@ -306,7 +328,7 @@ def _beep(seconds=0.5):
     return out
 
 
-SFX_VERSION = "7"          # 修改音效合成參數時遞增，舊檔會自動重新產生
+SFX_VERSION = "9"          # 修改音效合成參數時遞增，舊檔會自動重新產生
 
 
 def build_sounds():
