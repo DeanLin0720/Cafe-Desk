@@ -22,6 +22,8 @@ python main.py --make-logo          # 重新產生 logo/cafe_desk.png、.ico
 pyinstaller --noconfirm CafeDesk.spec   # 打包設定都在 spec 裡（-D、-w、logo、icon、exe 版本資訊）
 python -m pytest                    # 自動測試（無頭）
 ```
+- 發佈：推 `v*` tag 會觸發 `.github/workflows/release.yml`（測試→PyInstaller→`CafeDesk-vX.Y.Z-win64.7z`＋SHA256＋建置來源證明→Release，
+  說明取自 CHANGELOG 該版段落）。要重建既有版本：Actions → Release → Run workflow，填 tag。tag 必須與 `__version__` 一致。
 - spec 從 `__version__` 產生 exe 的版本資訊；新增要打包的資源時加到 spec 的 `datas`。
 - 設定檔存在程式旁的 `cafe_desk.json`（打包後在 exe 旁）；無法寫入時改存使用者資料夾的 `.cafe_desk.json`。
   讀寫都經過 `config.py`：新設定檔不存在時依序沿用 `paths.OLD_CONFIG_PATHS`（舊版 espresso_desk 的設定檔）。
