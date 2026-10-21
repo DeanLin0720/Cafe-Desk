@@ -10,6 +10,7 @@ from dataclasses import dataclass, asdict
 from .i18n import T
 from .util import clamp, lerp
 from .workflow import Workflow, ease, arc_move
+from . import vessels
 
 # base：流程與畫面家族（espresso／americano／iced：冰飲／milk：熱牛奶飲品）
 # shot：這杯濃縮的預設（ratio＝液重/粉量、grind＝研磨微調 µm、dose/basket＝指定粉量與粉碗、style＝評分基準）
@@ -38,6 +39,8 @@ DRINKS = {
     # 手沖台（brew.py）：不用咖啡機萃取
     "pour_over": {"name": "手沖咖啡", "cup": "americano", "hot": True, "base": "pourover"},
     "cold_drip": {"name": "冰滴咖啡", "cup": "iced", "hot": False, "base": "colddrip"},
+    "moka_pot": {"name": "摩卡壺咖啡", "cup": "flat_white", "hot": True, "base": "moka"},
+    "siphon": {"name": "虹吸咖啡", "cup": "americano", "hot": True, "base": "siphon"},
     # 季節限定（只在節日期間出現，見 festivals.py）
     "pumpkin_latte": {"name": "南瓜香料拿鐵", "cup": "latte", "hot": True, "base": "milk", "festival": "halloween",
                       "syrup": "pumpkin", "syrup_g": 18.0, "whip": True, "dust": "cinnamon"},
@@ -50,8 +53,8 @@ FESTIVAL_DRINKS = tuple(k for k, v in DRINKS.items() if v.get("festival"))
 # 選單分組（None＝分隔線）
 DRINK_ORDER = ("espresso", "ristretto", "lungo", "doppio", None, "americano", "iced_americano", "espresso_tonic",
                None, "latte", "cappuccino", "flat_white", "cortado", "macchiato", "mocha", "caramel_macchiato",
-               "iced_latte", None, "affogato", None, "pour_over", "cold_drip")
-STATION_FAMILIES = ("pourover", "colddrip")      # 在手沖台做的飲品
+               "iced_latte", None, "affogato", None, "pour_over", "cold_drip", "moka_pot", "siphon")
+STATION_FAMILIES = ("pourover", "colddrip", "moka", "siphon")      # 不用咖啡機、在獨立畫面做的飲品
 DRINK_KEYS = tuple(k for k in DRINK_ORDER if k)
 
 ART_NAMES = {"heart": "愛心", "tulip": "鬱金香", "rosetta": "葉子", "blob": "白點（沒拉成）", "dot": "奶泡點",
@@ -91,7 +94,7 @@ def base_of(drink):
 
 
 def method_of(drink):
-    """這杯用哪種沖煮方式做：espresso（義式咖啡機）／pourover／colddrip"""
+    """這杯用哪種沖煮方式做：espresso（義式咖啡機）／pourover／colddrip／moka／siphon"""
     b = base_of(drink)
     return b if b in STATION_FAMILIES else "espresso"
 
@@ -135,6 +138,13 @@ class DrinkParams:
     cd_ratio: float = 10.0         # 冰滴粉水比 1:N
     cd_grind: float = 550.0        # 冰滴研磨（µm）
     cd_rate: float = 10.0          # 冰滴滴速（每 10 秒幾滴）
+    mk_dose: float = 17.0          # 摩卡壺粉量（粉槽裝平）
+    mk_grind: float = 320.0        # 摩卡壺研磨（µm，比手沖細、比濃縮粗）
+    mk_heat: float = 2.5           # 摩卡壺火力 1–5
+    sy_dose: float = 15.0          # 虹吸壺粉量（水量＝粉量 × 15）
+    sy_grind: float = 600.0        # 虹吸壺研磨（µm）
+    sy_temp: float = 91.0          # 虹吸壺上壺水溫（調火力）
+    sy_steep: float = 50.0         # 虹吸壺浸泡秒數
 
     def copy(self):
         return DrinkParams(**asdict(self))
@@ -497,22 +507,94 @@ class PourStage(Stage):
         self.enter_from = enter
         s.vessel = self.v
         self.phase, self.t, self.poured = "enter", 0.0, 0.0
-        self.max_tilt = {"kettle": 38, "bottle": 62, "pitcher": 58, "jug": 60, "tonic": 64,
-                         "squeeze": 150, "server": 72, "carafe": 70}.get(self.vessel, 55)
-        self.pre = 1.0 if self.vessel == "squeeze" else 0.55      # 醬料瓶：直接倒過來擠
+        # 會流的液體：傾斜角度由剩下的液量決定（液面碰到倒出口才流得出來，見 vessels.py）；醬料擠瓶照舊倒過來擠
+        self.physics = self.vessel in vessels.SHAPES
+        self.max_tilt = 150 if self.vessel == "squeeze" else 55
+        self.pre = 1.0 if self.vessel == "squeeze" else 0.55
+        self.c_full, self.c_empty = self._contents(s)
+        self.v["content"] = self.c_full
+        app = s.app
+        self.scale = 1.0                               # 容器畫出來的放大倍數（手沖台的器具跟著器具圖層放大）
+        if self.vessel in ("server", "carafe", "moka", "globe"):
+            self.scale = app.gear_k() * (0.78 if self.vessel == "moka" else 1.0)
+        # 杯子（含把手）在場景裡佔的範圍：容器的任何部分都不能低於杯口穿進杯子
+        self.cup_left = m.mx + cup.TL - 4
+        self.cup_right = m.mx + cup.TR + (28 * cup.k if cup.handle else 4)
+        self.cup_top = m.my + cup.T - 3
+        self.target = (self.pour_pos[0], self.lip_y(0.0, self.pour_pos[0], self.pour_pos[1]))
+        self.path = self._path(enter, self.target)
+
+    def lip_y(self, tilt, x, want):
+        """倒出口想在 want 的高度；但如果容器本體（依傾斜角度）會低於杯口、撞進杯子或把手，就把整個容器抬高"""
+        if not self.physics:
+            return want
+        low = vessels.lowest_over(self.vessel, tilt, self.scale, x, self.cup_left, self.cup_right)
+        return want if low is None else min(want, self.cup_top - low)
+
+    def _path(self, a, b):
+        """容器的移動路線：先抬到比杯子高、再橫移、再放下（不會從杯子裡穿過去）；回傳折線的點"""
+        if not self.physics:
+            return None
+        clear = self.lip_y(0.0, (self.cup_left + self.cup_right) / 2, min(a[1], b[1])) - 6
+        hi = min(a[1], b[1], clear)
+        pts = [a, (a[0], hi), (b[0], hi), b]
+        return [q for i, q in enumerate(pts) if i == 0 or q != pts[i - 1]]
+
+    @staticmethod
+    def _along(pts, k):
+        """沿著折線走到 k（0–1，依長度、緩入緩出）的位置"""
+        e = ease(k)
+        lens = [((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5 for (x1, y1), (x2, y2) in zip(pts, pts[1:])]
+        total = sum(lens) or 1.0
+        d = e * total
+        for i, ((x1, y1), (x2, y2)) in enumerate(zip(pts, pts[1:])):
+            seg = lens[i]
+            if d <= seg or i == len(lens) - 1:
+                f = clamp(d / seg, 0, 1) if seg > 0 else 1.0
+                return x1 + (x2 - x1) * f, y1 + (y2 - y1) * f
+            d -= seg
+        return pts[-1]
+
+    def _contents(self, s):
+        """(倒之前, 倒完之後) 容器內腔裡液體佔多少（0–1），要跟畫面上畫的液量一致"""
+        app, k = s.app, self.vessel
+        if k == "jug":
+            return app.frother_fill, 0.0
+        if k == "server":
+            return clamp(self.grams / 300.0, 0.05, 1.0), 0.0
+        if k == "carafe":
+            n = app.cold["servings"] if app.cold else 1
+            from .brew import COLD_SERVINGS
+            return vessels.CARAFE_FULL * n / COLD_SERVINGS, vessels.CARAFE_FULL * (n - 1) / COLD_SERVINGS
+        if k == "globe":
+            return s.station["lower"] if s.station else 0.7, 0.0
+        if k == "kettle":
+            return clamp(self.grams / 300.0, 0.2, 0.85), 0.0
+        return {"bottle": 0.8, "tonic": 0.85, "pitcher": 0.7, "moka": 0.75}.get(k, 0.7), 0.0
+
+    def content(self, fill):
+        return self.c_empty + (self.c_full - self.c_empty) * fill
+
+    def pour_tilt(self, fill):
+        return vessels.pour_tilt(self.vessel, self.content(fill))
 
     def update(self, s, dt):
         self.t += dt
         v = self.v
         if self.phase == "enter":
             k = clamp(self.t / 0.8, 0, 1)
-            v["x"], v["y"] = arc_move(self.enter_from, self.pour_pos, k, 14)
+            if self.path:
+                v["x"], v["y"] = self._along(self.path, k)
+            else:
+                v["x"], v["y"] = arc_move(self.enter_from, self.pour_pos, k, 14)
             v["alpha"] = max(v["alpha"], clamp(k * 2, 0, 1))
             if k >= 1:
                 self.phase, self.t = "tilt", 0.0
         elif self.phase == "tilt":
             k = clamp(self.t / 0.45, 0, 1)
-            v["tilt"] = self.max_tilt * self.pre * ease(k)
+            start = self.pour_tilt(1.0) if self.physics else self.max_tilt * self.pre
+            v["tilt"] = start * ease(k)
+            v["y"] = self.lip_y(v["tilt"], v["x"], self.pour_pos[1])
             if k >= 1:
                 self.phase, self.t = "pour", 0.0
                 s.events.append("pour_start")
@@ -525,28 +607,40 @@ class PourStage(Stage):
             frac = clamp(self.poured / max(1.0, self.grams), 0, 1)
             s.add_liquid(self.liquid, step, self.foam_vol * step / max(1.0, self.grams))
             v["fill"] = 1 - frac
+            v["content"] = self.content(1 - frac)
             v["pour"] = 1.0
-            v["tilt"] = self.max_tilt * (self.pre + (1 - self.pre) * frac)
+            if self.physics:                          # 越倒越空，要傾斜得越多液面才碰得到倒出口
+                v["tilt"] = self.pour_tilt(1 - frac)
+            else:
+                v["tilt"] = self.max_tilt * (self.pre + (1 - self.pre) * frac)
             if self.art:
                 # 前段從高處注入融合，後段壓低靠近液面拉花
                 s.art_progress = clamp((frac - 0.5) / 0.48, 0, 1)
                 v["y"] = self.pour_pos[1] + (10 if frac > 0.5 else 0) * ease((frac - 0.45) / 0.1)
+            if self.physics:                          # 壺身不要撞到杯子：需要時抬高
+                v["y"] = self.lip_y(v["tilt"], v["x"], v["y"] if self.art else self.pour_pos[1])
             if self.poured >= self.grams - 0.01 or room <= 0.5:
                 self.phase, self.t = "untilt", 0.0
+                self.untilt_from = v["tilt"]
                 v["pour"] = 0.0
                 s.events.append("pour_stop")
                 if self.art:
                     s.art_progress = 1.0
         elif self.phase == "untilt":
             k = clamp(self.t / 0.4, 0, 1)
-            v["tilt"] = self.max_tilt * (1 - ease(k))
+            v["tilt"] = self.untilt_from * (1 - ease(k))
+            v["y"] = self.lip_y(v["tilt"], v["x"], v["y"])
             if k >= 1:
                 self.phase, self.t = "exit", 0.0
                 self.exit_from = (v["x"], v["y"])
+                self.exit_to = self.home or (self.exit_from[0] + 70, self.exit_from[1] - 60)
+                self.path = self._path(self.exit_from, self.exit_to)
         elif self.phase == "exit":
             k = clamp(self.t / 0.7, 0, 1)
-            target = self.home or (self.exit_from[0] + 70, self.exit_from[1] - 60)
-            v["x"], v["y"] = arc_move(self.exit_from, target, k, 14)
+            if self.path:
+                v["x"], v["y"] = self._along(self.path, k)
+            else:
+                v["x"], v["y"] = arc_move(self.exit_from, self.exit_to, k, 14)
             if self.home is None:
                 v["alpha"] = 1 - k
             if k >= 1:
@@ -825,6 +919,15 @@ class Session:
             beverage = self.dp.po_dose * (self.dp.po_ratio - brew.RETAIN_K)
             home = app.station_pos("server")
             return [brew.PourOverStage(), PourStage("server", "brew", beverage, 22.0, start=home, home=home)]
+        if drink == "moka_pot":
+            self.brew_res = brew.simulate_moka(self.dp, p.roast, p.bean_age, p.origin)
+            home = app.station_pos("moka")
+            return [brew.MokaStage(), PourStage("moka", "brew", brew.moka_beverage(self.dp), 16.0, start=home, home=home)]
+        if drink == "siphon":
+            self.brew_res = brew.simulate_siphon(self.dp, p.roast, p.bean_age, p.origin)
+            home = app.station_pos("globe")
+            return [brew.SiphonStage(),
+                    PourStage("globe", "brew", brew.siphon_beverage(self.dp), 22.0, start=home, home=home)]
         b = app.cold
         if b is not None and b.get("done") and b["servings"] > 0:
             self.brew_res = brew.batch_result(b)
@@ -869,7 +972,7 @@ class Session:
         from .model import shot_comment
         self.done = True
         if self.family in STATION_FAMILIES:
-            from .brew import brew_comment, TDS_POUR, TDS_COLD
+            from .brew import brew_comment, TDS_TARGET
             self.boiler_mode = "brew"
             if self.cold_setup:
                 self.result = None
@@ -877,7 +980,7 @@ class Session:
             cold = self.family == "colddrip"
             roast = self.app.cold["roast"] if cold else self.params.roast
             self.result = DrinkResult(self.drink, self.brew_res.score,
-                                      brew_comment(self.brew_res, roast, TDS_COLD if cold else TDS_POUR))
+                                      brew_comment(self.brew_res, roast, TDS_TARGET[self.family], self.family))
             return
         last_steam = is_milk(self.drink) and self.drink != "caramel_macchiato"
         self.boiler_mode = "steam" if (last_steam and self.app.machine.traits.steam_heatup) else "brew"

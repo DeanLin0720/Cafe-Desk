@@ -4,13 +4,13 @@
 
 放在桌面上的咖啡機擺件。視窗裡站著咖啡機、磨豆機和各種器具（預設是一般視窗；右鍵取消「視窗化顯示」就變成透明無邊框、直接站在桌面上），點一下就用動畫和合成音效做一杯咖啡，最後給一個簡單的分數。
 
-- 三種沖煮方式，各有自己的畫面：義式咖啡機、手沖、冰滴（冰滴約 1 小時，依架好時記下的時間計算；關掉程式時不會執行，重開時依經過的時間算出進度）
+- 五種沖煮方式，各有自己的畫面：義式咖啡機、手沖、冰滴、摩卡壺、虹吸壺（冰滴約 1 小時，依架好時記下的時間計算；關掉程式時不會執行，重開時依經過的時間算出進度）
 - 四台咖啡機（DESK·01 雙錶不鏽鋼機、復古拉桿機、小型單鍋爐機、內建磨豆的一體機），各有特性影響萃取
-- 濃縮、美式、拿鐵、卡布奇諾、馥列白、摩卡、焦糖瑪奇朵、濃縮通寧、阿芙佳朵等 16 種義式飲品，加上手沖、冰滴；節日期間另有 3 款季節限定
+- 濃縮、美式、拿鐵、卡布奇諾、馥列白、摩卡、焦糖瑪奇朵、濃縮通寧、阿芙佳朵等 16 種義式飲品，加上手沖、冰滴、摩卡壺、虹吸；節日期間另有 3 款季節限定
 - 完整備粉流程（取把手 → 敲渣 → 磨豆 → 布粉 → 填壓 → 扣回）、打奶與拉花、豆子與養豆天數、清潔保養（每台咖啡機分開計算）
 - 顧客點單（營業模式）：客人排隊、有耐心、會等到離開，有價格與小費、當日營業額；客人隨機點，自動換咖啡機與沖煮方式
 - 自動模式：照目前的設定重複沖煮
-- 每日紀錄、48 個成就（8 組分成銅／銀／金三級）、拉花收集冊
+- 每日紀錄、51 個成就（8 組分成銅／銀／金三級）、拉花收集冊
 - 繁體中文／English
 
 <p align="center">
@@ -92,6 +92,12 @@ Windows 用 `pythonw` 不會多開一個主控台視窗；要看錯誤訊息時�
 | 自動模式 | 每隔設定的間隔，照目前的飲品與參數再做一杯（豆子用完自己開新包、該清潔時自己清） |
 | 顧客點單 | 營業模式：客人隨機點、排隊、有耐心，咖啡師自己接單；點單時沖煮方式、咖啡機、飲品等選單鎖住 |
 
+| 陪伴功能 | 說明 |
+|---|---|
+| 環境音 | 下雨天的咖啡廳（人聲、吧台、杯盤、窗外雨聲），或森林雨聲（偶爾遠雷）；三段音量，在右鍵「聲音」子選單，跟著「開啟聲音」 |
+| 休息提醒 | 每 25／45／60 分鐘提醒休息，咖啡師順便做一杯 |
+| 檢查更新 | 每天查一次 GitHub Releases，有新版時右鍵選單最上面出現「下載新版」；可在「更新」關閉 |
+
 同一份設定檔只會有一個 Café Desk 在跑，再開一次會把原本那台叫出來。完整的功能說明在 `main.py` 開頭。
 
 ## 資料檔
@@ -138,13 +144,13 @@ python -m pytest
 
 A coffee machine desktop toy. A window holds an espresso machine, a grinder and assorted gear (a normal window by default; untick "Windowed" in the right-click menu to make it a transparent, borderless toy standing on your desktop). Click once and it makes a coffee with animation and synthesized sound effects, then gives you a simple score.
 
-- Three brew methods, each with its own scene: espresso machine, pour-over and cold drip (cold drip takes about an hour, measured from the time the tower was set up; nothing runs while the app is closed, and on the next launch the progress is worked out from the elapsed time)
+- Five brew methods, each with its own scene: espresso machine, pour-over, cold drip, moka pot and siphon (cold drip takes about an hour, measured from the time the tower was set up; nothing runs while the app is closed, and on the next launch the progress is worked out from the elapsed time)
 - Four machines (DESK·01 dual-gauge steel machine, vintage lever machine, compact single-boiler machine, all-in-one with built-in grinder), each with traits that affect extraction
-- 16 espresso drinks including espresso, americano, latte, cappuccino, flat white, mocha, caramel macchiato, espresso tonic and affogato, plus pour-over and cold drip, and 3 seasonal specials during festivals
+- 16 espresso drinks including espresso, americano, latte, cappuccino, flat white, mocha, caramel macchiato, espresso tonic and affogato, plus pour-over, cold drip, moka pot and siphon, and 3 seasonal specials during festivals
 - Full prep workflow (take the portafilter → knock out → grind → distribute → tamp → lock in), milk steaming and latte art, beans and rest days, cleaning and maintenance (tracked per machine)
 - Customer orders (business mode): customers queue up, have limited patience and may leave, pay prices and tips toward today's revenue; they order at random and the barista switches machines and brew methods to match
 - Auto mode: keeps brewing your current drink with your current settings
-- Daily records, 48 achievements (8 sets with bronze / silver / gold tiers), a latte art collection
+- Daily records, 51 achievements (8 sets with bronze / silver / gold tiers), a latte art collection
 - 繁體中文 / English
 
 <p align="center">
@@ -225,6 +231,12 @@ On Windows, `pythonw` avoids opening an extra console window, use `python` when 
 | Normal | Click the brewer to make the selected drink |
 | Auto mode | Makes the selected drink again with your settings at the chosen interval (opens a new bag and cleans when needed) |
 | Customer orders | Business mode: random orders, a queue and patience, the barista takes orders itself; brew method, machine, drink and similar menus are locked while it runs |
+
+| Extra | What it does |
+|---|---|
+| Ambience | Rainy-day café (chatter, the bar, cups, rain outside), or forest rain with distant thunder; three volume levels, in the right-click Sound submenu (follows "Sound on") |
+| Break reminder | Reminds you to take a break every 25/45/60 minutes, and the barista makes a cup |
+| Updates | Checks GitHub Releases once a day; when a new version is out, "Download" appears at the top of the right-click menu. Can be turned off under Updates |
 
 Only one Café Desk runs per config file, launching it again brings the running one to the front. A full feature description is at the top of `main.py`.
 

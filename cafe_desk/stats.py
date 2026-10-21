@@ -64,6 +64,9 @@ ACHIEVEMENTS = [
     ("pourover_90", "手沖職人", "手沖 90 分以上"),
     ("bloom", "悶蒸剛好", "悶蒸 30–45 秒、分 2 次以上注水，沖出 85 分"),
     ("cold_drip", "慢慢等", "等一壺冰滴滴完"),
+    ("moka_85", "爐火純青", "摩卡壺沖出 85 分"),
+    ("siphon_85", "虹吸達人", "虹吸壺沖出 85 分"),
+    ("all_methods", "沖煮方式全制霸", "義式、手沖、冰滴、摩卡壺、虹吸壺都做過"),
     ("good_business", "生意興隆", "一天營業額達 $2,000"),
     ("biz_5000", "高朋滿座", "一天營業額達 $5,000"),
     ("biz_10000", "日進斗金", "一天營業額達 $10,000"),
@@ -372,7 +375,8 @@ class Stats:
         return self._grant([key])
 
     def check(self, cup, all_drinks):
-        from .drinks import FESTIVAL_DRINKS
+        from .drinks import FESTIVAL_DRINKS, method_of
+        from .brew import METHODS
         col, d = self.data["collection"], self.day()
         hour = clock_hour()
         best = col["machine_best"]
@@ -397,6 +401,9 @@ class Stats:
             "first_pourover": bool(cup and cup["drink"] == "pour_over"),
             "pourover_90": bool(cup and cup["drink"] == "pour_over" and cup["score"] >= 90),
             "bloom": bool(cup and cup.get("bloom_ok") and cup["score"] >= 85),
+            "moka_85": bool(cup and cup["drink"] == "moka_pot" and cup["score"] >= 85),
+            "siphon_85": bool(cup and cup["drink"] == "siphon" and cup["score"] >= 85),
+            "all_methods": {method_of(k) for k in col["drinks"]} >= set(METHODS),
             "serve_30": d["waited"] >= 30,
             "tips_500": d["tips"] >= 500,
         }

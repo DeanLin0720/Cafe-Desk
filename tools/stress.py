@@ -59,7 +59,7 @@ for mk in machines:
     w.order_mode = True; w.auto = True
     w.cold = brew.new_cold_batch(w.dp, w.params.roast, w.params.bean_age, w.bag["origin"])   # 有冰滴才會有人點
     w.cold.update(done=True, servings=brew.COLD_SERVINGS)
-    for drink in ("latte", "pour_over", "cold_drip", "iced_americano", None, None):
+    for drink in ("latte", "pour_over", "cold_drip", "moka_pot", "siphon", "iced_americano", None, None):
         w.order = None; w.new_order(); o = w.order
         if drink:                                    # 指定幾杯，確定三種沖煮方式都會自動切換
             o.drink, o.mods, o.price = drink, [], orders.price_of(drink)

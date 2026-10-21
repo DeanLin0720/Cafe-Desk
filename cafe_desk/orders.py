@@ -21,7 +21,7 @@ ORDER_WEIGHTS = {"espresso": 0.07, "ristretto": 0.03, "lungo": 0.03, "doppio": 0
                  "iced_americano": 0.1, "latte": 0.18, "cappuccino": 0.12, "flat_white": 0.08,
                  "cortado": 0.05, "macchiato": 0.04, "iced_latte": 0.13, "mocha": 0.09,
                  "caramel_macchiato": 0.1, "espresso_tonic": 0.06, "affogato": 0.06, "pour_over": 0.06,
-                 "cold_drip": 0.07}
+                 "cold_drip": 0.07, "moka_pot": 0.05, "siphon": 0.05}
 ART_MILK = ("latte", "cappuccino", "flat_white", "cortado")
 OAT_OK = ("latte", "cappuccino", "flat_white", "cortado", "iced_latte", "mocha", "caramel_macchiato") + FESTIVAL_DRINKS
 
@@ -41,11 +41,11 @@ MOD_TEXT = {
 PRICES = {"espresso": 70, "ristretto": 70, "lungo": 75, "doppio": 90, "americano": 90, "iced_americano": 95,
           "latte": 120, "cappuccino": 120, "flat_white": 125, "cortado": 110, "macchiato": 90, "iced_latte": 125,
           "mocha": 140, "caramel_macchiato": 145, "espresso_tonic": 130, "affogato": 135,
-          "pour_over": 160, "cold_drip": 170}
+          "pour_over": 160, "cold_drip": 170, "moka_pot": 120, "siphon": 180}
 FESTIVAL_PRICE = 150
 
-# 手沖一杯比較久：點手沖的客人比較願意等（耐心乘上這個倍數，依飲品的沖煮方式）
-PACE = {"pourover": 1.35}
+# 手沖、虹吸壺、摩卡壺一杯比較久：點這些的客人比較願意等（耐心乘上這個倍數，依飲品的沖煮方式）
+PACE = {"pourover": 1.35, "siphon": 1.35, "moka": 1.2}
 QUEUE_MAX = 4                  # 營業模式：排隊（含正在點的這位）最多幾位，滿了就沒有人再來
 WAIT_PENALTY = 15.0            # 等太久最多扣幾分
 

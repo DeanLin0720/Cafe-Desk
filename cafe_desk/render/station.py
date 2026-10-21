@@ -1,6 +1,7 @@
-"""手沖與冰滴的獨立畫面：手沖用磨豆機、濾杯／分享壺／細口壺、冰滴塔，以及倒進杯子的分享壺／冰滴壺
+"""手沖、冰滴、摩卡壺、虹吸壺的獨立畫面：手沖用磨豆機、濾杯／分享壺／細口壺、冰滴塔、瓦斯爐與摩卡壺、
+虹吸壺與酒精燈，以及倒進杯子的分享壺／冰滴壺／摩卡壺／下壺
 
-沖煮方式（app.method）是 pourover／colddrip 時，畫面不顯示咖啡機，改畫這裡的器具；杯子放在右邊桌上。
+沖煮方式（app.method）不是 espresso 時，畫面不顯示咖啡機，改畫這裡的器具；杯子放在右邊桌上。
 狀態：手沖在 session.station（brew.PourOverStage 更新，沒在沖時用 brew.idle_pourover）；冰滴架設中也在
 session.station，滴的過程依 app.cold（背景批次，真實時間；切到別的沖煮方式也會繼續滴）。座標都是場景座標。
 """
@@ -11,7 +12,7 @@ import time
 from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import QPen, QPainterPath
 
-from .. import brew
+from .. import brew, vessels
 from ..gfx import C, mix, vgrad, hgrad, rrect
 from ..layout import ROAST_LOOK, BEAN_COLORS, FLOOR
 from ..util import clamp, lerp
@@ -20,6 +21,17 @@ from ..workflow import ease
 GLASS = "#dfe8ec"
 WOOD = ("#8a5a34", "#b07a4a", "#5e3a1e")
 PAPER = "#f3ece0"
+WATER_C = "#cfe2ea"
+# 摩卡壺：放在爐架上（器具座標）；壺本身的座標以壺底中心為原點
+MOKA_BASE = FLOOR - 34
+MOKA_SPOUT = (-30, -71)          # 壺嘴（倒咖啡的原點）相對壺底中心
+MOKA_HELD = 0.78
+ALU = [(0, "#737a81"), (0.16, "#c3c8cd"), (0.3, "#eef1f3"), (0.46, "#a4abb1"), (0.62, "#e1e5e8"),
+       (0.8, "#959ca2"), (1, "#686f76")]                   # 八角鋁壺的刻面
+# 虹吸壺：下壺球心（器具座標）；下壺壺口相對球心
+SY_GLOBE_Y = FLOOR - 72
+GLOBE_R = vessels.GLOBE_R
+GLOBE_LIP = vessels.GLOBE_LIP
 
 
 def brew_color(roast, tds, scale=1.0):
@@ -87,6 +99,10 @@ class StationRenderer:
             return scx + 3, FLOOR - 62 - 44 - 16      # 濾杯正上方
         if name == "server":                         # 分享壺的倒出口（左上壺嘴）
             return self.gear_to_scene(scx - 22, FLOOR - 62)
+        if name == "moka":                           # 摩卡壺的壺嘴
+            return self.gear_to_scene(brew.MK_STOVE_X + MOKA_SPOUT[0], MOKA_BASE + MOKA_SPOUT[1])
+        if name == "globe":                          # 虹吸壺下壺的壺口
+            return self.gear_to_scene(brew.SY_X + GLOBE_LIP[0], SY_GLOBE_Y + GLOBE_LIP[1])
         return self.gear_to_scene(brew.CD_TOWER_X + 43 - 12, FLOOR - 6 - 64)    # carafe：冰滴壺的倒出口
 
     # ───────────── 繪圖 ─────────────
@@ -113,6 +129,10 @@ class StationRenderer:
             if st is None:
                 st = self._idle_po = getattr(self, "_idle_po", None) or brew.idle_pourover(self)
             self.paint_pourover(p, st, vessel)
+        elif self.method == "moka":
+            self.paint_moka_station(p, st or brew.idle_moka(), vessel)
+        elif self.method == "siphon":
+            self.paint_siphon_station(p, st or brew.idle_siphon(), vessel)
         else:
             self.paint_cold_tower(p, st, vessel)
 
@@ -167,7 +187,7 @@ class StationRenderer:
             a = math.radians(i * 30)
             p.drawLine(QPointF(dc.x() + 6 * math.cos(a), dc.y() + 6 * math.sin(a)),
                        QPointF(dc.x() + 7.6 * math.cos(a), dc.y() + 7.6 * math.sin(a)))
-        um = self.dp.po_grind if self.method == "pourover" else self.dp.cd_grind
+        um = getattr(self.dp, brew.GRIND_ATTR[self.method])
         a = math.radians(-120 + 240 * clamp((um - 350) / 650, 0, 1))
         p.setPen(QPen(C("#c0392b"), 1.4, Qt.SolidLine, Qt.RoundCap))
         p.drawLine(dc, QPointF(dc.x() + 6 * math.sin(a), dc.y() - 6 * math.cos(a)))
@@ -240,24 +260,11 @@ class StationRenderer:
         """分享壺（原點＝左上壺嘴）：玻璃壺身、刻度、把手，裡面的咖啡"""
         p.save()
         p.translate(x, y)
-        body = QPainterPath()
-        body.moveTo(0, 0)
-        body.lineTo(44, 0)
-        body.cubicTo(QPointF(46, 20), QPointF(48, 46), QPointF(42, 56))
-        body.lineTo(4, 56)
-        body.cubicTo(QPointF(-3, 46), QPointF(-1, 20), QPointF(1, 4))
-        body.closeSubpath()
+        body = vessels.server()
         p.setPen(Qt.NoPen)
         p.fillPath(body, C(GLASS, 50))
-        frac = clamp(grams / 300.0, 0, 1)
-        if frac > 0.004:
-            top = 56 - 50 * frac
-            col, alpha = brew_color(roast, tds)
-            liquid = QPainterPath()
-            liquid.addRect(QRectF(-4, top, 54, 60))
-            p.fillPath(body.intersected(liquid), vgrad(top, 56, [(0, C(mix(col, "#e8b878", 0.2), alpha)),
-                                                                 (1, C(col, alpha))]))
-            p.fillRect(QRectF(3, top, 40, 1), C("#ffffff", 50))
+        col, alpha = brew_color(roast, tds)
+        self.paint_level(p, body, clamp(grams / 300.0, 0, 1), col, alpha, "#e8b878", 0.2)
         p.setBrush(Qt.NoBrush)
         p.setPen(QPen(C("#ffffff", 150), 1.0))
         p.drawPath(body)
@@ -337,20 +344,73 @@ class StationRenderer:
             p.drawLine(QPointF(cx + i * 10, top_y + 6), QPointF(cx + i * 4, base_y - 9))
         p.setPen(QPen(C("#ffffff", 140), 1.4))
         p.drawLine(QPointF(cx - 20, top_y + 4), QPointF(cx - 7, base_y - 10))
-        # 滴落：出水多時是細流，少時是一滴一滴
+        self.paint_drip(p, cx, base_y + 1, st, roast, tds)
+
+    def paint_drip(self, p, cx, tip, st, roast, tds):
+        """濾杯底下滴進分享壺：
+        - 出水少：濾杯尖端先長出一顆水珠，長大到撐不住才掉下來，落下時越來越快、拉長
+        - 出水多：一條細細的水柱，越往下越細（越流越快），到下面斷成一串水滴
+        - 落到分享壺的液面泛起一圈漣漪
+        水滴用真實時間（anim_t）推進，跟著重力加速；滴的頻率依出水量（st["drip"]）。"""
+        if getattr(self, "_drip_of", None) is not st:          # 換了一壺：清掉上一壺還在空中的水滴
+            self._drip_of, self._drips, self._drip_rings, self._drip_acc = st, [], [], 0.0
+            self._drip_t = self.anim_t
+        dt = clamp(self.anim_t - self._drip_t, 0.0, 0.1)
+        self._drip_t = self.anim_t
         d = st["drip"]
+        content = clamp(st["server"] / 300.0, 0, 1)
+        pts = list(vessels.outline("server"))
+        surf = FLOOR - 62 + (vessels.level_y(pts, content) if content > 0.004 else max(y for _, y in pts))
+        surf = min(surf, FLOOR - 7)
+        stream = d > 0.55                                        # 出水夠多：連成水柱
+        brk = tip + (surf - tip) * (0.35 + 0.45 * clamp((d - 0.55) / 0.45, 0, 1))   # 水柱斷開的位置
+        start = brk if stream else tip
+        rate = (6 + 18 * d) if stream else (0.8 + 9 * d / 0.55)  # 每秒幾滴
         if d > 0.02:
-            tip = base_y + 1
-            surf = FLOOR - 6 - 50 * clamp(st["server"] / 300.0, 0, 1)
-            col, alpha = brew_color(roast, tds)
-            if d > 0.35:
-                p.setPen(QPen(C(col, alpha), 1.2 + 0.8 * d, Qt.SolidLine, Qt.RoundCap))
-                p.drawLine(QPointF(cx, tip), QPointF(cx, surf))
+            self._drip_acc += dt * rate
+        while self._drip_acc >= 1.0:                            # 水珠撐不住了：掉下去
+            self._drip_acc -= 1.0
+            v0 = 120.0 if stream else 0.0
+            self._drips.append([start, v0])
+        g = 4200.0                                              # 重力（器具座標／秒²，約 2 mm 一單位）
+        alive = []
+        for drop in self._drips:
+            drop[1] += g * dt
+            drop[0] += drop[1] * dt
+            if drop[0] >= surf:
+                self._drip_rings.append([cx + random.uniform(-0.6, 0.6), 0.0])
             else:
-                ph = (self.anim_t * (1.5 + 4 * d)) % 1
-                p.setPen(Qt.NoPen)
-                p.setBrush(C(col, alpha))
-                p.drawEllipse(QPointF(cx, lerp(tip, surf, ph)), 1.3, 1.8)
+                alive.append(drop)
+        self._drips = alive
+        self._drip_rings = [[x, a + dt] for x, a in self._drip_rings if a + dt < 0.45]
+        col, alpha = brew_color(roast, tds)
+        p.save()
+        p.setPen(Qt.NoPen)
+        if stream:                                              # 細水柱：上粗下細，輕微晃動
+            w0 = 0.7 + 0.9 * clamp((d - 0.55) / 0.45, 0, 1)
+            wob = math.sin(self.anim_t * 23) * 0.25
+            col_path = QPainterPath(QPointF(cx - w0 / 2, tip))
+            col_path.lineTo(cx + w0 / 2, tip)
+            col_path.quadTo(QPointF(cx + w0 * 0.35 + wob, (tip + brk) / 2), QPointF(cx + w0 * 0.25 + wob, brk))
+            col_path.lineTo(cx - w0 * 0.25 + wob, brk)
+            col_path.quadTo(QPointF(cx - w0 * 0.35 + wob, (tip + brk) / 2), QPointF(cx - w0 / 2, tip))
+            p.fillPath(col_path, C(col, alpha))
+        elif d > 0.02 or self._drip_acc > 0.05:                 # 尖端正在長大的水珠
+            r = 0.5 + 0.9 * clamp(self._drip_acc, 0, 1)
+            p.setBrush(C(col, alpha))
+            p.drawEllipse(QPointF(cx, tip + r * 0.9), r * 0.85, r)
+        for y, v in self._drips:                                # 落下的水滴：越快拉得越長
+            stretch = min(3.5, v / 260.0)
+            p.setBrush(C(col, alpha))
+            p.drawEllipse(QPointF(cx, y - stretch * 0.5), 0.8, 0.9 + stretch)
+            p.setBrush(C("#ffffff", 70))
+            p.drawEllipse(QPointF(cx - 0.3, y - stretch * 0.5 - 0.3), 0.25, 0.4 + stretch * 0.3)
+        p.setBrush(Qt.NoBrush)
+        for x, a in self._drip_rings:                           # 液面的漣漪
+            k = a / 0.45
+            p.setPen(QPen(C(mix(col, "#e8c8a0", 0.5), int(150 * (1 - k))), 0.5))
+            p.drawEllipse(QPointF(x, surf), 1.5 + 9 * k, (1.5 + 9 * k) * 0.22)
+        p.restore()
 
     def paint_cold_tower(self, p, st, vessel):
         """冰滴塔：木架、上層冰水、閥、中層咖啡粉、下層冰滴壺；st＝架設中的狀態（None＝背景滴或空塔）"""
@@ -437,25 +497,11 @@ class StationRenderer:
         """冰滴壺（原點＝左上壺口）：細頸燒瓶"""
         p.save()
         p.translate(x, y)
-        body = QPainterPath()
-        body.moveTo(1, 0)
-        body.lineTo(23, 0)
-        body.lineTo(23, 14)
-        body.cubicTo(QPointF(36, 20), QPointF(38, 34), QPointF(36, 58))
-        body.quadTo(QPointF(36, 64), QPointF(30, 64))
-        body.lineTo(-6, 64)
-        body.quadTo(QPointF(-12, 64), QPointF(-12, 58))
-        body.cubicTo(QPointF(-14, 34), QPointF(-12, 20), QPointF(1, 14))
-        body.closeSubpath()
+        body = vessels.carafe()
         p.setPen(Qt.NoPen)
         p.fillPath(body, C(GLASS, 45))
-        if frac > 0.004:
-            top = 62 - 44 * frac
-            col, alpha = brew_color(roast, tds, 0.8)
-            liquid = QPainterPath()
-            liquid.addRect(QRectF(-16, top, 56, 70))
-            p.fillPath(body.intersected(liquid), vgrad(top, 64, [(0, C(mix(col, "#e8b878", 0.15), alpha)),
-                                                                 (1, C(col, alpha))]))
+        col, alpha = brew_color(roast, tds, 0.8)
+        self.paint_level(p, body, vessels.CARAFE_FULL * clamp(frac, 0, 1), col, alpha, "#e8b878", 0.15)
         p.setBrush(Qt.NoBrush)
         p.setPen(QPen(C("#ffffff", 150), 1.0))
         p.drawPath(body)
@@ -463,12 +509,398 @@ class StationRenderer:
         p.drawLine(QPointF(-6, 26), QPointF(-7, 54))
         p.restore()
 
+    # ───────────── 摩卡壺 ─────────────
+    def paint_moka_station(self, p, st, vessel):
+        """小瓦斯爐（爐架、旋鈕、火焰）上的摩卡壺；倒咖啡時壺拿走了只畫爐子"""
+        cx = brew.MK_STOVE_X
+        held = vessel is not None and vessel.get("kind") == "moka"
+        p.save()
+        p.setPen(Qt.NoPen)
+        p.setBrush(C("#000000", 45))
+        p.drawEllipse(QPointF(cx, FLOOR), 42, 3)
+        # 爐身與面板
+        p.fillPath(rrect(cx - 38, FLOOR - 21, cx + 38, FLOOR, 4),
+                   vgrad(FLOOR - 21, FLOOR, [(0, C("#45494e")), (1, C("#1b1d20"))]))
+        p.fillPath(rrect(cx - 40, FLOOR - 24, cx + 40, FLOOR - 19, 2),
+                   hgrad(cx - 40, cx + 40, [(0, C("#7c838a")), (0.5, C("#d9dde0")), (1, C("#7c838a"))]))
+        kc = QPointF(cx + 26, FLOOR - 10)               # 旋鈕：點火時轉過去
+        p.setBrush(C("#121314"))
+        p.drawEllipse(kc, 5.5, 5.5)
+        p.setBrush(C("#2c2f33"))
+        p.drawEllipse(kc, 4.2, 4.2)
+        a = math.radians(-90 + 90 * st["knob"])
+        p.setPen(QPen(C("#e8e2d6"), 1.2, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(kc, QPointF(kc.x() + 3.6 * math.cos(a), kc.y() + 3.6 * math.sin(a)))
+        p.setPen(Qt.NoPen)
+        p.setBrush(C("#ff7a3a" if st["flame"] > 0.05 else "#4a4440"))
+        p.drawEllipse(QPointF(cx + 14, FLOOR - 10), 1.3, 1.3)
+        # 爐頭、後半圈火焰、爐架
+        p.setBrush(C("#2a2c2f"))
+        p.drawEllipse(QPointF(cx, FLOOR - 25), 13, 2.6)
+        self.paint_burner_flame(p, cx, FLOOR - 26, st["flame"], back=True)
+        p.setBrush(C("#1a1b1d"))
+        for dx in (-31, 27):
+            p.drawRect(QRectF(cx + dx, MOKA_BASE - 1, 4, FLOOR - 23 - MOKA_BASE + 1))
+        p.drawRect(QRectF(cx - 33, MOKA_BASE - 1, 66, 2.4))
+        if not held:
+            self.paint_moka_pot(p, cx, MOKA_BASE, st)
+        self.paint_burner_flame(p, cx, FLOOR - 26, st["flame"], back=False)
+        p.restore()
+
+    def paint_burner_flame(self, p, cx, y, f, back):
+        """爐火：一圈藍色火舌（back＝後半圈，畫在壺後面），火越大火圈越大、火舌越高"""
+        if f <= 0.01:
+            return
+        t = self.anim_t
+        n = 12
+        spread = 9 + 12 * f
+        for i in range(n):
+            a = (i + 0.5) / n * math.pi * 2
+            if (math.sin(a) > 0) == back:
+                continue
+            x = cx + math.cos(a) * spread
+            yb = y + math.sin(a) * 2.2
+            h = (4 + 10 * f) * (0.78 + 0.22 * math.sin(t * 23 + i * 1.7))
+            lean = math.cos(a) * 3.0 * f              # 外圈的火往外翻
+            path = QPainterPath(QPointF(x - 2.2, yb))
+            path.quadTo(QPointF(x - 1.6 + lean * 0.4, yb - h * 0.6), QPointF(x + lean, yb - h))
+            path.quadTo(QPointF(x + 1.6 + lean * 0.4, yb - h * 0.6), QPointF(x + 2.2, yb))
+            path.closeSubpath()
+            a0 = int(200 * min(1.0, f * 1.6))
+            p.fillPath(path, vgrad(yb - h, yb, [(0, C("#7fb6ff", 0)), (0.45, C("#4f8dff", a0)),
+                                                (1, C("#c9e6ff", a0))]))
+
+    @staticmethod
+    def _alu(x0, x1):
+        return hgrad(x0, x1, [(k, C(c)) for k, c in ALU])
+
+    @staticmethod
+    def _facets(p, cx, yb, yt, wb, wt):
+        """八角壺的稜線"""
+        for f in (-0.62, 0.0, 0.62):
+            p.setPen(QPen(C("#ffffff", 70), 0.6))
+            p.drawLine(QPointF(cx + f * wb + 0.6, yb), QPointF(cx + f * wt + 0.6, yt))
+            p.setPen(QPen(C("#000000", 40), 0.6))
+            p.drawLine(QPointF(cx + f * wb - 0.6, yb), QPointF(cx + f * wt - 0.6, yt))
+        p.setPen(Qt.NoPen)
+
+    def moka_color(self):
+        res = self.session.brew_res if (self.session and self.session.brew_res) else None
+        return brew_color(self.params.roast, res.tds if res else 3.2)
+
+    def paint_moka_pot(self, p, cx, y0, st):
+        """八角鋁製摩卡壺（cx, y0＝壺底中心）：下壺、粉槽、上壺（轉開時往上提）、把手、蓋子；
+        蓋子打開時看得到上壺裡的咖啡，以及從中柱冒出來的咖啡、收尾的噴濺與蒸氣"""
+        p.save()
+        p.setPen(Qt.NoPen)
+        lift = st["lift"]
+        low = QPainterPath()
+        low.moveTo(cx - 22, y0)
+        low.lineTo(cx + 22, y0)
+        low.lineTo(cx + 17, y0 - 30)
+        low.lineTo(cx - 17, y0 - 30)
+        low.closeSubpath()
+        p.fillPath(low, self._alu(cx - 22, cx + 22))
+        self._facets(p, cx, y0, y0 - 30, 22, 17)
+        p.setBrush(C("#c9a24a"))                        # 洩壓閥
+        p.drawEllipse(QPointF(cx + 11, y0 - 15), 2.2, 2.2)
+        p.setBrush(C("#8a6a2a"))
+        p.drawEllipse(QPointF(cx + 11, y0 - 15), 0.9, 0.9)
+        if lift > 0.02:                                 # 上壺拿起來：看得到粉槽
+            p.setBrush(C("#9aa1a7"))
+            p.drawEllipse(QPointF(cx, y0 - 30), 16, 3.2)
+            p.setBrush(C("#5a6066"))
+            p.drawEllipse(QPointF(cx, y0 - 30), 13.5, 2.4)
+            if st["basket"] > 0.01:
+                look = ROAST_LOOK.get(self.params.roast, ROAST_LOOK["中焙"])
+                p.setBrush(C(mix(look["amber"], "#8a5a34", 0.4)))
+                p.drawEllipse(QPointF(cx, y0 - 30.6), 13 * clamp(st["basket"] * 1.2, 0.3, 1), 2.3)
+        p.save()
+        p.translate(st.get("twist", 0.0) * 1.2, -26 * lift)
+        p.fillPath(rrect(cx - 18.5, y0 - 35, cx + 18.5, y0 - 29.5, 1.5),
+                   hgrad(cx - 18.5, cx + 18.5, [(0, C("#5c6369")), (0.4, C("#b9bfc4")), (1, C("#50575d"))]))
+        up = QPainterPath()
+        up.moveTo(cx - 17, y0 - 35)
+        up.lineTo(cx + 17, y0 - 35)
+        up.lineTo(cx + 23, y0 - 66)
+        up.lineTo(cx - 23, y0 - 66)
+        up.closeSubpath()
+        p.fillPath(up, self._alu(cx - 23, cx + 23))
+        self._facets(p, cx, y0 - 35, y0 - 66, 17, 23)
+        spout = QPainterPath(QPointF(cx - 22, y0 - 66))  # 壺嘴：往左上翹
+        spout.lineTo(cx + MOKA_SPOUT[0], y0 + MOKA_SPOUT[1])
+        spout.lineTo(cx - 20, y0 - 57)
+        spout.closeSubpath()
+        p.fillPath(spout, hgrad(cx - 30, cx - 20, [(0, C("#8d949a")), (1, C("#d6dade"))]))
+        hd = QPainterPath(QPointF(cx + 20, y0 - 63))     # 黑色電木把手
+        hd.lineTo(cx + 33, y0 - 61)
+        hd.quadTo(QPointF(cx + 37, y0 - 60), QPointF(cx + 36, y0 - 55))
+        hd.lineTo(cx + 31, y0 - 41)
+        hd.quadTo(QPointF(cx + 29, y0 - 37), QPointF(cx + 26, y0 - 40))
+        hd.lineTo(cx + 29, y0 - 52)
+        hd.lineTo(cx + 19, y0 - 54)
+        hd.closeSubpath()
+        p.fillPath(hd, C("#1c1c1e"))
+        p.setPen(QPen(C("#ffffff", 50), 0.8))
+        p.drawLine(QPointF(cx + 23, y0 - 62), QPointF(cx + 33, y0 - 60))
+        p.setPen(Qt.NoPen)
+        lid = st["lid"]
+        top = y0 - 66
+        if lid > 0.02:                                   # 打開蓋子往裡看：上壺內壁、咖啡液面、中柱、噴濺
+            col, alpha = self.moka_color()
+            crema = mix(col, "#c8894a", 0.35)
+            k = st["coffee"]
+            g = st["gush"]
+            t = self.anim_t
+            mouth = QPainterPath()
+            mouth.addEllipse(QPointF(cx, top), 22, 4.5)
+            surf = top + 0.4 + 5.0 * (1 - k) ** 1.3       # 液面：咖啡越多越接近壺口（深的時候被近側壺口擋住大半）
+            col_top = top + 1.2                          # 中柱的管口，就在壺口下面一點
+            p.save()
+            p.setClipPath(mouth)
+            p.fillPath(mouth, vgrad(top - 4.5, top + 4.5, [(0, C("#4a5056")), (0.5, C("#24272a")),
+                                                           (1, C("#121315"))]))
+            if k > 0.01:
+                p.setBrush(C(col, alpha))
+                p.drawEllipse(QPointF(cx, surf), 21.5, 4.3)
+                p.setBrush(C(crema, int(110 + 60 * g)))  # 液面上的一層淡淡的 crema
+                p.drawEllipse(QPointF(cx - 2, surf - 0.6), 13, 2.2)
+                if g > 0.05:                             # 從中柱流下來的漣漪
+                    p.setBrush(Qt.NoBrush)
+                    for i in range(2):
+                        ph = (t * 1.8 + i * 0.5) % 1
+                        p.setPen(QPen(C(crema, int(160 * (1 - ph))), 0.5))
+                        p.drawEllipse(QPointF(cx, surf), 3 + 9 * ph, (3 + 9 * ph) * 0.2)
+                    p.setPen(Qt.NoPen)
+            if surf > col_top + 0.3:                     # 中柱露在液面上的那段
+                p.fillRect(QRectF(cx - 2.2, col_top, 4.4, surf - col_top),
+                           hgrad(cx - 2.2, cx + 2.2, [(0, C("#6a7177")), (0.4, C("#d5d9dc")), (1, C("#5a6066"))]))
+                if g > 0.01:                             # 咖啡沿著中柱外面流下去
+                    p.fillRect(QRectF(cx - 2.4, col_top, 4.8, surf - col_top), C(col, int(200 * min(1.0, g * 1.5))))
+            p.restore()
+            p.setBrush(C("#2a2d30"))
+            p.drawEllipse(QPointF(cx, col_top), 2.2, 0.8)
+            if g > 0.01:                                 # 管口冒出來的咖啡：一小團，表面是 crema
+                h = 1.2 + 2.2 * g + 0.5 * math.sin(t * 19)
+                dome = QPainterPath(QPointF(cx - 2.4 - 0.8 * g, col_top))
+                dome.quadTo(QPointF(cx, col_top - h * 1.6), QPointF(cx + 2.4 + 0.8 * g, col_top))
+                dome.closeSubpath()
+                p.fillPath(dome, vgrad(col_top - h, col_top, [(0, C(crema, 240)), (1, C(col, 240))]))
+            sp = st["sputter"]
+            if sp > 0.01:                                # 收尾：從管口噴出的小滴
+                p.setBrush(C(crema, 220))
+                for i in range(int(3 + 7 * sp)):
+                    ph = (t * 2.6 + i * 0.37) % 1
+                    x = cx + math.sin(i * 2.3) * (1 + 8 * ph)
+                    y = col_top - 1 - math.sin(ph * math.pi) * (3 + 7 * sp)
+                    p.drawEllipse(QPointF(x, y), 0.8, 0.8)
+            steam = max(sp, 0.35 * g * k)
+            if steam > 0.02:                             # 熱氣
+                for i in range(6):
+                    ph = (t * 0.55 + i / 6) % 1
+                    x = cx - 5 + i * 2 + math.sin(t * 1.3 + i) * 4 * ph
+                    p.setBrush(C("#ffffff", int(70 * steam * (1 - ph))))
+                    p.drawEllipse(QPointF(x, top - 4 - 34 * ph), 2.5 + 5 * ph, 2.5 + 5 * ph)
+        p.save()                                         # 蓋子：鉸鏈在右邊，打開時往上翻
+        p.translate(cx + 21, top)
+        p.rotate(84 * lid)
+        cap = QPainterPath(QPointF(-44, 0))
+        cap.lineTo(0, 0)
+        cap.lineTo(-3, -4)
+        cap.lineTo(-41, -4)
+        cap.closeSubpath()
+        p.fillPath(cap, self._alu(-44, 0))
+        p.fillPath(rrect(-25, -7.5, -17, -4, 1.5), C("#1c1c1e"))     # 蓋鈕
+        p.restore()
+        p.restore()
+        p.restore()
+
+    # ───────────── 虹吸壺 ─────────────
+    def paint_siphon_station(self, p, st, vessel):
+        """虹吸壺：底座、支架、酒精燈、下壺（球形）、上壺（濾布、玻璃管）、攪拌棒"""
+        cx, gy = brew.SY_X, SY_GLOBE_Y
+        held = vessel is not None and vessel.get("kind") == "globe"
+        res = self.session.brew_res if (self.session and self.session.brew_res) else None
+        col, alpha = brew_color(self.params.roast, res.tds if res else 1.35)
+        p.save()
+        p.setPen(Qt.NoPen)
+        p.setBrush(C("#000000", 45))
+        p.drawEllipse(QPointF(cx + 6, FLOOR), 44, 3)
+        p.fillPath(rrect(cx - 34, FLOOR - 6, cx + 46, FLOOR, 3),
+                   vgrad(FLOOR - 6, FLOOR, [(0, C("#4a3a2c")), (1, C("#2a2019"))]))
+        p.fillRect(QRectF(cx + 38, gy - 44, 4, FLOOR - 6 - (gy - 44)),
+                   hgrad(cx + 38, cx + 42, [(0, C("#6c737a")), (0.5, C("#e2e6e9")), (1, C("#6c737a"))]))
+        p.setBrush(C("#2a2c2f"))
+        p.drawEllipse(QPointF(cx + 40, gy - 45), 3, 3)
+        self.paint_lamp(p, cx, FLOOR - 6, st["flame"])
+        if not held:
+            self.paint_globe(p, cx, gy, st["lower"], st["lower_coffee"], col, alpha, st["boil"])
+        p.fillRect(QRectF(cx + 8, gy - 35, 31, 3.5),
+                   vgrad(gy - 35, gy - 31.5, [(0, C("#d5d9dc")), (1, C("#7c838a"))]))   # 夾具
+        self.paint_upper_bowl(p, cx, gy, st, col, alpha)
+        p.restore()
+
+    def paint_lamp(self, p, cx, y, flame):
+        """酒精燈（cx, y＝燈底中心）：玻璃燈身、酒精、燈芯；火焰外黃內藍、輕輕搖晃"""
+        p.save()
+        p.setPen(Qt.NoPen)
+        body = QPainterPath(QPointF(cx - 15, y))
+        body.lineTo(cx + 15, y)
+        body.quadTo(QPointF(cx + 18, y - 14), QPointF(cx + 8, y - 20))
+        body.lineTo(cx - 8, y - 20)
+        body.quadTo(QPointF(cx - 18, y - 14), QPointF(cx - 15, y))
+        body.closeSubpath()
+        p.fillPath(body, C(GLASS, 60))
+        alc = QPainterPath()
+        alc.addRect(QRectF(cx - 20, y - 10, 40, 10))
+        p.fillPath(body.intersected(alc), C("#b9c7f0", 110))
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(C("#ffffff", 140), 0.9))
+        p.drawPath(body)
+        p.setPen(Qt.NoPen)
+        p.fillPath(rrect(cx - 6, y - 24, cx + 6, y - 19, 1.5), C("#b8bec4"))
+        p.fillRect(QRectF(cx - 1.5, y - 28, 3, 4), C("#efe4c8"))
+        if flame > 0.01:
+            t = self.anim_t
+            h = 16 * flame * (0.9 + 0.1 * math.sin(t * 17))
+            sway = math.sin(t * 5) * 1.2 * flame
+            fl = QPainterPath(QPointF(cx - 4, y - 27))
+            fl.quadTo(QPointF(cx - 5 + sway * 0.3, y - 27 - h * 0.5), QPointF(cx + sway, y - 27 - h))
+            fl.quadTo(QPointF(cx + 5 + sway * 0.3, y - 27 - h * 0.5), QPointF(cx + 4, y - 27))
+            fl.closeSubpath()
+            p.fillPath(fl, vgrad(y - 27 - h, y - 27, [(0, C("#ffb347", 0)), (0.35, C("#ffd36a", 210)),
+                                                      (0.8, C("#ff9a3a", 200)), (1, C("#6fa8ff", 210))]))
+            p.setBrush(C("#8fbaff", 170))
+            p.drawEllipse(QPointF(cx, y - 29), 1.6, 2.6)
+        p.restore()
+
+    def paint_globe(self, p, cx, cy, frac, coffee, col, alpha, boil, handle=False):
+        """下壺（cx, cy＝球心）：球形玻璃加短頸；frac＝液量，coffee＝液體是咖啡的程度；boil＝冒泡"""
+        r = GLOBE_R
+        p.save()
+        p.setPen(Qt.NoPen)
+        body = vessels.globe(cx, cy)
+        p.fillPath(body, C(GLASS, 45))
+        lcol, lal = mix(WATER_C, col, coffee), int(lerp(110, alpha, coffee))
+        region = self.paint_level(p, body, frac, lcol, lal, "#ffffff", 0.12)
+        top = region.boundingRect().top() if not region.isEmpty() else cy + r
+        if boil > 0.01 and frac > 0.02:                  # 氣泡：從底部與玻璃管口往上冒
+            t = self.anim_t
+            for i in range(int(4 + 16 * boil)):
+                ph = (t * (0.9 + 0.3 * (i % 3)) + i * 0.173) % 1
+                x = cx + (math.sin(i * 2.7) * r * 0.55 if i % 2 else math.sin(i * 1.3) * 2.5)
+                y = lerp(cy + r - 3, top + 1, ph)
+                rr = 0.6 + 1.5 * boil * ph
+                p.setBrush(C("#ffffff", int(160 * (1 - ph * 0.5))))
+                p.drawEllipse(QPointF(x + math.sin(t * 7 + i) * 0.6, y), rr, rr)
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(C("#ffffff", 150), 1.0))
+        p.drawPath(body)
+        p.setPen(QPen(C("#ffffff", 120), 1.6))
+        p.drawArc(QRectF(cx - r + 4, cy - r + 4, 2 * r - 8, 2 * r - 8), 110 * 16, 55 * 16)
+        p.setPen(Qt.NoPen)
+        if handle:                                       # 拿起來倒的時候：夾具當把手
+            p.fillRect(QRectF(cx + 7, cy - 31, 26, 3.5), vgrad(cy - 31, cy - 27.5, [(0, C("#d5d9dc")),
+                                                                                   (1, C("#7c838a"))]))
+        p.restore()
+
+    def paint_upper_bowl(self, p, cx, gy, st, col, alpha):
+        """上壺：玻璃管插進下壺、濾布、液體（水→咖啡）、浮在上面的粉層、抽完後的粉山、攪拌棒"""
+        a = st["upper_alpha"]
+        if a <= 0.01:
+            return
+        p.save()
+        p.setOpacity(a)
+        p.translate(0, -30 * st["upper_lift"])
+        p.setPen(Qt.NoPen)
+        p.fillRect(QRectF(cx - 1.6, gy - 34, 3.2, 50), C(GLASS, 90))          # 玻璃管
+        bowl = QPainterPath(QPointF(cx - 5, gy - 34))
+        for x, y in ((cx - 5, gy - 48), (cx - 20, gy - 60), (cx - 20, gy - 114), (cx + 20, gy - 114),
+                     (cx + 20, gy - 60), (cx + 5, gy - 48), (cx + 5, gy - 34)):
+            bowl.lineTo(x, y)
+        bowl.closeSubpath()
+        p.fillPath(bowl, C(GLASS, 45))
+        look = ROAST_LOOK.get(self.params.roast, ROAST_LOOK["中焙"])
+        up = st["upper"]
+        top = gy - 58 - 52 * up
+        if up > 0.01:
+            m = st["mixed"]
+            lcol, lal = mix(WATER_C, col, m), int(lerp(110, alpha, m))
+            liquid = QPainterPath()
+            liquid.addRect(QRectF(cx - 22, top, 44, gy - 34 - top))
+            p.fillPath(bowl.intersected(liquid), vgrad(top, gy - 48, [(0, C(mix(lcol, "#ffffff", 0.1), lal)),
+                                                                      (1, C(lcol, lal))]))
+            g = st["grounds"]
+            if g > 0.01:                                 # 粉層浮在上面；攪拌時表面起伏
+                thick = 4 + 4 * g * (1 - 0.4 * st["paddle"])
+                wob = math.sin(st["stir"]) * 2.0 * st["paddle"]
+                layer = QPainterPath(QPointF(cx - 21, top + thick))
+                layer.lineTo(cx - 21, top - wob)
+                layer.quadTo(QPointF(cx, top + wob * 1.5), QPointF(cx + 21, top + wob))
+                layer.lineTo(cx + 21, top + thick)
+                layer.closeSubpath()
+                p.fillPath(bowl.intersected(layer), C(mix(look["deep"], "#6a4426", 0.35), int(235 * g)))
+                p.setBrush(C("#d8b07a", int(120 * g)))
+                p.drawEllipse(QPointF(cx, top + 0.5), 18, 1.4)
+        p.setBrush(C(PAPER, 190))                        # 濾布與鏈子
+        p.drawEllipse(QPointF(cx, gy - 58), 13, 2)
+        p.setPen(QPen(C("#b8bec4"), 0.6))
+        p.drawLine(QPointF(cx, gy - 58), QPointF(cx, gy - 36))
+        p.setPen(Qt.NoPen)
+        d = st["dome"]
+        if d > 0.01 and up < 0.6:                        # 抽完：粉在濾布上鼓成小山
+            mound = QPainterPath(QPointF(cx - 16, gy - 56))
+            mound.quadTo(QPointF(cx, gy - 56 - 24 * d), QPointF(cx + 16, gy - 56))
+            mound.closeSubpath()
+            p.fillPath(mound, C(mix(look["deep"], "#6a4426", 0.25)))
+        if st["paddle"] > 0.01:                          # 竹攪拌棒
+            sx = cx + math.sin(st["stir"]) * 8
+            p.save()
+            p.setOpacity(a * st["paddle"])
+            p.setPen(QPen(C("#c9a46a"), 2.2, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(QPointF(sx, gy - 72), QPointF(cx + 12 + math.sin(st["stir"]) * 2, gy - 140))
+            p.setPen(Qt.NoPen)
+            p.fillPath(rrect(sx - 3, gy - 80, sx + 3, gy - 68, 1.5), C("#c9a46a"))
+            p.restore()
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(C("#ffffff", 140), 1.0))
+        p.drawPath(bowl)
+        p.setPen(QPen(C("#ffffff", 110), 1.4))
+        p.drawLine(QPointF(cx - 16, gy - 108), QPointF(cx - 16, gy - 66))
+        p.setPen(Qt.NoPen)
+        p.fillPath(rrect(cx - 10, gy - 37, cx + 10, gy - 31, 2), C("#3a2e28"))     # 橡膠圈
+        p.restore()
+
+    def paint_level(self, p, body, content, col, alpha, sheen, k):
+        """容器裡的液體（液面在畫面上保持水平，液量佔內腔 content）：上淡下濃，液面一條反光；回傳液體的範圍"""
+        region = vessels.liquid_region(p, body, content)
+        if region.isEmpty():
+            return region
+        r = region.boundingRect()
+        p.fillPath(region, vgrad(r.top(), r.bottom(), [(0, C(mix(col, sheen, k), alpha)), (1, C(col, alpha))]))
+        line = vessels.surface_line(p, region)
+        if line:
+            p.setPen(QPen(C("#ffffff", 60), 0.9))
+            p.drawLine(*line)
+            p.setPen(Qt.NoPen)
+        return region
+
     def paint_station_vessel(self, p, v):
         """倒進杯子時的分享壺／冰滴壺（paint_vessel 已經平移、旋轉到壺口）；跟器具一樣放大"""
         p.scale(self.gear_k(), self.gear_k())
         if v["kind"] == "server":
             self.paint_server(p, 0, 0, self.session.station["server"] * v.get("fill", 1.0),
                               self.params.roast, self.session.brew_res.tds)
+        elif v["kind"] == "moka":
+            # 拿起來倒的時候慢慢變小一點，才不會超出畫面右邊（在爐子上時跟原本一樣大）
+            k = lerp(1.0, MOKA_HELD, clamp(abs(v["x"] - self.station_pos("moka")[0]) / 60, 0, 1))
+            p.scale(k, k)
+            self.paint_moka_pot(p, -MOKA_SPOUT[0], -MOKA_SPOUT[1], brew.idle_moka())
+        elif v["kind"] == "globe":
+            st = self.session.station
+            col, alpha = brew_color(self.params.roast, self.session.brew_res.tds)
+            self.paint_globe(p, -GLOBE_LIP[0], -GLOBE_LIP[1], st["lower"] * v.get("fill", 1.0), 1.0, col, alpha, 0.0,
+                             handle=True)
         else:
             b = self.cold
             roast, tds = (b["roast"], b["res"][2]) if b else (self.params.roast, 1.5)

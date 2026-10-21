@@ -24,7 +24,7 @@ def test_drink_tables_consistent():
     for k in DRINK_KEYS:
         assert k in DRINKS
         assert k in ORDER_WEIGHTS, k
-        assert DRINKS[k]["base"] in ("espresso", "americano", "iced", "milk", "affogato", "pourover", "colddrip"), k
+        assert DRINKS[k]["base"] in ("espresso", "americano", "iced", "milk", "affogato", "pourover", "colddrip", "moka", "siphon"), k
     for k, spec in DRINKS.items():
         if spec["base"] == "milk":
             assert k in MILK_SPEC, k

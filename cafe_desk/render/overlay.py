@@ -160,6 +160,13 @@ class OverlayRenderer:
             info = T("{name} · {roast} {dose:g}g：{water:.0f}g · {um:.0f}µm · {t:g}°C · 悶蒸 {b:.0f}s · {n:.0f} 段注水",
                      name=T(DRINKS[drink]["name"]), roast=T(p_.roast), dose=dp.po_dose, water=dp.po_dose * dp.po_ratio,
                      um=dp.po_grind, t=dp.po_temp, b=dp.po_bloom, n=dp.po_pulses)
+        elif family == "moka":
+            info = T("{name} · {roast} {dose:g}g · {um:.0f}µm · 火力 {h:g}",
+                     name=T(DRINKS[drink]["name"]), roast=T(p_.roast), dose=dp.mk_dose, um=dp.mk_grind, h=dp.mk_heat)
+        elif family == "siphon":
+            info = T("{name} · {roast} {dose:g}g：{water:.0f}g · {um:.0f}µm · {t:g}°C · 浸泡 {s:.0f}s",
+                     name=T(DRINKS[drink]["name"]), roast=T(p_.roast), dose=dp.sy_dose, water=dp.sy_dose * brew.SIPHON_RATIO,
+                     um=dp.sy_grind, t=dp.sy_temp, s=dp.sy_steep)
         elif family == "colddrip":
             b = self.cold
             dose, ratio, um, rate = (b["dose"], b["ratio"], b["grind"], b["rate"]) if b else \

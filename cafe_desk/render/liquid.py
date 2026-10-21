@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QPointF
 from PySide6.QtGui import QLinearGradient, QRadialGradient, QPen, QPainterPath, QPolygonF
 
 from ..gfx import mix, C, vgrad
-from ..drinks import base_of
+from ..drinks import base_of, STATION_FAMILIES
 from ..layout import C_DARK, C_MID, C_TIGER, ROAST_LOOK, liquid_look
 from ..model import ROASTS
 from ..util import clamp, lerp
@@ -73,7 +73,7 @@ class LiquidRenderer:
         c = self.contents
         if base_of(self.drink_kind()) == "affogato":
             return self.paint_affogato(p)
-        if base_of(self.drink_kind()) in ("pourover", "colddrip"):
+        if base_of(self.drink_kind()) in STATION_FAMILIES:
             return self.paint_brew_liquid(p)                 # 手沖台的咖啡（render/station.py）
         if c["water"] > 0 or c["milk"] > 0 or c["syrup"] > 0 or base_of(self.drink_kind()) in ("americano", "iced"):
             return self.paint_mixed_liquid(p)

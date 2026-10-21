@@ -10,6 +10,7 @@ import sys
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ["CAFE_DESK_NO_AUDIO"] = "1"
 os.environ["CAFE_DESK_DATE"] = "2026-08-01"          # 沒有節日的日期，結果才穩定
+os.environ["CAFE_DESK_NO_UPDATE"] = "1"              # 不連網檢查新版本
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)

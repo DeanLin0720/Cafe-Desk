@@ -1,14 +1,16 @@
 """主視窗：設定、選單、系統匣、滑鼠、模擬推進與繪圖排程"""
+import datetime
 import math
 import random
 import time
 from dataclasses import asdict, fields
 
-from PySide6.QtCore import Qt, QTimer, QElapsedTimer, QPointF
-from PySide6.QtGui import QPainter, QPixmap, QImage, QActionGroup, QLinearGradient, QRadialGradient, QColor
+from PySide6.QtCore import Qt, QTimer, QElapsedTimer, QPointF, QUrl
+from PySide6.QtGui import (QPainter, QPixmap, QImage, QActionGroup, QLinearGradient, QRadialGradient, QColor,
+                           QDesktopServices)
 from PySide6.QtWidgets import QApplication, QWidget, QMenu, QSystemTrayIcon
 
-from . import config
+from . import config, update
 from .gfx import pick_family
 from .host import HostWindow
 from .cups import Cup
@@ -31,7 +33,7 @@ from .render.overlay import OverlayRenderer
 from .render.particles import ParticleSystem
 from .render.station import StationRenderer
 from .settings import SettingsDialog
-from .sound import SoundBank
+from .sound import SoundBank, AMBIENCE
 from .util import clamp
 from .workflow import HANDLE_FULL
 
@@ -45,6 +47,8 @@ FRAME_HIDDEN = 250     # 縮到系統匣：只推進模擬（自動模式照常�
 SIM_STEP = 0.05        # 模擬子步長（秒）：間隔拉長時切成多步，結果不受幀率影響
 LOG_STEP = 0.1         # 萃取曲線取樣間隔（沖煮時間，秒）
 WARMUP = 18.0          # 啟動時鍋爐比設定溫度低幾度，模擬預熱
+UPDATE_DELAY = 10.0    # 啟動後幾秒才檢查新版本（不跟啟動搶時間）
+UPDATE_RETRY = 3600.0  # 檢查失敗（沒網路）多久後再試；成功的話一天只查一次
 
 
 def _inside(x, y, box):
@@ -145,6 +149,18 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.sound = SoundBank()
         self.sound.master = self.cfg.get("volume", 0.65)
         self.sound.set_on(self.cfg.get("sound", True))
+        self.ambience = self.cfg.get("ambience")             # 環境音：None／cafe／rain
+        if self.ambience not in AMBIENCE:
+            self.ambience = None
+        self.amb_level = self.cfg.get("amb_level", 0.3)
+        self.break_min = self.cfg.get("break_min", 0)        # 休息提醒：每幾分鐘（0＝關閉）
+        self.break_t = 0.0                                   # 距離上次提醒過了幾秒（真實時間，睡眠不算）
+        self.update_check = self.cfg.get("update_check", True)
+        self.update_job = None                               # 進行中的 update.Checker
+        self._update_at = time.perf_counter() + UPDATE_DELAY
+        latest = self.cfg.get("update_latest", "")
+        self.update_info = ({"tag": latest, "url": update.RELEASES_URL}
+                            if self.update_check and update.is_newer(latest) else None)
 
         # 畫面本身是子元件，放在外層承載視窗（host.py）裡；視窗化模式由 paint_window_backdrop 畫不透明背景
         self.setMouseTracking(True)
@@ -216,7 +232,9 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
                         light_mode=self.light_mode, chart=self.chart_on,
                         pf_used=self.pf_used, machine=self.machine.key, bean_bag=self.bag, maintenance=self.maint_all,
                         drink=self.drink, drink_params=asdict(self.dp), order_mode=self.order_mode, lang=self.lang,
-                        order_no=self.order_no, cold_drip=self.cold, auto_before_orders=self.auto_before_orders)
+                        order_no=self.order_no, cold_drip=self.cold, auto_before_orders=self.auto_before_orders,
+                        ambience=self.ambience, amb_level=self.amb_level, break_min=self.break_min,
+                        update_check=self.update_check)
         config.save(self.cfg)
 
     # ───────────── 視窗 ─────────────
@@ -274,6 +292,9 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         if old is not None:
             old.deleteLater()
         m = QMenu(self)
+        if self.update_info:                         # 有新版本：放在最上面
+            m.addAction(T("⬆ 下載新版 {tag}…", tag=self.update_info["tag"]), self.open_update_page)
+            m.addSeparator()
         m.addAction(T("開始沖煮"), self.manual_brew)
         m.addAction(T("參數設定…"), self.open_settings)
         m.addSeparator()
@@ -361,8 +382,21 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.act_order = a
         self.update_menu_locks()
 
-        def radio(title, options, current, setter):
-            sub = m.addMenu(title)
+        # 休息提醒：每隔一段時間提醒起來休息，咖啡師順便做一杯
+        self.break_menu = m.addMenu(T("休息提醒"))
+        grp = QActionGroup(self.break_menu)
+        for value in (0, 25, 45, 60):
+            act = self.break_menu.addAction(T("不提醒") if value == 0 else T("每 {m} 分鐘", m=value))
+            act.setCheckable(True)
+            act.setChecked(value == self.break_min)
+            act.triggered.connect(lambda _=False, v=value: self.set_break(v))
+            grp.addAction(act)
+        self.break_menu.addSeparator()
+        self.act_break_reset = self.break_menu.addAction("", self.reset_break)
+        self.break_menu.aboutToShow.connect(self.update_break_menu)
+
+        def radio(title, options, current, setter, parent=m):
+            sub = parent.addMenu(title)
             grp = QActionGroup(sub)
             for value, label in options:
                 act = sub.addAction(label)
@@ -375,13 +409,32 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
               self.speed, lambda v: self.set_cfg("speed", v))
         m.addSeparator()
 
-        a = m.addAction(T("聲音"))
+        # 聲音：開關、音量、環境音放在同一個子選單
+        snd = m.addMenu(T("聲音"))
+        a = snd.addAction(T("開啟聲音"))
         a.setCheckable(True)
         a.setChecked(self.sound.on)
         a.setEnabled(self.sound.enabled)
         a.toggled.connect(lambda v: (self.sound.set_on(v), self.save_config()))
         radio(T("音量"), [(0.3, T("小")), (0.65, T("中")), (1.0, T("大"))], self.sound.master,
-              lambda v: (setattr(self.sound, "master", v), self.save_config()))
+              lambda v: (setattr(self.sound, "master", v), self.save_config()), parent=snd)
+        amb = snd.addMenu(T("環境音"))
+        amb.setEnabled(self.sound.enabled)
+        grp = QActionGroup(amb)
+        for value, label in ((None, T("不播放")), ("cafe", T("咖啡廳")), ("rain", T("雨天"))):
+            act = amb.addAction(label)
+            act.setCheckable(True)
+            act.setChecked(value == self.ambience)
+            act.triggered.connect(lambda _=False, v=value: self.set_cfg("ambience", v))
+            grp.addAction(act)
+        amb.addSeparator()
+        grp = QActionGroup(amb)
+        for value, label in ((0.15, T("小聲")), (0.3, T("中等")), (0.5, T("大聲"))):
+            act = amb.addAction(label)
+            act.setCheckable(True)
+            act.setChecked(abs(value - self.amb_level) < 1e-6)
+            act.triggered.connect(lambda _=False, v=value: self.set_cfg("amb_level", v))
+            grp.addAction(act)
         radio(T("環境光"), [("auto", T("依時間變化")), ("day", T("白天")), ("dusk", T("黃昏")), ("night", T("夜晚"))],
               self.light_mode, self.set_light_mode)
         a = m.addAction(T("滑鼠停留顯示萃取曲線"))
@@ -402,6 +455,12 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         m.addSeparator()
         a = m.addAction(T("縮到系統匣"), self.hide_to_tray)
         a.setEnabled(QSystemTrayIcon.isSystemTrayAvailable())
+        upd = m.addMenu(T("更新"))
+        a = upd.addAction(T("每天自動檢查新版本"))
+        a.setCheckable(True)
+        a.setChecked(self.update_check)
+        a.toggled.connect(self.set_update_check)
+        upd.addAction(T("立即檢查更新"), lambda: self.check_update(manual=True))
         m.addAction(T("關於 Café Desk…"), self.open_about)
         m.addAction(T("結束"), self.quit_app)
         self.menu = m
@@ -471,6 +530,8 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         elif self.auto and not self.busy() and not self.order_mode:
             tip += "\n" + T("自動模式：{sec} 秒後沖下一杯",
                              sec=max(0, int(self.interval - (time.perf_counter() - self.idle_since))))
+        if self.break_min:
+            tip += "\n" + T("休息提醒：還有 {m} 分鐘", m=max(1, math.ceil(self.break_min - self.break_t / 60)))
         self.tray.setToolTip("Café Desk\n" + tip)
 
     def set_cfg(self, key, v):
@@ -833,6 +894,10 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         """這杯要用多少豆子"""
         if drink == "pour_over":
             return dp.po_dose
+        if drink == "moka_pot":
+            return dp.mk_dose
+        if drink == "siphon":
+            return dp.sy_dose
         if drink == "cold_drip":
             return 0.0 if self.cold is not None else dp.cd_dose
         from .drinks import shot_params
@@ -903,6 +968,8 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
                "festival": DRINKS[ss.drink].get("festival")}
         if ss.family == "pourover":
             cup.update(bean_age=self.params.bean_age, dose=ss.dp.po_dose, bloom_ok=brew.bloom_ok(ss.dp))
+        elif ss.family in ("moka", "siphon"):
+            cup.update(bean_age=self.params.bean_age, dose=self.brew_dose(ss.drink, ss.dp))
         elif ss.family == "colddrip" and self.cold is not None:
             cup.update(bean_age=self.cold["bean_age"], dose=self.cold["dose"] / brew.COLD_SERVINGS,
                        origin=self.cold["origin"])
@@ -932,6 +999,105 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
     def show_notice(self, text, sec=5.0):
         self.notice = (text, time.perf_counter() + sec)
         self.set_frame_interval(FRAME_AMBIENT)
+
+    def toast(self, text, sec=6.0):
+        """不屬於成就的通知：跟成就通知一樣暫時取代狀態列（沖煮中也看得到），排在已有的通知後面"""
+        now = time.perf_counter()
+        start = max(now, self.toasts[-1][2] + 0.6) if self.toasts else now
+        self.toasts.append((text, start, start + sec))
+        self.set_frame_interval(FRAME_AMBIENT)
+
+    def tray_message(self, text, ms=6000):
+        if self.tray:
+            self.tray.showMessage("Café Desk", text, self.icon, ms)
+
+    # ───────────── 休息提醒 ─────────────
+    def set_break(self, minutes):
+        self.break_min = minutes
+        self.break_t = 0.0
+        self.save_config()
+
+    def reset_break(self):
+        self.break_t = 0.0
+
+    def update_break_menu(self):
+        a = self.act_break_reset
+        if self.break_min:
+            left = max(1, math.ceil(self.break_min - self.break_t / 60))
+            a.setText(T("重新計時（還有 {m} 分鐘）", m=left))
+        else:
+            a.setText(T("重新計時"))
+        a.setEnabled(bool(self.break_min))
+
+    def update_break(self, dt):
+        """真實時間累計（dt 每個 tick 最多 0.5 秒，所以電腦睡眠的時間不算）；時間到就提醒，咖啡師順便做一杯"""
+        if not self.break_min:
+            return
+        self.break_t += dt
+        if self.break_t < self.break_min * 60:
+            return
+        self.break_t = 0.0
+        text = T("休息一下：起來走走、喝杯咖啡吧（已經 {m} 分鐘了）", m=self.break_min)
+        self.toast(text, 8.0)
+        self.tray_message(text)
+        self.sound.once("ding_hi", 0.5)
+        drink = self.auto_drink()                    # 冰滴還在滴就只提醒、不做
+        if drink and not self.busy() and not self.order_mode:
+            self.start_session(drink, True)
+
+    # ───────────── 檢查更新 ─────────────
+    def set_update_check(self, v):
+        self.update_check = v
+        if not v and self.update_info:               # 關掉就不再顯示「下載新版」
+            self.update_info = None
+            self.build_menu()
+        self.save_config()
+
+    def check_update(self, manual=False):
+        if update.disabled() or (self.update_job is not None and self.update_job.result is None):
+            return
+        self.update_job = update.Checker(manual)
+        self._update_at = time.perf_counter() + UPDATE_RETRY
+        if manual:
+            self.show_notice(T("檢查新版本中…"), 3.0)
+
+    def poll_update(self, now):
+        """主執行緒取走背景查詢的結果；每天自動查一次（失敗的話一小時後再試）"""
+        job = self.update_job
+        if job is None:
+            today = datetime.date.today().isoformat()
+            if self.update_check and now >= self._update_at and self.cfg.get("update_checked") != today:
+                self.check_update()
+            return
+        res = job.result
+        if res is None:
+            return
+        self.update_job = None
+        if res["error"]:
+            if job.manual:
+                self.show_notice(T("無法檢查更新（請確認網路連線）"))
+            return
+        self.cfg["update_checked"] = datetime.date.today().isoformat()
+        self.cfg["update_latest"] = res["tag"]
+        if res["newer"]:
+            first = res["tag"] != self.cfg.get("update_seen")
+            self.update_info = res
+            self.cfg["update_seen"] = res["tag"]
+            self.build_menu()
+            if first or job.manual:                  # 同一版只主動提醒一次，之後留在右鍵選單最上面
+                text = T("有新版本 {tag}：右鍵選單最上面「下載新版」", tag=res["tag"])
+                self.toast(text, 8.0)
+                self.tray_message(text)
+        else:
+            if self.update_info:
+                self.update_info = None
+                self.build_menu()
+            if job.manual:
+                self.show_notice(T("已經是最新版本（{v}）", v=update.__version__))
+        self.save_config()
+
+    def open_update_page(self):
+        QDesktopServices.openUrl(QUrl(self.update_info["url"] if self.update_info else update.RELEASES_URL))
 
     # ───────────── 豆子 ─────────────
     def sync_bag(self):
@@ -1133,6 +1299,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
     def tick(self):
         ms = self.clock.elapsed()
         dt = min(0.5, (ms - self.last_ms) / 1000.0)
+        dt_real = dt
         self.last_ms = ms
         self.anim_t += dt
         while dt > 1e-6:                     # 切成小步推進，幀率高低都得到同樣的模擬結果
@@ -1165,10 +1332,23 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         elif station_phase == "water":
             pour_vol = max(pour_vol, 0.3)              # 冰滴塔加冰水
         self.sound.loop("pour", pour_vol)
+        st_ = ss.station if station_phase else None    # 摩卡壺：爐火、咕嚕聲；虹吸壺：下壺沸騰、咖啡被吸下去
+        fam = ss.family if st_ else ""
+        self.sound.loop("flame", 0.3 * st_["flame"] if fam == "moka" else 0.0)
+        gurgle = 0.0
+        if fam == "moka" and station_phase in ("brew", "sputter"):
+            gurgle = 0.22 + 0.35 * st_["sputter"]
+        elif fam == "siphon" and station_phase == "drawdown":
+            gurgle = 0.18
+        self.sound.loop("gurgle", gurgle)
+        self.sound.loop("boil", 0.1 + 0.3 * st_["boil"] if fam == "siphon" and st_["boil"] > 0.02 else 0.0)
+        self.sound.ambience(self.ambience, self.amb_level)
+        self.update_break(dt_real)
         if ms - self._last_tip_ms > 500:
             self._last_tip_ms = ms
             self.update_tray_tip()
             self.update_light()
+            self.poll_update(time.perf_counter())
         if self.isVisible():
             self.update()
         self.set_frame_interval(self.wanted_interval())
@@ -1332,9 +1512,18 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
 
     def on_session_event(self, ev):
         if ev == "grind":                              # 手沖台磨豆：從這包扣粉量
-            self.use_beans(self.session.dp.po_dose)
+            self.use_beans(self.brew_dose(self.session.drink, self.session.dp))
         elif ev == "cold_grind":
             self.use_beans(self.session.dp.cd_dose)
+        elif ev == "ignite":                           # 點火：旋鈕「喀」、瓦斯「噗」
+            self.sound.once("click", 0.4)
+            self.sound.once("hiss", 0.15)
+        elif ev == "flame_off":
+            self.sound.once("click", 0.35)
+        elif ev in ("stir", "tap"):
+            self.sound.once("tap", 0.2)
+        elif ev == "sputter":
+            self.sound.once("hiss", 0.2)
         elif ev == "kettle_start":
             self.sound.once("tap", 0.12)
         elif ev == "valve":

@@ -52,6 +52,13 @@ DRINK_SLIDERS = [
     ("粉水比 1:", "cd_ratio", 7, 14, 0.5, "", ("cold_drip",)),
     ("研磨", "cd_grind", 350, 900, 10, "µm", ("cold_drip",)),
     ("滴速（每 10 秒）", "cd_rate", 4, 20, 1, "滴", ("cold_drip",)),
+    ("粉量", "mk_dose", 14, 20, 0.5, "g", ("moka_pot",)),
+    ("研磨", "mk_grind", 200, 600, 10, "µm", ("moka_pot",)),
+    ("火力", "mk_heat", 1, 5, 0.5, "", ("moka_pot",)),
+    ("粉量", "sy_dose", 12, 17, 0.5, "g", ("siphon",)),
+    ("研磨", "sy_grind", 400, 900, 10, "µm", ("siphon",)),
+    ("水溫", "sy_temp", 86, 96, 1, "°C", ("siphon",)),
+    ("浸泡", "sy_steep", 20, 90, 5, "秒", ("siphon",)),
 ]
 
 
@@ -288,8 +295,8 @@ class SettingsDialog(QDialog):
         d = self.drink.currentData()
         p, dp = self.app.params, self.app.dp
         method = method_of(d)
-        if method == "pourover":
-            res = brew.simulate_pourover(dp, p.roast, p.bean_age, p.origin)
+        if method in brew.SIMULATE:
+            res = brew.SIMULATE[method](dp, p.roast, p.bean_age, p.origin)
             text = T("預估 {m}:{s:02d} · EY {ey:.1f}% · TDS {tds:.2f}% · {score:.0f} 分", m=int(res.time) // 60,
                      s=int(res.time) % 60, ey=res.ey, tds=res.tds, score=res.score)
         elif method == "colddrip":

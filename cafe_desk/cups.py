@@ -49,8 +49,19 @@ class Cup:
         return self.T + 8
 
     def level_y(self, volume):
+        """液面高度：杯子是上寬下窄的圓錐台，越往上每一層裝得越多，所以液面上升越來越慢
+        （截面積 ∝ 半徑²；解 ∫r² dh 的三次方程，見下）"""
         frac = min(1.0, max(0.0, volume) / self.cap)
-        return self.liquid_bottom - frac * (self.liquid_bottom - self.liquid_top)
+        yb, yt = self.liquid_bottom, self.liquid_top
+        l, r = self.cup_x(yb)
+        a = (r - l) / 2
+        l, r = self.cup_x(yt)
+        b = (r - l) / 2
+        if abs(b - a) < 1e-6:
+            h = frac
+        else:
+            h = ((a ** 3 + frac * (b ** 3 - a ** 3)) ** (1 / 3) - a) / (b - a)
+        return yb - h * (yb - yt)
 
     def path(self):
         path = QPainterPath()

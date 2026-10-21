@@ -19,6 +19,7 @@ from ..gfx import mix, C, vgrad, hgrad, rrect
 from ..layout import ROAST_LOOK, TOP_PAD, liquid_look
 from ..model import ROASTS
 from ..util import clamp, lerp
+from .. import vessels
 from .station import brew_color
 
 MILK = "#f4eee4"
@@ -320,7 +321,8 @@ class MilkRenderer:
                 c["bob"] += dt
                 if liquid > 1:
                     row = c.get("row", 0)
-                    float_y = surf + c["size"] * 0.28 + (max_row - row) * c["size"] * 0.62
+                    # 冰的密度約 0.92：浮起來時大約只有一成露出液面（最上層），下面幾層跟著被撐起來
+                    float_y = surf + c["size"] * 0.4 + (max_row - row) * c["size"] * 0.62
                     target = min(c["rest"], float_y) + math.sin(c["bob"] * 1.3) * 0.4
                     c["y"] += (target - c["y"]) * min(1.0, sdt * 3)
         # 冰飲杯外的凝結水珠
@@ -928,8 +930,8 @@ class MilkRenderer:
             self.paint_squeeze(p, v)
         elif kind == "scoop":
             self.paint_scoop(p, v)
-        elif kind in ("server", "carafe"):
-            self.paint_station_vessel(p, v)                  # 手沖的分享壺、冰滴壺（render/station.py）
+        elif kind in ("server", "carafe", "moka", "globe"):
+            self.paint_station_vessel(p, v)                  # 分享壺、冰滴壺、摩卡壺、虹吸壺下壺（render/station.py）
         p.restore()
 
     def paint_squeeze(self, p, v):
@@ -958,20 +960,9 @@ class MilkRenderer:
 
     def paint_tonic_bottle(self, p, v):
         """通寧水小玻璃瓶（原點＝瓶口）"""
-        glass = QPainterPath()
-        glass.moveTo(-4, 0)
-        glass.lineTo(4, 0)
-        glass.lineTo(4, 12)
-        glass.cubicTo(QPointF(11, 16), QPointF(11, 20), QPointF(11, 24))
-        glass.lineTo(11, 56)
-        glass.quadTo(QPointF(11, 59), QPointF(8, 59))
-        glass.lineTo(-8, 59)
-        glass.quadTo(QPointF(-11, 59), QPointF(-11, 56))
-        glass.lineTo(-11, 24)
-        glass.cubicTo(QPointF(-11, 20), QPointF(-11, 16), QPointF(-4, 12))
-        glass.closeSubpath()
+        glass = vessels.tonic()
         p.fillPath(glass, C("#7fb08a", 70))
-        self._liquid_in(p, glass, v.get("fill", 1.0) * 0.85, TONIC, 120, v.get("pour", 0) > 0)
+        self._liquid_in(p, glass, v.get("content", v.get("fill", 1.0) * 0.85), TONIC, 120)
         p.setPen(QPen(C("#d8f0dc", 190), 1.1))
         p.setBrush(Qt.NoBrush)
         p.drawPath(glass)
@@ -1057,37 +1048,24 @@ class MilkRenderer:
         p.setBrush(Qt.NoBrush)
         p.drawPath(hd)
 
-    def _liquid_in(self, p, interior, fill, col, alpha, pouring):
-        """容器內液面：維持水平（不跟著容器旋轉）"""
-        world = p.worldTransform()
-        inv, ok = world.inverted()
-        if not ok:
+    def _liquid_in(self, p, interior, content, col, alpha):
+        """容器內的液體：液面在畫面上維持水平，液量（佔內腔的比例）不隨傾斜改變（vessels.liquid_region）"""
+        region = vessels.liquid_region(p, interior, content)
+        if region.isEmpty():
             return
-        poly = world.map(interior)
-        r = poly.boundingRect()
-        level = (r.top() + 2) if pouring else r.bottom() - r.height() * fill * 0.9
-        cut = QPainterPath()
-        cut.addRect(QRectF(r.left() - 5, level, r.width() + 10, r.bottom() - level + 5))
-        region = inv.map(poly.intersected(cut))
         p.fillPath(region, C(col, alpha))
+        line = vessels.surface_line(p, region)
+        if line:
+            p.setPen(QPen(C("#ffffff", 70), 0.7))
+            p.drawLine(*line)
+            p.setPen(Qt.NoPen)
 
     def paint_bottle(self, p, v):
-        glass = QPainterPath()
-        glass.moveTo(-5, 0)
-        glass.lineTo(5, 0)
-        glass.lineTo(5, 9)
-        glass.cubicTo(QPointF(13, 12), QPointF(13, 16), QPointF(13, 20))
-        glass.lineTo(13, 52)
-        glass.quadTo(QPointF(13, 55), QPointF(10, 55))
-        glass.lineTo(-10, 55)
-        glass.quadTo(QPointF(-13, 55), QPointF(-13, 52))
-        glass.lineTo(-13, 20)
-        glass.cubicTo(QPointF(-13, 16), QPointF(-13, 12), QPointF(-5, 9))
-        glass.closeSubpath()
+        glass = vessels.bottle()
         p.fillPath(glass, C("#ffffff", 30))
         water = v.get("liquid") == "cold_water"
-        self._liquid_in(p, glass, v.get("fill", 1.0) * 0.8, WATER if water else MILK, 110 if water else 240,
-                        v.get("pour", 0) > 0)
+        self._liquid_in(p, glass, v.get("content", v.get("fill", 1.0) * 0.8), WATER if water else MILK,
+                        110 if water else 240)
         p.setPen(QPen(C("#ffffff", 170), 1.1))
         p.setBrush(Qt.NoBrush)
         p.drawPath(glass)
@@ -1100,17 +1078,7 @@ class MilkRenderer:
         p.drawText(QRectF(-13, 30, 26, 10), Qt.AlignCenter, "WATER" if water else "MILK")
 
     def jug_glass(self):
-        glass = QPainterPath()
-        glass.moveTo(0, 2)
-        glass.lineTo(6, 6)
-        glass.lineTo(42, 6)
-        glass.lineTo(43, 52)
-        glass.quadTo(QPointF(43, 56), QPointF(39, 56))
-        glass.lineTo(7, 56)
-        glass.quadTo(QPointF(3, 56), QPointF(3, 52))
-        glass.lineTo(4, 9)
-        glass.closeSubpath()
-        return glass
+        return vessels.jug()
 
     def paint_jug(self, p, fill, on_base, pouring=False):
         """奶泡機的玻璃壺（原點＝倒出口）：看得到牛奶、奶泡與漩渦"""
@@ -1143,7 +1111,7 @@ class MilkRenderer:
                     p.setBrush(C(mix(MILK, "#d9cfc0", 0.4), 200))
                     p.drawEllipse(QPointF(23, top + 2), 9, 2.2)
             else:
-                self._liquid_in(p, glass, fill, FOAM, 245, pouring)
+                self._liquid_in(p, glass, fill, FOAM, 245)
         p.setPen(QPen(C("#ffffff", 170), 1.1))
         p.setBrush(Qt.NoBrush)
         p.drawPath(glass)
