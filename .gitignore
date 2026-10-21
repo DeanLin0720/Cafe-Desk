@@ -24,3 +24,9 @@ tools/out/
 
 # 發佈說明草稿（本機用）
 release_notes.md
+
+# 不上傳 GitHub 的本機文件
+CLAUDE.md
+CafeDesk.spec
+handoff.md
+itch_description.md
