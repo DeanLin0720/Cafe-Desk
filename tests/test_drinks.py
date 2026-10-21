@@ -4,7 +4,8 @@ import random
 import pytest
 
 from cafe_desk import drinks
-from cafe_desk.drinks import (DRINKS, DRINK_KEYS, AUTO_WEIGHTS, DrinkParams, MILK_SPEC, evaluate_milk, milk_plan,
+from cafe_desk.orders import ORDER_WEIGHTS
+from cafe_desk.drinks import (DRINKS, DRINK_KEYS, DrinkParams, MILK_SPEC, evaluate_milk, milk_plan,
                               band_score, shot_params)
 from cafe_desk.machines import MACHINES
 from cafe_desk.model import Params
@@ -22,8 +23,8 @@ def _milk(dp=None, drink="latte", device="wand", seed=1):
 def test_drink_tables_consistent():
     for k in DRINK_KEYS:
         assert k in DRINKS
-        assert k in AUTO_WEIGHTS, k
-        assert DRINKS[k]["base"] in ("espresso", "americano", "iced", "milk", "affogato"), k
+        assert k in ORDER_WEIGHTS, k
+        assert DRINKS[k]["base"] in ("espresso", "americano", "iced", "milk", "affogato", "pourover", "colddrip"), k
     for k, spec in DRINKS.items():
         if spec["base"] == "milk":
             assert k in MILK_SPEC, k
@@ -105,6 +106,11 @@ def test_every_drink_finishes_on_every_machine(qapp, cfg_path, machine):
             w.bag["left"] = 250
             assert w.start_session(d, i % 3 == 0), d     # 每三杯有一杯跑完整備粉流程
             run_until_idle(w)
+            if d == "cold_drip":                          # 第一次是架冰滴塔；快轉滴完再倒一杯
+                assert w.result is None and w.cold is not None
+                w.cold["start"] -= w.cold["dur"]
+                assert w.start_session(d, False)
+                run_until_idle(w)
             r = w.result
             assert r is not None and r.drink == d
             assert 0 <= r.score <= 100, (d, r.score)

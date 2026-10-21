@@ -7,10 +7,10 @@ from PySide6.QtGui import QPen, QBrush, QFont, QFontMetricsF, QPainterPath, QCol
 
 from ..gfx import C, mix, rrect
 from ..layout import WIN_H, TOP_PAD
-from ..drinks import DRINKS, ART_NAMES, MILK_NAMES, milk_plan, is_milk
+from ..drinks import DRINKS, ART_NAMES, MILK_NAMES, milk_plan, is_milk, base_of
 from ..model import STYLES
 from ..i18n import T
-from .. import maintenance, festivals
+from .. import maintenance, festivals, brew
 from ..util import clamp, lerp
 
 STATUS_H = 52               # 狀態列快取圖的高度（視窗底部往上；膠囊在 WIN_H-50 到 WIN_H-6）
@@ -95,13 +95,13 @@ class OverlayRenderer:
             return [(self.job_status(), "#9fd3e6")]
         if self.notice and time.perf_counter() < self.notice[1]:
             return [(self.notice[0], "#ffd27a")]
-        if self.warming:
+        if self.warming and self.method == "espresso":   # 咖啡機鍋爐預熱：手沖／冰滴畫面不顯示
             return [(T("預熱中…  {t:.1f}°C", t=self.boiler.temp), "#efe6da")]
         r = self.result
         o = self.order
         if self.order_mode and (r is None or (o is not None and o.state == "waiting")):
             if o is not None and o.state == "waiting":
-                if self.auto:
+                if self.business():
                     return [(T("{name} 點了{title}，咖啡師準備中…", name=T(o.name), title=o.title), "#efe6da")]
                 return [(T("{name} 點了{title} · 點擊咖啡機開始製作", name=T(o.name), title=o.title), "#efe6da")]
             return [(T("等待客人點單…"), "#efe6da")]
@@ -119,10 +119,10 @@ class OverlayRenderer:
             return
         content = self.status_content()
         ratio = self.devicePixelRatioF() * self.scale_f
-        key = (content, self.machine.scene_w, self.ui, ratio)
+        key = (content, self._scene_w, self.ui, ratio)
         cache = getattr(self, "_status_cache", None)
         if cache is None or cache[0] != key:
-            pm = QPixmap(int(self.machine.scene_w * ratio), int(STATUS_H * ratio))
+            pm = QPixmap(int(self._scene_w * ratio), int(STATUS_H * ratio))
             pm.setDevicePixelRatio(ratio)
             pm.fill(Qt.transparent)
             q = QPainter(pm)
@@ -155,7 +155,22 @@ class OverlayRenderer:
         else:
             dp = self.dp
         milk_name = T(MILK_NAMES.get(dp.milk_kind, "牛奶"))
-        if is_milk(drink):
+        family = base_of(drink)
+        if family == "pourover":
+            info = T("{name} · {roast} {dose:g}g：{water:.0f}g · {um:.0f}µm · {t:g}°C · 悶蒸 {b:.0f}s · {n:.0f} 段注水",
+                     name=T(DRINKS[drink]["name"]), roast=T(p_.roast), dose=dp.po_dose, water=dp.po_dose * dp.po_ratio,
+                     um=dp.po_grind, t=dp.po_temp, b=dp.po_bloom, n=dp.po_pulses)
+        elif family == "colddrip":
+            b = self.cold
+            dose, ratio, um, rate = (b["dose"], b["ratio"], b["grind"], b["rate"]) if b else \
+                (dp.cd_dose, dp.cd_ratio, dp.cd_grind, dp.cd_rate)
+            info = T("{name} · {roast} {dose:g}g：{water:.0f}g · {um:.0f}µm · 每 10 秒 {r:.0f} 滴",
+                     name=T(DRINKS[drink]["name"]), roast=T(b["roast"] if b else p_.roast), dose=dose,
+                     water=dose * ratio, um=um, r=rate)
+            if b is not None:
+                info += (T(" · 還有 {n} 杯", n=b["servings"]) if b.get("done") else
+                         T(" · 約 {m} 分鐘後滴完", m=brew.cold_remaining_min(b)))
+        elif is_milk(drink):
             grams = milk_plan(drink, dp)[0]
             info += T(" · {milk} {g:.0f}g {t:.0f}°C", milk=milk_name, g=grams, t=dp.milk_temp)
             if drink == "mocha":
@@ -177,7 +192,10 @@ class OverlayRenderer:
             info += T(" · 香草冰淇淋 {g:.0f}g", g=dp.scoop_g)
         if s and s.style in STYLES:
             info += T(" · 以 {name} 標準評分", name=STYLES[s.style]["name"])
-        if self.order_mode and not self.busy():
+        if self.business():
+            info = T("營業中 · 排隊 {n} · 今日 ${rev:,} · ", n=len(self.queue),
+                     rev=self.stats.day()["revenue"]) + info
+        elif self.order_mode and not self.busy():
             if o is None:
                 remain = max(0, int(self.next_order_at - time.perf_counter()))
                 info = T("顧客點單模式 · 下一位客人約 {sec}s 後到 · ", sec=remain) + info
@@ -186,9 +204,9 @@ class OverlayRenderer:
         elif self.auto and not self.busy():
             remain = max(0, int(self.interval - (time.perf_counter() - self.idle_since)))
             info = T("自動模式 · 下一杯 {sec}s · ", sec=remain) + info
-        elif self.result is None and not self.session:
+        elif self.result is None and not self.session and self.method == "espresso":
             info = T("{machine} · 右鍵開啟選單 · 滑鼠停在機身上可看萃取曲線", machine=T(self.machine.name))
-        due = maintenance.due(self.maint)
+        due = maintenance.due(self.maint) if self.method == "espresso" else []   # 手沖／冰滴不提醒咖啡機清潔
         if due and not self.busy():                  # 清潔保養提醒
             names = T("、").join(T(maintenance.task_name(k, self.machine.traits)) for k in due)
             info = T("⚠ 該{task}了 · ", task=names) + info
@@ -197,7 +215,7 @@ class OverlayRenderer:
 
     def draw_status(self, p, parts, info, info_col, fest):
         top = WIN_H - 50
-        WIN_W = self.machine.scene_w
+        WIN_W = self._scene_w
         pill = rrect(20, top, WIN_W - 20, WIN_H - 6, 14)
         p.setBrush(QBrush(C("#120f0d", 180)))
         p.setPen(QPen(C("#ffffff", 28), 1))
@@ -283,7 +301,7 @@ class OverlayRenderer:
             f = QFont(self.ui, 9.5)
             f.setBold(True)
             fm = QFontMetricsF(f)
-            W = self.machine.scene_w
+            W = self._scene_w
             r = QRectF(20, TOP_PAD + WIN_H - 50, W - 40, 44)
             text = fm.elidedText(text, Qt.ElideRight, r.width() - 60)
             tw = fm.horizontalAdvance(text)
@@ -315,9 +333,9 @@ class OverlayRenderer:
         cx = self.machine.card_cx
         lo = self.cards_left()
         if self.art_alpha > 0.05 and self.art_state() is not None:
-            left = clamp(cx - 169, lo, self.machine.scene_w - 4 - 344)
+            left = clamp(cx - 169, lo, self._scene_w - 4 - 344)
             return QRectF(left, TOP_PAD - 132, 208, 120)
-        return QRectF(clamp(cx - 104, lo, self.machine.scene_w - 4 - 208), TOP_PAD - 132, 208, 120)
+        return QRectF(clamp(cx - 104, lo, self._scene_w - 4 - 208), TOP_PAD - 132, 208, 120)
 
     def fit_text(self, p, rect, text, font, flags=Qt.AlignLeft | Qt.AlignVCenter, min_pt=5.5):
         """文字太長時先縮小字級，還是放不下就加刪節號（英文介面的長品名用）"""
@@ -349,6 +367,16 @@ class OverlayRenderer:
         p.rotate(-2.2)
         r = QRectF(-w / 2, -h / 2, w, h)
         p.setPen(Qt.NoPen)
+        queued = min(3, len(self.queue)) if self.business() else 0
+        for i in range(queued, 0, -1):           # 營業模式：排隊的訂單疊在後面，下緣露出一點
+            p.save()
+            p.translate(0, 3.5 * i)
+            p.rotate((1.6 if i % 2 else -1.2) * i)
+            p.setBrush(C("#000000", 50))
+            p.drawRoundedRect(r.translated(1.5, 2), 4, 4)
+            p.setBrush(C("#e9e0cc"))
+            p.drawRoundedRect(r, 4, 4)
+            p.restore()
         p.setBrush(C("#000000", 70))
         p.drawRoundedRect(r.translated(2, 3), 4, 4)
         paper = QPainterPath()
@@ -382,6 +410,27 @@ class OverlayRenderer:
             p.drawText(QRectF(x0, y, iw, 12), Qt.AlignLeft | Qt.AlignVCenter, T("· 照一般做法"))
         foot = QRectF(x0, r.bottom() - 40, iw, 34)
         p.setFont(QFont(self.ui, 7))
+        if self.business() and o.state in ("waiting", "making"):
+            p.setPen(C("#5a4632"))
+            p.drawText(foot.adjusted(0, 0, -5 if queued else 0, 0), Qt.AlignRight | Qt.AlignBottom, f"${o.price}")
+        if o.state == "waiting" and o.patience > 0:
+            # 耐心條：剩下的耐心，越少越紅
+            left = clamp(1 - o.wait / o.patience, 0, 1)
+            p.fillRect(QRectF(x0, r.bottom() - 4, iw, 1.6), C("#e0d6c2"))
+            col = C("#6a9a4a") if left > 0.5 else (C("#c08a2a") if left > 0.25 else C("#c0392b"))
+            p.fillRect(QRectF(x0, r.bottom() - 4, iw * left, 1.6), col)
+        if queued:
+            # 排隊人數徽章：貼在疊起來的訂單右下角
+            c = QPointF(r.right() - 1, r.bottom() + 1)
+            p.setBrush(C("#b06a2a"))
+            p.setPen(QPen(C("#f7f1e3"), 1))
+            p.drawEllipse(c, 7, 7)
+            bf = QFont(self.ui, 6)
+            bf.setBold(True)
+            p.setFont(bf)
+            p.setPen(C("#ffffff"))
+            p.drawText(QRectF(c.x() - 7, c.y() - 7, 14, 14), Qt.AlignCenter, f"+{len(self.queue)}")
+            p.setFont(QFont(self.ui, 7))
         if o.state == "waiting":
             dots = "." * (1 + int(self.anim_t * 2) % 3)
             p.setPen(C("#9a8a76"))

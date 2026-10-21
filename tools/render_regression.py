@@ -17,7 +17,7 @@ try:
 except ImportError:
     from espresso_desk import paths, desk, model, workflow
 paths.CONFIG_PATH = f"{out}/{tag}_cfg.json"
-json.dump({"x": 0, "y": 0, "light_mode": "day"}, open(paths.CONFIG_PATH, "w"))
+json.dump({"x": 0, "y": 0, "light_mode": "day", "windowed": False}, open(paths.CONFIG_PATH, "w"))   # 透明擺件，跟舊版比對
 w = (getattr(desk, 'CafeDesk', None) or desk.EspressoDesk)(); w.show_window(); w.timer.stop()
 w.boiler.temp = 93.0; w.warming = False; w.anim_t = 1.3; w.gauge = 8.4
 def prep():

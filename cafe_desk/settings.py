@@ -3,10 +3,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QSlider, QLabel, QGridLayout, QComboBox, QPushButton, QHBoxLayout,
                                QCheckBox)
 
-from .drinks import DRINKS, DRINK_KEYS, DrinkParams, ART_CHOICES, MILK_KINDS, shot_params, whip_on
+from .drinks import DRINKS, DRINK_KEYS, DrinkParams, ART_CHOICES, MILK_KINDS, shot_params, whip_on, method_of
 from .model import ROASTS, Params, simulate
 from .i18n import T
-from . import beans, festivals
+from . import beans, festivals, brew
 
 SLIDERS = [
     ("研磨粒徑", "grind_um", 150, 500, 5, "µm"),
@@ -40,8 +40,18 @@ DRINK_SLIDERS = [
     ("冰淇淋", "scoop_g", 40, 120, 5, "g", ("affogato",)),
     ("熱水量", "water_g", 60, 180, 5, "g", ("americano",)),
     ("冷水量", "iced_water_g", 60, 200, 5, "g", ("iced_americano",)),
-    ("冰塊", "ice", 0, 8, 1, "顆", ("iced_latte", "iced_americano", "espresso_tonic")),
+    ("冰塊", "ice", 0, 8, 1, "顆", ("iced_latte", "iced_americano", "espresso_tonic", "cold_drip")),
     ("牛奶量", "iced_milk_g", 80, 220, 5, "g", ("iced_latte",)),
+    ("粉量", "po_dose", 10, 25, 0.5, "g", ("pour_over",)),
+    ("粉水比 1:", "po_ratio", 12, 18, 0.5, "", ("pour_over",)),
+    ("研磨", "po_grind", 400, 1000, 10, "µm", ("pour_over",)),
+    ("水溫", "po_temp", 85, 100, 1, "°C", ("pour_over",)),
+    ("悶蒸", "po_bloom", 0, 90, 5, "秒", ("pour_over",)),
+    ("注水段數", "po_pulses", 1, 5, 1, "段", ("pour_over",)),
+    ("粉量", "cd_dose", 30, 80, 1, "g", ("cold_drip",)),
+    ("粉水比 1:", "cd_ratio", 7, 14, 0.5, "", ("cold_drip",)),
+    ("研磨", "cd_grind", 350, 900, 10, "µm", ("cold_drip",)),
+    ("滴速（每 10 秒）", "cd_rate", 4, 20, 1, "滴", ("cold_drip",)),
 ]
 
 
@@ -59,8 +69,10 @@ class SettingsDialog(QDialog):
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         grid = QGridLayout(self)
         self.sliders = {}
+        self.espresso_rows = []                     # 只有義式咖啡機用得到的列（手沖／冰滴時隱藏）
         for i, (label, attr, lo, hi, step, unit) in enumerate(SLIDERS):
-            grid.addWidget(QLabel(T(label)), i, 0)
+            lab = QLabel(T(label))
+            grid.addWidget(lab, i, 0)
             sl = QSlider(Qt.Horizontal)
             sl.setRange(0, int(round((hi - lo) / step)))
             sl.setValue(int(round((getattr(app.params, attr) - lo) / step)))
@@ -70,6 +82,8 @@ class SettingsDialog(QDialog):
             grid.addWidget(sl, i, 1)
             grid.addWidget(val, i, 2)
             self.sliders[attr] = (sl, val, lo, step, T(unit))
+            if attr != "bean_age":
+                self.espresso_rows += [lab, sl, val]
             if attr == "bean_age":
                 sl.setEnabled(False)                # 依豆子的烘焙日自動計算
             sl.valueChanged.connect(lambda _v, a=attr: self.changed(a))
@@ -84,8 +98,10 @@ class SettingsDialog(QDialog):
         grid.addWidget(self.roast, r, 1)
         self.bean_label = _note()
         grid.addWidget(self.bean_label, r, 2)
-        grid.addWidget(QLabel(T("粉碗容量 (g)")), r + 1, 0)
+        basket_label = QLabel(T("粉碗容量 (g)"))
+        grid.addWidget(basket_label, r + 1, 0)
         self.basket = QComboBox()
+        self.espresso_rows += [basket_label, self.basket]
         self.basket.addItems(["7", "14", "18", "20", "22"])
         self.basket.setCurrentText(f"{app.params.basket:g}")
         self.basket.currentTextChanged.connect(lambda _t: self.changed())
@@ -170,6 +186,13 @@ class SettingsDialog(QDialog):
         self.changed()
         self.sync_bean()
         self.update_visibility()
+        self.sync_lock()
+
+    def sync_lock(self):
+        """顧客點單時飲品與拉花圖案照訂單，不能改"""
+        free = not self.app.order_mode
+        self.drink.setEnabled(free)
+        self.art.setEnabled(free)
 
     def sync_bean(self):
         """豆子換了：烘焙度、養豆天數跟著更新"""
@@ -205,6 +228,9 @@ class SettingsDialog(QDialog):
     def update_visibility(self):
         """只顯示目前飲品用得到的飲品參數"""
         d = self.drink.currentData()
+        espresso = method_of(d) == "espresso"
+        for wdg in self.espresso_rows:
+            wdg.setVisible(espresso)
         for a, (sl, val, lo, step, unit, drinks, lab) in self.dsliders.items():
             on = d in drinks
             for wdg in (sl, val, lab):
@@ -217,6 +243,7 @@ class SettingsDialog(QDialog):
         for wdg in (self.art, self.art_label, self.art_hint):
             wdg.setVisible(art_on)
         self.update_preset()
+        self.update_preview()
         self.adjustSize()
 
     def update_preset(self):
@@ -253,6 +280,27 @@ class SettingsDialog(QDialog):
                 setattr(dp, a, float(v))
         if attr is not None:
             self.app.save_config()
+        if hasattr(self, "preview"):
+            self.update_preview()
+
+    def update_preview(self):
+        """預估：義式看這組濃縮參數；手沖、冰滴看各自的參數"""
+        d = self.drink.currentData()
+        p, dp = self.app.params, self.app.dp
+        method = method_of(d)
+        if method == "pourover":
+            res = brew.simulate_pourover(dp, p.roast, p.bean_age, p.origin)
+            text = T("預估 {m}:{s:02d} · EY {ey:.1f}% · TDS {tds:.2f}% · {score:.0f} 分", m=int(res.time) // 60,
+                     s=int(res.time) % 60, ey=res.ey, tds=res.tds, score=res.score)
+        elif method == "colddrip":
+            res = brew.simulate_colddrip(dp, p.roast, p.bean_age, p.origin)
+            text = T("相當於滴 {h:.1f} 小時 · EY {ey:.1f}% · TDS {tds:.2f}% · {score:.0f} 分", h=res.time / 3600,
+                     ey=res.ey, tds=res.tds, score=res.score)
+        else:
+            res = simulate(p, self.app.machine.traits)
+            text = T("預估 {t:.0f} 秒 · EY {ey:.1f}% · TDS {tds:.1f}% · {score:.0f} 分", t=res.time, ey=res.ey,
+                     tds=res.tds, score=res.score)
+        self.preview.setText(text)
 
     def changed(self, attr=None):
         p = self.app.params
@@ -262,11 +310,9 @@ class SettingsDialog(QDialog):
             if (attr is None or a == attr) and a != "bean_age":
                 setattr(p, a, float(v))
         p.basket = float(self.basket.currentText())
-        res = simulate(p, self.app.machine.traits)
         if hasattr(self, "preset"):
             self.update_preset()
-        self.preview.setText(T("預估 {t:.0f} 秒 · EY {ey:.1f}% · TDS {tds:.1f}% · {score:.0f} 分", t=res.time, ey=res.ey,
-                               tds=res.tds, score=res.score))
+        self.update_preview()
         self.app.save_config()
 
     def reset(self):

@@ -2,13 +2,17 @@
 
 訂單＝飲品＋0–2 個要求（不要太燙、換燕麥奶、想要葉子、少冰…）。
 咖啡師照單製作（打奶溫度、奶泡量每杯會有些手感誤差），最後分數＝飲品本身 65%＋符合訂單 35%。
+
+營業模式（＝顧客點單模式）：客人會排隊（最多 QUEUE_MAX 位），每位有耐心；
+等超過一半耐心開始扣分（最多 WAIT_PENALTY），耐心用完就離開。每杯收 PRICES 的價格，分數高有小費。
+經濟模型刻意簡化：價格固定、沒有成本，只看營業額、來客與流失。
 """
 import random
 from dataclasses import dataclass, field
 
-from .drinks import DRINKS, ART_NAMES, MILK_KINDS, FESTIVAL_DRINKS, base_of, is_milk, milk_plan
+from .drinks import DRINKS, ART_NAMES, MILK_KINDS, FESTIVAL_DRINKS, base_of
 from .festivals import adjust_weights
-from .i18n import T, lang
+from .i18n import T
 from .util import clamp
 
 CUSTOMERS = ("小陳", "阿哲", "Amy", "小美", "Ken", "王先生", "林小姐", "Joe", "小雨", "阿凱", "Mia", "老張",
@@ -16,7 +20,8 @@ CUSTOMERS = ("小陳", "阿哲", "Amy", "小美", "Ken", "王先生", "林小姐
 ORDER_WEIGHTS = {"espresso": 0.07, "ristretto": 0.03, "lungo": 0.03, "doppio": 0.05, "americano": 0.12,
                  "iced_americano": 0.1, "latte": 0.18, "cappuccino": 0.12, "flat_white": 0.08,
                  "cortado": 0.05, "macchiato": 0.04, "iced_latte": 0.13, "mocha": 0.09,
-                 "caramel_macchiato": 0.1, "espresso_tonic": 0.06, "affogato": 0.06}
+                 "caramel_macchiato": 0.1, "espresso_tonic": 0.06, "affogato": 0.06, "pour_over": 0.06,
+                 "cold_drip": 0.07}
 ART_MILK = ("latte", "cappuccino", "flat_white", "cortado")
 OAT_OK = ("latte", "cappuccino", "flat_white", "cortado", "iced_latte", "mocha", "caramel_macchiato") + FESTIVAL_DRINKS
 
@@ -32,7 +37,19 @@ MOD_TEXT = {
     ("ice", "less"): "少冰", ("ice", "more"): "多冰",
 }
 
-ORDER_WEIGHT_DRINK = 0.65      # 最後分數：飲品本身的比重（其餘是符合訂單的程度）
+# 價格（$）；沒列的（節日限定飲品）用 FESTIVAL_PRICE
+PRICES = {"espresso": 70, "ristretto": 70, "lungo": 75, "doppio": 90, "americano": 90, "iced_americano": 95,
+          "latte": 120, "cappuccino": 120, "flat_white": 125, "cortado": 110, "macchiato": 90, "iced_latte": 125,
+          "mocha": 140, "caramel_macchiato": 145, "espresso_tonic": 130, "affogato": 135,
+          "pour_over": 160, "cold_drip": 170}
+FESTIVAL_PRICE = 150
+
+# 手沖一杯比較久：點手沖的客人比較願意等（耐心乘上這個倍數，依飲品的沖煮方式）
+PACE = {"pourover": 1.35}
+QUEUE_MAX = 4                  # 營業模式：排隊（含正在點的這位）最多幾位，滿了就沒有人再來
+WAIT_PENALTY = 15.0            # 等太久最多扣幾分
+
+ORDER_WEIGHT_DRINK = 0.65     # 最後分數：飲品本身的比重（其餘是符合訂單的程度）
 SHOW_DONE = 9.0                # 完成後訂單卡停留秒數（顯示分數與顧客反應）
 
 
@@ -49,6 +66,10 @@ class Order:
     score: float = 0.0
     reaction: str = ""
     complaint: str = ""
+    price: int = 0
+    tip: int = 0
+    patience: float = 0.0        # 營業模式：最多願意等幾秒；0＝不限（一般點單）
+    wait: float = 0.0            # 從進來到開始製作等了幾秒
 
     def has(self, kind):
         return next((v for k, v in self.mods if k == kind), None)
@@ -61,6 +82,10 @@ class Order:
             name = name.replace("熱", "")
             return T("{prefix}{name}", prefix=T(MILK_KINDS[milk]["prefix"]), name=T(name))
         return T(name)
+
+    @property
+    def revenue(self):
+        return self.price + self.tip
 
     @property
     def mod_lines(self):
@@ -87,13 +112,18 @@ def mod_pool(drink):
         pool += [("cocoa", "no")]
     if drink in ("americano", "iced_americano"):
         pool += [("water", "less"), ("water", "more")]
-    if family == "iced":
+    if family == "iced" or drink == "cold_drip":
         pool += [("ice", "less"), ("ice", "more")]
     return pool
 
 
-def make_order(no, rnd=random, last_name=None):
+def make_order(no, rnd=random, last_name=None, exclude=()):
+    """exclude：現在不能點的飲品（冰滴還沒滴好）"""
     weights = adjust_weights(ORDER_WEIGHTS, DRINKS)          # 夏天冰飲多、冬天熱飲多、節日點限定飲品
+    for k in exclude:
+        weights.pop(k, None)
+    if not weights:
+        return None                                       # 現在沒有可以點的
     keys = list(weights)
     drink = rnd.choices(keys, weights=[weights[k] for k in keys])[0]
     names = [n for n in CUSTOMERS if n != last_name]
@@ -106,7 +136,32 @@ def make_order(no, rnd=random, last_name=None):
             break
         if all(m[0] != k for k, _ in mods):          # 同一類要求只會有一個
             mods.append(m)
-    return Order(no, rnd.choice(names), drink, mods)
+    return Order(no, rnd.choice(names), drink, mods, price=price_of(drink))
+
+
+def price_of(drink):
+    return PRICES.get(drink, FESTIVAL_PRICE)
+
+
+def arrival_gap(rnd=random):
+    """營業模式：下一位客人幾秒後到；偶爾一陣尖峰連著來（營業中也跑完整備粉，所以比一般咖啡店慢一點）"""
+    return rnd.uniform(12, 25) if rnd.random() < 0.18 else rnd.uniform(46, 115)
+
+
+def patience(rnd=random, method="espresso"):
+    return rnd.uniform(165, 265) * PACE.get(method, 1.0)
+
+
+def wait_penalty(order):
+    """等超過一半耐心開始扣分，等到耐心用完扣 WAIT_PENALTY"""
+    if order.patience <= 0:
+        return 0.0
+    return WAIT_PENALTY * clamp((order.wait / order.patience - 0.5) / 0.5, 0, 1)
+
+
+def tip(order):
+    rate = 0.2 if order.score >= 92 else (0.1 if order.score >= 84 else 0.0)
+    return int(round(order.price * rate))
 
 
 def order_params(order, dp, rnd=random):
@@ -200,5 +255,11 @@ def finish(order, session, drink_result):
     order.drink_score = drink_result.score
     order.match, order.complaint = evaluate(order, session)
     order.score = ORDER_WEIGHT_DRINK * order.drink_score + (1 - ORDER_WEIGHT_DRINK) * order.match
+    pen = wait_penalty(order)
+    if pen > 0:
+        order.score = max(0.0, order.score - pen)
+        if pen >= 5:
+            order.complaint = order.complaint or T("等有點久")
+    order.tip = tip(order)
     order.reaction = reaction(order.score, order.complaint)
     order.state, order.t = "done", 0.0

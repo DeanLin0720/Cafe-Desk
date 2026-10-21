@@ -104,3 +104,22 @@ def test_about_dialog(desk, qapp):
     desk.open_about()                                   # 再開一次會換成新的視窗
     assert desk.about_dlg is not dlg
     desk.about_dlg.close()
+
+
+def test_new_install_defaults_to_windowed(desk):
+    """沒有設定檔時預設是一般視窗（視窗化顯示）"""
+    assert desk.windowed is True
+
+
+def test_saved_frameless_choice_is_kept(qapp, cfg_path):
+    import json
+    from cafe_desk.desk import CafeDesk
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        json.dump({"schema": 3, "windowed": False}, f)
+    w = CafeDesk()
+    try:
+        assert w.windowed is False, "已經選了透明擺件的照原本的選擇"
+    finally:
+        w.timer.stop()
+        w.stats.db.close()
+        w.deleteLater()

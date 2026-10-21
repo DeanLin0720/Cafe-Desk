@@ -35,6 +35,9 @@ DRINKS = {
     "caramel_macchiato": {"name": "焦糖瑪奇朵", "cup": "latte", "hot": True, "base": "milk"},
     "espresso_tonic": {"name": "濃縮通寧", "cup": "iced", "hot": False, "base": "iced"},
     "affogato": {"name": "阿芙佳朵", "cup": "affogato", "hot": True, "base": "affogato"},
+    # 手沖台（brew.py）：不用咖啡機萃取
+    "pour_over": {"name": "手沖咖啡", "cup": "americano", "hot": True, "base": "pourover"},
+    "cold_drip": {"name": "冰滴咖啡", "cup": "iced", "hot": False, "base": "colddrip"},
     # 季節限定（只在節日期間出現，見 festivals.py）
     "pumpkin_latte": {"name": "南瓜香料拿鐵", "cup": "latte", "hot": True, "base": "milk", "festival": "halloween",
                       "syrup": "pumpkin", "syrup_g": 18.0, "whip": True, "dust": "cinnamon"},
@@ -47,12 +50,9 @@ FESTIVAL_DRINKS = tuple(k for k, v in DRINKS.items() if v.get("festival"))
 # 選單分組（None＝分隔線）
 DRINK_ORDER = ("espresso", "ristretto", "lungo", "doppio", None, "americano", "iced_americano", "espresso_tonic",
                None, "latte", "cappuccino", "flat_white", "cortado", "macchiato", "mocha", "caramel_macchiato",
-               "iced_latte", None, "affogato")
+               "iced_latte", None, "affogato", None, "pour_over", "cold_drip")
+STATION_FAMILIES = ("pourover", "colddrip")      # 在手沖台做的飲品
 DRINK_KEYS = tuple(k for k in DRINK_ORDER if k)
-AUTO_WEIGHTS = {"espresso": 0.12, "ristretto": 0.04, "lungo": 0.04, "doppio": 0.05, "americano": 0.12,
-                "iced_americano": 0.1, "latte": 0.17, "cappuccino": 0.11, "flat_white": 0.08,
-                "cortado": 0.05, "macchiato": 0.04, "iced_latte": 0.1, "mocha": 0.08, "caramel_macchiato": 0.08,
-                "espresso_tonic": 0.06, "affogato": 0.06}
 
 ART_NAMES = {"heart": "愛心", "tulip": "鬱金香", "rosetta": "葉子", "blob": "白點（沒拉成）", "dot": "奶泡點",
              "mark": "焦糖格紋", "whip": "鮮奶油"}
@@ -90,6 +90,12 @@ def base_of(drink):
     return DRINKS[drink]["base"] if drink in DRINKS else "espresso"
 
 
+def method_of(drink):
+    """這杯用哪種沖煮方式做：espresso（義式咖啡機）／pourover／colddrip"""
+    b = base_of(drink)
+    return b if b in STATION_FAMILIES else "espresso"
+
+
 def is_milk(drink):
     return base_of(drink) == "milk"
 
@@ -119,6 +125,16 @@ class DrinkParams:
     scoop_g: float = 70.0          # 阿芙佳朵的冰淇淋
     art: str = "auto"              # 指定拉花圖案：auto／heart／tulip／rosetta
     milk_kind: str = "dairy"       # 牛奶種類：dairy／oat／soy／almond
+    po_dose: float = 15.0          # 手沖粉量
+    po_ratio: float = 16.0         # 手沖粉水比 1:N
+    po_grind: float = 650.0        # 手沖研磨（µm）
+    po_temp: float = 93.0          # 手沖水溫
+    po_bloom: float = 35.0         # 悶蒸秒數
+    po_pulses: float = 3.0         # 悶蒸後分幾段注水
+    cd_dose: float = 50.0          # 冰滴粉量
+    cd_ratio: float = 10.0         # 冰滴粉水比 1:N
+    cd_grind: float = 550.0        # 冰滴研磨（µm）
+    cd_rate: float = 10.0          # 冰滴滴速（每 10 秒幾滴）
 
     def copy(self):
         return DrinkParams(**asdict(self))
@@ -462,7 +478,7 @@ class PourStage(Stage):
     LABEL = {"water": "注入熱水…", "cold_water": "倒入冷水…", "cold_milk": "倒入冰牛奶…",
              "hot_milk": "注入牛奶融合…", "tonic": "倒入通寧水…", "choc": "擠入巧克力醬…",
              "vanilla": "加入香草糖漿…", "pumpkin": "加入南瓜香料醬…", "ginger": "加入薑餅糖漿…",
-             "rose": "加入玫瑰糖漿…"}
+             "rose": "加入玫瑰糖漿…", "brew": "倒進杯子…", "colddrip": "倒入冰滴咖啡…"}
 
     def __init__(self, vessel, liquid, grams, rate, start=None, home=None, art=False, foam_vol=0.0,
                  label=None, art_label="拉花中…"):
@@ -482,7 +498,7 @@ class PourStage(Stage):
         s.vessel = self.v
         self.phase, self.t, self.poured = "enter", 0.0, 0.0
         self.max_tilt = {"kettle": 38, "bottle": 62, "pitcher": 58, "jug": 60, "tonic": 64,
-                         "squeeze": 150}.get(self.vessel, 55)
+                         "squeeze": 150, "server": 72, "carafe": 70}.get(self.vessel, 55)
         self.pre = 1.0 if self.vessel == "squeeze" else 0.55      # 醬料瓶：直接倒過來擠
 
     def update(self, s, dt):
@@ -721,6 +737,16 @@ class Session:
         self.order = None                # 點單模式：這杯是哪張訂單
         t = app.machine.traits
         family = base_of(drink)
+        self.family = family
+        self.station = None             # 手沖台器具的狀態（brew.py 的 Stage 更新、render/station.py 畫）
+        self.brew_res = None            # 手沖／冰滴的萃取結果（開始時就算好）
+        self.cold_setup = False         # 這次只是架好冰滴塔（沒有成品）
+        if family in STATION_FAMILIES:
+            self.stages = self._station_stages(app, drink)
+            self.i = 0
+            self.done = False
+            self._start_current()
+            return
         stages = []
         if t.steam_heatup and app.boiler.temp > self.params.temp + 3:
             stages.append(CoolStage())
@@ -790,6 +816,23 @@ class Session:
         self.done = False
         self._start_current()
 
+    def _station_stages(self, app, drink):
+        """手沖：手沖流程 → 分享壺倒進杯子；冰滴：滴好了就加冰倒一杯，還沒架就先架冰滴塔"""
+        from . import brew
+        p = app.params
+        if drink == "pour_over":
+            self.brew_res = brew.simulate_pourover(self.dp, p.roast, p.bean_age, p.origin)
+            beverage = self.dp.po_dose * (self.dp.po_ratio - brew.RETAIN_K)
+            home = app.station_pos("server")
+            return [brew.PourOverStage(), PourStage("server", "brew", beverage, 22.0, start=home, home=home)]
+        b = app.cold
+        if b is not None and b.get("done") and b["servings"] > 0:
+            self.brew_res = brew.batch_result(b)
+            home = app.station_pos("carafe")
+            return [IceStage(), PourStage("carafe", "colddrip", brew.COLD_SERVE_G, 16.0, start=home, home=home)]
+        self.cold_setup = True
+        return [brew.ColdSetupStage()]
+
     @property
     def stage(self):
         return self.stages[self.i] if self.i < len(self.stages) else None
@@ -825,13 +868,24 @@ class Session:
     def finish(self):
         from .model import shot_comment
         self.done = True
+        if self.family in STATION_FAMILIES:
+            from .brew import brew_comment, TDS_POUR, TDS_COLD
+            self.boiler_mode = "brew"
+            if self.cold_setup:
+                self.result = None
+                return
+            cold = self.family == "colddrip"
+            roast = self.app.cold["roast"] if cold else self.params.roast
+            self.result = DrinkResult(self.drink, self.brew_res.score,
+                                      brew_comment(self.brew_res, roast, TDS_COLD if cold else TDS_POUR))
+            return
         last_steam = is_milk(self.drink) and self.drink != "caramel_macchiato"
         self.boiler_mode = "steam" if (last_steam and self.app.machine.traits.steam_heatup) else "brew"
         self.result = score_drink(self.drink, self.app.shot, self.dp, self.milk, shot_comment)
 
     def add_liquid(self, liquid, grams, foam_vol=0.0):
         c = self.app.contents
-        if liquid in ("water", "cold_water", "tonic"):
+        if liquid in ("water", "cold_water", "tonic", "brew", "colddrip"):
             c["water"] += grams
         elif liquid in ("cold_milk", "hot_milk"):
             c["milk"] += grams

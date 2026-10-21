@@ -10,7 +10,7 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
 from cafe_desk.i18n import EN                                        # noqa: E402
-from cafe_desk import drinks, beans, maintenance, festivals, stats, orders, workflow   # noqa: E402
+from cafe_desk import drinks, beans, maintenance, festivals, stats, orders, workflow, brew   # noqa: E402
 from cafe_desk.machines import MACHINES                              # noqa: E402
 
 
@@ -37,6 +37,7 @@ data += [v[0] for v in festivals.FESTIVALS.values()]
 data += [x for a in stats.ACHIEVEMENTS for x in a[1:]]
 data += list(orders.MOD_TEXT.values()) + list(orders.CUSTOMERS) + list(workflow.STATUS.values())
 data += [m.name for m in MACHINES.values()] + [m.traits.summary for m in MACHINES.values()]
+data += list(brew.METHODS.values())
 missing |= {d for d in data if d and has_cjk(d) and d not in EN}
 for m in sorted(missing):
     print(repr(m))

@@ -73,6 +73,8 @@ class LiquidRenderer:
         c = self.contents
         if base_of(self.drink_kind()) == "affogato":
             return self.paint_affogato(p)
+        if base_of(self.drink_kind()) in ("pourover", "colddrip"):
+            return self.paint_brew_liquid(p)                 # 手沖台的咖啡（render/station.py）
         if c["water"] > 0 or c["milk"] > 0 or c["syrup"] > 0 or base_of(self.drink_kind()) in ("americano", "iced"):
             return self.paint_mixed_liquid(p)
         return self.paint_liquid_espresso(p)

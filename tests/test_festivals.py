@@ -4,7 +4,8 @@ import datetime
 import pytest
 
 from cafe_desk import festivals
-from cafe_desk.drinks import DRINKS, AUTO_WEIGHTS
+from cafe_desk.drinks import DRINKS
+from cafe_desk.orders import ORDER_WEIGHTS
 
 
 D = datetime.date
@@ -31,11 +32,11 @@ def test_season(month, season):
 
 
 def test_adjust_weights():
-    summer = festivals.adjust_weights(AUTO_WEIGHTS, DRINKS, D(2026, 7, 1))
-    winter = festivals.adjust_weights(AUTO_WEIGHTS, DRINKS, D(2026, 1, 20))
+    summer = festivals.adjust_weights(ORDER_WEIGHTS, DRINKS, D(2026, 7, 1))
+    winter = festivals.adjust_weights(ORDER_WEIGHTS, DRINKS, D(2026, 1, 20))
     assert summer["iced_latte"] > winter["iced_latte"]
     assert winter["latte"] > summer["latte"]
-    xmas = festivals.adjust_weights(AUTO_WEIGHTS, DRINKS, D(2026, 12, 20))
+    xmas = festivals.adjust_weights(ORDER_WEIGHTS, DRINKS, D(2026, 12, 20))
     assert xmas["gingerbread_latte"] >= 0.18
     assert "pumpkin_latte" not in xmas
 

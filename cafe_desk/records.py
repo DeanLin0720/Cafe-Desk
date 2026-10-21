@@ -11,7 +11,7 @@ from .beans import ORIGINS
 from .festivals import today, FESTIVALS
 from .i18n import T
 from .machines import MACHINES
-from .stats import ACHIEVEMENTS, ART_BOOK
+from .stats import ACHIEVEMENTS, ART_BOOK, TIER_GROUPS, TIER_OF
 from .render.milk import make_art
 
 ACCENT = "#8a5426"
@@ -28,6 +28,33 @@ def _muted(text):
     lab.setStyleSheet("color:#7a6a5a;")
     lab.setWordWrap(True)
     return lab
+
+
+MEDAL_COLORS = ("#c07a3e", "#aab2ba", "#e0b030")       # 銅、銀、金
+
+
+def _medals(have, dpr=1.0):
+    """分級成就的三個獎牌：解鎖的上色，沒解鎖的是灰色空圈"""
+    w, h, r = 46, 18, 6.5
+    pm = QPixmap(int(w * dpr), int(h * dpr))
+    pm.setDevicePixelRatio(dpr)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    for i, ok in enumerate(have):
+        c = QPointF(8 + i * 15, h / 2)
+        if ok:
+            p.setPen(QPen(QColor(MEDAL_COLORS[i]).darker(140), 1))
+            p.setBrush(QColor(MEDAL_COLORS[i]))
+            p.drawEllipse(c, r, r)
+            p.setPen(QPen(QColor(255, 255, 255, 150), 1))
+            p.drawArc(QRectF(c.x() - r + 2.5, c.y() - r + 2.5, 2 * r - 5, 2 * r - 5), 40 * 16, 100 * 16)
+        else:
+            p.setPen(QPen(QColor("#c8beb2"), 1.2))
+            p.setBrush(Qt.NoBrush)
+            p.drawEllipse(c, r - 0.5, r - 0.5)
+    p.end()
+    return pm
 
 
 class DaysChart(QWidget):
@@ -133,6 +160,9 @@ class RecordsDialog(QDialog):
         rows = [(T("杯數"), f"{cups}"),
                 (T("平均分數"), f"{d['score_sum'] / cups:.1f}" if cups else "—"),
                 (T("點單"), f"{d['orders']}"),
+                (T("營業額"), f"${d['revenue']:,}"),
+                (T("等太久離開的客人"), f"{d['walkouts']}"),
+                (T("平均等待"), T("{s:.0f} 秒", s=d["wait_sum"] / d["waited"]) if d["waited"] else "—"),
                 (T("用掉的豆子"), f"{d['beans_g']:.0f} g")]
         for i, (k, v) in enumerate(rows, start=1):
             g.addWidget(QLabel(k), i, 0)
@@ -201,17 +231,46 @@ class RecordsDialog(QDialog):
     def achievements_tab(self):
         w = QWidget()
         g = QGridLayout(w)
-        got = self.app.stats.data["achievements"]
-        for i, (key, name, desc) in enumerate(ACHIEVEMENTS):
-            ok = key in got
-            icon = QLabel("🏆" if ok else "🔒")
-            icon.setStyleSheet("font-size:18px;" + ("" if ok else "color:#b0a898;"))
-            g.addWidget(icon, i, 0)
-            lab = QLabel(f"<b>{T(name)}</b><br><span style='color:#7a6a5a'>{T(desc)}</span>")
+        st = self.app.stats
+        got = st.data["achievements"]
+        info = {k: (n, d) for k, n, d in ACHIEVEMENTS}
+        values = st.tier_values()
+        shown = set()
+        i = 0
+        for key, name, desc in ACHIEVEMENTS:
+            if key in TIER_OF:
+                # 分級成就：一組一列，三個獎牌；名稱是目前最高級，說明是下一級
+                group = TIER_OF[key][0]
+                if group in shown:
+                    continue
+                shown.add(group)
+                tiers = TIER_GROUPS[group]
+                level = sum(1 for k, _ in tiers if k in got)
+                ok = level > 0
+                top = tiers[level - 1][0] if ok else tiers[0][0]
+                name = info[top][0]
+                if level < 3:
+                    nxt = tiers[level][0]
+                    desc = T("{desc}（目前 {n:,}）", desc=T(info[nxt][1]), n=values[group])
+                    desc = T("下一級：{desc}", desc=desc) if ok else desc
+                else:
+                    desc = T("已達最高級：{desc}", desc=T(info[top][1]))
+                icon = QLabel()
+                icon.setPixmap(_medals([k in got for k, _ in tiers], self.devicePixelRatioF()))
+                date = max(got[k] for k, _ in tiers if k in got) if ok else ""
+                lab = QLabel(f"<b>{T(name)}</b><br><span style='color:#7a6a5a'>{desc}</span>")
+            else:
+                ok = key in got
+                icon = QLabel("🏆" if ok else "🔒")
+                icon.setStyleSheet("font-size:18px;" + ("" if ok else "color:#b0a898;"))
+                date = got[key] if ok else ""
+                lab = QLabel(f"<b>{T(name)}</b><br><span style='color:#7a6a5a'>{T(desc)}</span>")
             if not ok:
                 lab.setStyleSheet("color:#9a8e80;")
+            g.addWidget(icon, i, 0)
             g.addWidget(lab, i, 1)
-            g.addWidget(_muted(got[key] if ok else ""), i, 2)
+            g.addWidget(_muted(date), i, 2)
+            i += 1
         g.setColumnStretch(1, 1)
         return w
 

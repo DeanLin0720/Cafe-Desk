@@ -19,6 +19,7 @@ from ..gfx import mix, C, vgrad, hgrad, rrect
 from ..layout import ROAST_LOOK, TOP_PAD, liquid_look
 from ..model import ROASTS
 from ..util import clamp, lerp
+from .station import brew_color
 
 MILK = "#f4eee4"
 FOAM = "#fbf7f0"
@@ -877,8 +878,13 @@ class MilkRenderer:
         surf = self.surface_y()
         cx = self.cup.CX + 8
         liquid = v["liquid"]
-        col = {"water": WATER, "cold_water": WATER, "tonic": TONIC, "cold_milk": self.milk_col(), "hot_milk": FOAM,
-               **{k: v["color"] for k, v in SYRUPS.items()}}[liquid]
+        if liquid in ("brew", "colddrip"):
+            res = ss.brew_res
+            roast = self.cold["roast"] if (liquid == "colddrip" and self.cold) else self.params.roast
+            col = brew_color(roast, res.tds, 0.8 if liquid == "colddrip" else 1.0)[0]
+        else:
+            col = {"water": WATER, "cold_water": WATER, "tonic": TONIC, "cold_milk": self.milk_col(), "hot_milk": FOAM,
+                   **{k: v["color"] for k, v in SYRUPS.items()}}[liquid]
         watery = liquid in ("water", "cold_water", "tonic")
         alpha = 120 if watery else 245
         w0 = 3.0 if watery else (2.2 if liquid in SYRUPS else 3.6)
@@ -922,6 +928,8 @@ class MilkRenderer:
             self.paint_squeeze(p, v)
         elif kind == "scoop":
             self.paint_scoop(p, v)
+        elif kind in ("server", "carafe"):
+            self.paint_station_vessel(p, v)                  # 手沖的分享壺、冰滴壺（render/station.py）
         p.restore()
 
     def paint_squeeze(self, p, v):
@@ -1338,7 +1346,7 @@ class MilkRenderer:
         cx = self.machine.card_cx
         lo = self.cards_left()
         if with_chart:
-            left = clamp(cx - 169, lo, self.machine.scene_w - 4 - 344)
+            left = clamp(cx - 169, lo, self._scene_w - 4 - 344)
             return QRectF(left + 220, TOP_PAD - 132, w, h)
         return QRectF(max(lo, cx - w / 2), TOP_PAD - 132, w, h)
 

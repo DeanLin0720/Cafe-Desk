@@ -65,3 +65,19 @@ def run_until_idle(w, limit=8000):
         assert n < limit, "模擬卡住了"
     w.host.grab()
     return n
+
+
+@pytest.fixture(autouse=True)
+def noon(monkeypatch):
+    """固定在中午：早起、夜貓子成就不會因為跑測試的時間而解鎖"""
+    from cafe_desk import stats
+    monkeypatch.setattr(stats, "clock_hour", lambda: 12)
+
+
+def until_making(w, limit=400):
+    """點單換了咖啡機／沖煮方式會先停一下：推進到真的開始做這張"""
+    n = 0
+    while w.session is None:
+        w.step(0.05, 0.05)
+        n += 1
+        assert n < limit, "一直沒開始做"

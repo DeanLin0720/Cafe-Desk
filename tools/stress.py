@@ -13,7 +13,7 @@ os.environ.setdefault("CAFE_DESK_DATE", "2026-10-20")
 sys.path.insert(0, _ROOT)
 from PySide6.QtWidgets import QApplication
 app = QApplication([])
-from cafe_desk import paths, desk, drinks, orders, festivals, maintenance
+from cafe_desk import paths, desk, drinks, orders, festivals, maintenance, brew
 random.seed(int(sys.argv[1]) if len(sys.argv) > 1 else 1)
 machines = sys.argv[2].split(",") if len(sys.argv) > 2 else ["desk01", "lever", "compact", "allinone"]
 res = []
@@ -39,10 +39,14 @@ for mk in machines:
         w.dp.art = random.choice(["auto", "heart", "tulip", "rosetta"])
         w.dp.milk_kind = random.choice(list(drinks.MILK_KINDS))
         run(lambda: w.start_session(d, full))
+        if d == "cold_drip":                         # 第一次只架好冰滴塔：快轉滴完再倒一杯
+            w.cold["start"] -= w.cold["dur"]
+            run(lambda: w.start_session(d, full))
         r = w.result
         res.append((mk, d, full, round(r.score), r.comment))
-    # 清潔保養
-    print(mk, "maint before", {k: v for k, v in w.maint.items() if k != "done"}, "due", maintenance.due(w.maint))
+    # 清潔保養（最後一杯是冰滴，要切回咖啡機才清得到）
+    w.set_method("espresso")
+    print(mk, "maint before", {k: v for k, v in w.maint.items() if k != "done"}, "due", maintenance.due(w.maint))  # 這台的
     for k in maintenance.TASKS:
         run(lambda: w.start_job(k))
     print(mk, "maint after", {k: v for k, v in w.maint.items() if k != "done"})
@@ -53,10 +57,16 @@ for mk in machines:
     w.open_bag("kenya"); print(mk, "new bag", w.params.roast, w.params.bean_age, w.params.origin)
     # 點單
     w.order_mode = True; w.auto = True
-    for i in range(4):
+    w.cold = brew.new_cold_batch(w.dp, w.params.roast, w.params.bean_age, w.bag["origin"])   # 有冰滴才會有人點
+    w.cold.update(done=True, servings=brew.COLD_SERVINGS)
+    for drink in ("latte", "pour_over", "cold_drip", "iced_americano", None, None):
         w.order = None; w.new_order(); o = w.order
-        run(lambda: w.make_order(False))
+        if drink:                                    # 指定幾杯，確定三種沖煮方式都會自動切換
+            o.drink, o.mods, o.price = drink, [], orders.price_of(drink)
+        run(lambda: w.make_order())
+        assert w.method == drinks.method_of(o.drink), (o.drink, w.method)
         res.append((mk, "ORDER", o.title, o.mod_lines, round(o.score), o.reaction))
+    w.set_method("espresso")
     st = w.stats.data
     print(mk, "achievements", list(st["achievements"]), "today", st["days"][festivals.today().isoformat()]["cups"],
           "art", list(st["collection"]["art"]), "toasts", len(w.toasts))

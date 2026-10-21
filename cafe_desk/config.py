@@ -4,6 +4,8 @@
 其他程式只需要處理最新格式。之後要改欄位時：SCHEMA 加一，在 _MIGRATIONS 加一個函式。
     schema 0：1.0.0 Beta 以前（含 Espresso Desk 時期）沒有版本號的設定檔
     schema 1：1.0.0
+    schema 2：拿掉「手動沖煮使用完整流程」選項（full_flow），沖煮一律跑完整流程
+    schema 3：清潔保養計數改成每台咖啡機各自計算：maintenance 從 {項目: 數值} 變成 {咖啡機: {項目: 數值}}
 比目前程式還新的設定檔（用舊版程式開新版設定）不降級，未知欄位照原樣保留。
 """
 import json
@@ -11,7 +13,7 @@ import os
 
 from . import errlog, paths
 
-SCHEMA = 1
+SCHEMA = 3
 
 
 def _v0_to_v1(cfg):
@@ -19,7 +21,19 @@ def _v0_to_v1(cfg):
     return cfg
 
 
-_MIGRATIONS = {0: _v0_to_v1}               # 從 schema n 升到 n+1
+def _v1_to_v2(cfg):
+    cfg.pop("full_flow", None)              # 完整流程不再是選項
+    return cfg
+
+
+def _v2_to_v3(cfg):
+    m = cfg.get("maintenance")
+    if isinstance(m, dict) and m and not all(isinstance(v, dict) for v in m.values()):
+        cfg["maintenance"] = {cfg.get("machine") or "desk01": m}     # 舊的共用計數算給當時用的那台
+    return cfg
+
+
+_MIGRATIONS = {0: _v0_to_v1, 1: _v1_to_v2, 2: _v2_to_v3}  # 從 schema n 升到 n+1
 
 
 def migrate(cfg):

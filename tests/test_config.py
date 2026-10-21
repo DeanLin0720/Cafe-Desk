@@ -63,3 +63,23 @@ def test_desk_saves_schema(desk, cfg_path):
         cfg = json.load(f)
     assert cfg["schema"] == config.SCHEMA
     assert cfg["machine"] == desk.machine.key
+
+
+def test_v1_drops_full_flow(cfg_path):
+    """schema 2：「手動沖煮使用完整流程」不再是選項"""
+    _write(cfg_path, {"schema": 1, "full_flow": False, "drink": "latte"})
+    cfg = config.load()
+    assert "full_flow" not in cfg and cfg["drink"] == "latte" and cfg["schema"] == config.SCHEMA
+
+
+def test_v2_maintenance_goes_to_current_machine(cfg_path):
+    """schema 3：清潔保養改成每台各自計算，舊的共用計數算給當時用的那台"""
+    _write(cfg_path, {"schema": 2, "machine": "lever", "maintenance": {"backflush": 22, "wand": 3, "done": []}})
+    cfg = config.load()
+    assert cfg["schema"] == 3
+    assert cfg["maintenance"] == {"lever": {"backflush": 22, "wand": 3, "done": []}}
+
+
+def test_v2_without_machine_defaults_to_desk01(cfg_path):
+    _write(cfg_path, {"schema": 2, "maintenance": {"drip": 100}})
+    assert config.load()["maintenance"] == {"desk01": {"drip": 100}}

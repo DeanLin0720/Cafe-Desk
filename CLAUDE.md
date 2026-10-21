@@ -1,7 +1,8 @@
-# CLAUDE.md — Café Desk 桌上咖啡吧（舊名 Espresso Desk）1.1.2
+# CLAUDE.md — Café Desk 桌上咖啡吧（舊名 Espresso Desk）1.2.0
 
 ## 專案概要
-用 Python + PySide6 寫的桌面擺件：透明無邊框視窗裡有咖啡機、磨豆機、奶泡機與各種器具，以圖形動畫加音效模擬做咖啡。
+用 Python + PySide6 寫的桌面擺件：視窗裡有咖啡機、磨豆機、奶泡機與各種器具，以圖形動畫加音效模擬做咖啡。
+  預設是視窗化顯示（`windowed` 預設 True，一般視窗＋深色背景）；關掉就是透明無邊框、站在桌面上的擺件。
 - 套件名稱 `cafe_desk`、主元件 `CafeDesk`、設定檔 `cafe_desk.json`、圖示 `logo/cafe_desk.*`、exe 名稱 `CafeDesk`。
   舊名（espresso_desk）的設定檔與圖示檔仍會被讀取，但新程式碼一律用新名稱。
 - 目標：當桌面擺件；評分不必精準；重點放在沖煮畫面的圖形化模擬與聲音。
@@ -9,7 +10,7 @@
 - 參考實機繪製造型時，不要放真實品牌名稱或 logo。
 
 ## 目前狀態
-- **正式版**：`__version__ = "1.1.2"`。Beta 最後一版是 `1.0.0b8`（git tag `v1.0.0-beta.8`，對話裡的 v4–v8 都是 Beta）。
+- **正式版**：`__version__ = "1.2.0"`。Beta 最後一版是 `1.0.0b8`（git tag `v1.0.0-beta.8`，對話裡的 v4–v8 都是 Beta）。
 - 開發歷程、決策理由、已知問題與待辦清單在 **`handoff.md`**，接手時先讀它；版本變更寫在 `CHANGELOG.md`。
 - 改版本號時同步：`cafe_desk/__init__.py`、`CHANGELOG.md`、`main.py` docstring 標題、本檔標題，並打 git tag。
 - 自動測試在 `tests/`（pytest），開發工具在 `tools/`（見下方「測試」）。
@@ -27,7 +28,7 @@ python -m pytest                    # 自動測試（無頭）
 - spec 從 `__version__` 產生 exe 的版本資訊；新增要打包的資源時加到 spec 的 `datas`。
 - 設定檔存在程式旁的 `cafe_desk.json`（打包後在 exe 旁）；無法寫入時改存使用者資料夾的 `.cafe_desk.json`。
   讀寫都經過 `config.py`：新設定檔不存在時依序沿用 `paths.OLD_CONFIG_PATHS`（舊版 espresso_desk 的設定檔）。
-- 設定檔有 `"schema"` 版本號（目前 1）。**要改名、刪除或改變欄位意義時**：`config.SCHEMA` 加一，在 `_MIGRATIONS`
+- 設定檔有 `"schema"` 版本號（目前 3）。**要改名、刪除或改變欄位意義時**：`config.SCHEMA` 加一，在 `_MIGRATIONS`
   加一個 n→n+1 的函式，並在 `tests/test_config.py` 加測試。只是新增欄位（讀取時有預設值）不需要升版。
 - 設定檔旁還有：`*_records.db`（紀錄）、`*.log`（錯誤紀錄，`errlog.py`）、`*.lock`（單一執行個體，`single.py`）。
   全部以 `paths.CONFIG_PATH` 推算，測試只要改這個路徑就會一起換到暫存資料夾。
@@ -51,7 +52,8 @@ cafe_desk/
   model.py                  萃取模型 simulate()、STYLES（Ristretto／Lungo 評分基準）、Shot 時間軸、Barista 自動調參、Boiler
   workflow.py               完整備粉流程：取把手→敲渣→磨豆→布粉→填壓→扣回
   drinks.py                 飲品定義、DrinkParams、牛奶與拉花模型、評分、各階段（Stage）與 Session
-  orders.py                 顧客點單：產生訂單、依訂單改參數、符合度、顧客反應
+  orders.py                 顧客點單：產生訂單、依訂單改參數、符合度、顧客反應、營業模式的價格與耐心
+  brew.py                   手沖與冰滴：萃取模型、PourOverStage／ColdSetupStage、冰滴背景批次
   i18n.py                   介面語言：T()、LANGS、英文對照表 EN
   cups.py                   CUP_KINDS 與 Cup：杯子幾何、容量、玻璃繪製
   machines/                 base.py（Traits、Machine 基底與共用繪圖）、desk01／lever／compact／allinone
@@ -60,7 +62,7 @@ cafe_desk/
   layout.py                 版面常數、烘焙度色調 ROAST_LOOK、liquid_look()
   logo.py / paths.py / gfx.py / util.py
   render/                   以 mixin 形式併入 EspressoDesk
-    machine.py  grinder.py  liquid.py  milk.py  particles.py  overlay.py
+    machine.py  grinder.py  liquid.py  milk.py  particles.py  overlay.py  station.py（手沖台）
 ```
 
 ## 座標與繪圖
@@ -71,12 +73,13 @@ cafe_desk/
   - 視窗座標：卡片和狀態列用的座標。
 - 背景與前景圖層用 pixmap 快取，鍵為 `(dpr, machine.key, cup.kind)`。動態物件畫進每幀重用的 QImage `_frame`，最後再疊上狀態列與卡片。
 - 縮放時 pixmap 的 ratio 用 `dpr*scale`，painter 不要再額外 scale，否則會重複縮放。
-- 幀率會自動調整：FRAME_ACTIVE 16、AMBIENT 33、IDLE 100、HIDDEN 250 ms。有新動畫時要在 `wanted_interval()` 加入對應條件。
+- 幀率會自動調整：FRAME_ACTIVE 16、AMBIENT 33、IDLE 100、HIDDEN 250 ms。換咖啡機／沖煮方式時 `begin_fade()` 留下舊畫面，
+  `paint_overlays()` 在 `FADE_T` 秒內交叉淡入淡出（期間 ACTIVE）。有新動畫時要在 `wanted_interval()` 加入對應條件。
 - 模擬固定以子步長 `SIM_STEP=0.05` 推進。`step(dt, sdt)` 的 dt 是真實時間，sdt 是乘上播放速度後的時間。
 
 ## 飲品系統（drinks.py）
 - `DRINKS[key]` 的欄位：`name`、`cup`（CUP_KINDS 的 key）、`hot`、`base`（流程家族），以及可選的 `shot`（濃縮預設）。
-  - base 有 `espresso`、`americano`、`iced`、`milk` 四種。
+  - base 有 `espresso`、`americano`、`iced`、`milk`、`affogato`，以及手沖台的 `pourover`、`colddrip`（`STATION_FAMILIES`）。
   - shot 的欄位：`ratio`、`grind`、`dose`、`basket`、`style`。
 - 飲品清單：
   - 濃縮類：濃縮、Ristretto、Lungo、雙份
@@ -84,7 +87,7 @@ cafe_desk/
   - 熱牛奶類：熱拿鐵、卡布奇諾、馥列白、可塔朵、瑪奇朵、摩卡、焦糖瑪奇朵
   - 冰拿鐵
   - 阿芙佳朵（base affogato）
-- `DRINK_ORDER` 是選單分組，`None` 代表分隔線；`DRINK_KEYS` 是去掉 None 的清單；`AUTO_WEIGHTS` 是自動模式隨機選飲品的權重。
+- `DRINK_ORDER` 是選單分組，`None` 代表分隔線；`DRINK_KEYS` 是去掉 None 的清單。自動模式照設定重複做目前選的飲品（`auto_drink()`），不隨機。
 - `shot_params(drink, params)` 依濃縮預設回傳 `(params, style, preset)`。preset 的杯子不拿來給 Barista 調液重。
 - `DrinkParams` 的欄位扁平存放（方便 asdict 存設定）。熱牛奶飲品透過 `MILK_SPEC` 和 `milk_plan()` 取得牛奶量、奶泡量、理想奶泡量與容許範圍。
 - `evaluate_milk(dp, traits, device, rnd, drink)` 先算出 texture，再決定拉花圖案。
@@ -94,7 +97,7 @@ cafe_desk/
 - `MILK_KINDS`：dairy／oat／soy／almond，各有 texture（奶泡細緻度倍率）、foam（奶泡穩定度）、color、prefix（點單品名前綴）。
 - `SYRUPS`：choc／vanilla，倒進 `contents["syrup"]`，種類記在 `app.syrup_kind`。
 - `Session` 依飲品組合各個 Stage：
-  1. CoolStage（鍋爐太熱時先降溫）→ PrepStage（完整流程才有）
+  1. CoolStage（鍋爐太熱時先降溫）→ PrepStage（`full_flow`：手動、自動模式、營業中都有；測試為了快可以傳 False）
   2. 前置：美式倒熱水；冰飲先 IceStage，再倒冷水、冰牛奶或通寧水（PourStage vessel "tonic"）；
      阿芙佳朵 ScoopStage；摩卡／焦糖瑪奇朵用 PourStage(vessel "squeeze") 擠巧克力醬／香草糖漿
   3. 一般：BrewStage → 熱牛奶類的 HeatStage → SteamStage → PourStage
@@ -108,14 +111,49 @@ cafe_desk/
 - Stage 只處理時間軸、位置與事件（`s.events`），不負責繪圖。事件由 `desk.on_session_event` 轉成音效或粒子。
 - `score_drink()`：濃縮分數為主，依飲品加上比例分數、牛奶分數與拉花分數。
 
+## 沖煮方式：手沖與冰滴（brew.py、render/station.py）
+- `CafeDesk.method`＝espresso／pourover／colddrip（`brew.METHODS`），由目前飲品決定（`drinks.method_of()`），
+  右鍵「沖煮方式」或選到別的方式的飲品時 `set_method()`：換杯子位置、`apply_scale()`、重建選單（飲品只列這個方式的）。
+  `start_session()` 遇到別的方式的飲品也會先切過去。咖啡機（`self.machine`）一直存在（鍋爐照常模擬），只是手沖／冰滴時不畫、
+  不待機放氣滴水（`idle_event`）、不顯示預熱溫度、清潔保養停用；切換時清掉蒸氣與水滴。新增咖啡機的視覺效果時記得也要這樣擋。
+- 視窗寬度是 `scene_width()`（存在 `self._scene_w`）；卡片、狀態列等跟視窗寬度有關的地方用 `self._scene_w`，
+  咖啡機本身的定位仍用 `machine.scene_w`。
+- 手沖／冰滴畫面：跟目前咖啡機一樣寬；器具用器具座標畫，再以檯面左端放大 `brew.GEAR_K` 倍（`gear_to_scene()`；
+  手沖壺位置是器具座標，分享壺／冰滴壺拿去倒時是場景座標）。`paintEvent` 改走 `paint_brew_frame()`（磨豆機、器具、杯子、倒的壺）；
+  杯子放在桌上 `cup_anchor()`（換算成機身座標，Cup 與 PourStage 的程式不用改）。點畫面任何地方開始沖。
+- 拉近：`brew_focus()`（手沖注水到滴濾、冰滴加水開閥與背景滴的時候）為真時 `brew_zoom` 往 1 走（`update_zoom`），
+  器具放大到 `GEAR_ZOOM`、移到中央，磨豆機與杯子淡出（`cup_alpha()`）；手沖 `remove` 階段等拉遠完成才倒進杯子。
+  器具圖層的變換在 `gear_view()`；在器具圖層裡畫東西一律用器具座標，不要用 `station_pos("server"／"carafe")`（那是場景座標）。
+- `Session` 遇到 `STATION_FAMILIES` 走 `_station_stages()`，不建 Shot（`app.shot` 是 None），評分用 `session.brew_res`
+  （`brew.simulate_pourover／simulate_colddrip` 回傳 `model.Result`）。
+- 手沖：`PourOverStage` 以沖煮秒數推進（畫面快轉 `TIME_K`），器具狀態放 `session.station`（沒在沖時畫 `idle_pourover`）；
+  磨豆 `grind_into()` 先磨進接粉杯再倒進濾杯；最後 `PourStage("server")` 把分享壺倒進杯子。磨豆事件 `grind`／`cold_grind` 在 desk 扣豆。
+- 冰滴：`app.cold`（存設定檔 `cold_drip`）是背景批次，進度用真實時間 `time.time()`，跟播放速度和目前沖煮方式無關；
+  滴完 `finish_cold()` → servings；沒有批次時 `ColdSetupStage` 架塔（`session.cold_setup`，沒有成品、不記紀錄）。
+  自動模式重複做目前選的飲品（`auto_drink()`，冰滴還在滴時回傳 None）；點單不分沖煮方式，`order_exclude()` 只擋沒滴好的冰滴，
+  `start_session()` 自動切換沖煮方式，`set_method()` 不動訂單與排隊。
+  營業模式自動接單時用 `brew.barista_dial()` 依烘焙度調手沖與冰滴（單杯副本，不寫回 `self.dp`）；
+  點手沖的客人耐心乘上 `orders.PACE`（依飲品的沖煮方式）。水滴不提高幀率（閒置 10 fps）。
+- 杯中液體 `paint_brew_liquid()`，倒出口的水柱顏色用 `brew_color()`。
+
 ## 點單模式（orders.py）
 - 一張訂單是一杯飲品加上 0–2 個要求 `mods`。要求的種類與值定義在 `MOD_TEXT`；同一類要求只會出現一個。
 - `order_params()` 依訂單修改 DrinkParams，並加入咖啡師手感誤差（打奶溫度 σ 2.8、奶泡量 σ 4）。
 - 分數＝0.65×飲品分數＋0.35×符合度。`reaction()` 依分數和抱怨內容產生客人的話。
 - 狀態依序為 `waiting`、`making`、`done`、`leaving`，由 `desk.update_order()` 推進：
-  - 自動模式下，訂單等待 2.5 秒後咖啡師自己接單。
+  - 訂單等待 2.5 秒後咖啡師自己接單（跑完整備粉）。
   - 完成後顯示 `SHOW_DONE` 秒，客人才離開。
 - 點單紙由 `overlay.paint_order_card` 繪製，寬度為 `ORDER_W=98`。點單紙出現時，`cards_left()` 會讓曲線卡片和拉花卡片往右讓位。
+- **營業模式**＝顧客點單模式（`CafeDesk.business()` 就是 `order_mode`）：咖啡師自己接單，跟自動模式無關。
+  `set_order_mode(True)` 會把自動模式取消勾選並反灰，關掉時還原 `auto_before_orders`。客人點義式時 `make_order()`
+  每張訂單隨機 `set_machine()` 一台咖啡機；換了咖啡機或沖煮方式時 `_switch_wait` 倒數 `FADE_T + SWITCH_PAUSE`
+  （算在 `busy()` 裡）才 `start_order()`。開點單時沖煮方式、咖啡機、飲品、拉花、豆子選單鎖住（`update_menu_locks()`）：
+  - `update_queue(sdt)` 依 `orders.arrival_gap()` 來客，`self.queue` 是排在 `self.order` 後面的客人（含目前這位最多 `QUEUE_MAX`）。
+    等待時間 `Order.wait` 用模擬時間 sdt 累計，只在 waiting 時算；超過 `Order.patience` 就 `walk_out()`（記 events `walkout`）。
+  - `orders.finish()` 扣 `wait_penalty()` 並算小費；價格在 `PRICES`（新飲品要加，沒列的用 `FESTIVAL_PRICE`）。
+  - 關掉顧客點單時清空 queue（不算流失）。點單紙後面的排隊紙、人數徽章、價格與耐心條只在營業模式畫，
+    一般點單的畫面和改版前逐像素相同。
+- 紀錄的 cups 欄位 `price`、`tip`、`wait`；`Stats.day()` 有 revenue、walkouts、wait_sum、waited。
 
 ## 咖啡機（machines/）
 - `Traits` 會影響模擬：溫度偏移與飄動、鍋爐加熱與降溫、通道效應、甜感、壓力上限、`profile="lever"`、`milk="frother"/"wand"`、`steam_power`、`steam_heatup`（單鍋爐）、`grinder="external"/"integrated"`。
@@ -132,14 +170,16 @@ cafe_desk/
 - `festivals.py`：只用國曆固定日期的節日（`FESTIVALS` 裡寫開始與結束的月日）；`festival()`／`season()`／`adjust_weights()`；日期用 `today()`，測試可設環境變數
   `CAFE_DESK_DATE=YYYY-MM-DD`。季節限定飲品在 `DRINKS` 有 `festival` 欄位，只有當季出現在選單與隨機權重中。
   加醬的牛奶飲品用 DRINKS 欄位 `syrup`、`syrup_g`、`whip`（True／"opt"）、`dust`（cocoa／cinnamon）。
-- `maintenance.py`：計數存在設定檔 `maintenance`；`start_brew` 加 backflush 與 drip，`finish_session` 加 wand，
+- `maintenance.py`：計數每台咖啡機各自一份，存在設定檔 `maintenance`（`{咖啡機: {項目: 數值}}`，`CafeDesk.maint_all`；
+  `self.maint` 是目前這台的 property）；`start_brew` 加 backflush 與 drip，`finish_session` 加 wand，
   敲渣事件加 knock。`Job` 是清潔動作的時間軸（`CafeDesk.job`，會讓 `busy()` 為真）。
   `penalty()` 在 `finish_session` 扣分並在評語提醒；自動模式在閒置時先清該清的。
-- `stats.py`：紀錄存在設定檔旁的 SQLite `*_records.db`（cups、events、achievements 三張表）。
+- `stats.py`：紀錄存在設定檔旁的 SQLite `*_records.db`（cups、events、achievements 三張表）。新增 cups 欄位時同時在 `CUP_FIELD_VERSIONS` 記下新的欄位數（舊列用當時的欄位數驗簽章），`_create()` 會自動 ALTER TABLE 補欄位。
   每列有 HMAC 簽章並串成鏈（`prev` 是上一列的簽章）；`load()` 只採用驗證通過的列，從頭重算所有統計，
   驗證失敗的筆數記在 `Stats.tampered`，紀錄視窗會提醒。金鑰在程式裡，只能防隨手改資料庫，不是密碼學保護。
   `Stats.record(cup)` 寫一列並回傳新解鎖成就；`announce()` 加入 `toasts` 通知。成就清單在 `ACHIEVEMENTS`，
-  條件在 `Stats.check()`。新增 cups 欄位時要加到 `CUP_FIELDS` 尾端（簽章依欄位順序計算），並處理舊資料庫的
+  條件在 `Stats.check()`；不是由某一杯觸發的用 `Stats.unlock(key)`。分級成就（銅／銀／金）寫在 `TIER_GROUPS`，
+  每一級是獨立的 key，數值由 `tier_values()` 算；早起／夜貓子用 `clock_hour()`（測試固定為中午）。新增 cups 欄位時要加到 `CUP_FIELDS` 尾端（簽章依欄位順序計算），並處理舊資料庫的
   `ALTER TABLE`。v7 的 `*_stats.json` 第一次啟動時只匯入成就，然後改名 .bak。
 - `records.py`：紀錄與收集冊視窗（今天、近兩週圖表、成就、拉花收集、圖鑑）。
 - 右鍵選單「Language」刻意不翻譯。
@@ -155,7 +195,7 @@ cafe_desk/
 - 烘焙度 key（淺焙／中焙／深焙）是內部資料與設定檔的值，只在顯示時翻譯。
 
 ## 新增飲品的清單
-1. 在 `DRINKS`、`DRINK_ORDER`、`AUTO_WEIGHTS`、`ORDER_WEIGHTS`（orders.py）加上新飲品；需要新杯子時加到 `CUP_KINDS`，並注意容量要裝得下（PourStage 在杯子滿 97% 時停止倒）。
+1. 在 `DRINKS`、`DRINK_ORDER`、`ORDER_WEIGHTS`、`PRICES`（orders.py）加上新飲品；需要新杯子時加到 `CUP_KINDS`，並注意容量要裝得下（PourStage 在杯子滿 97% 時停止倒）。
 2. 需要新參數時：在 `DrinkParams` 加欄位，熱牛奶類另外加 `MILK_SPEC`，再到 settings.py 的 `DRINK_SLIDERS` 加滑桿並設定適用的飲品。
 3. 在 `Session.__init__` 組合流程，在 `score_drink()` 加評分規則。
 4. 繪圖：`render/milk.py` 的 `paint_mixed_liquid` 依 `drink_kind()` 分支；`liquid.py` 的 `paint_liquid` 負責切換到混合液體的畫法。
