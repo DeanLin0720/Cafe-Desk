@@ -4,10 +4,13 @@
 
 放在桌面上的咖啡機擺件。視窗裡站著咖啡機、磨豆機和各種器具（預設是一般視窗；右鍵取消「視窗化顯示」就變成透明無邊框、直接站在桌面上），點一下就用動畫和合成音效做一杯咖啡，最後給一個簡單的分數。
 
+- 三種沖煮方式，各有自己的畫面：義式咖啡機、手沖、冰滴（冰滴在背景用真實時間慢慢滴，關掉程式也會繼續）
 - 四台咖啡機（DESK·01 雙錶不鏽鋼機、復古拉桿機、小型單鍋爐機、內建磨豆的一體機），各有特性影響萃取
-- 濃縮、美式、拿鐵、卡布奇諾、馥列白、摩卡、焦糖瑪奇朵、濃縮通寧、阿芙佳朵等 16 種飲品，節日期間另有 3 款季節限定
-- 完整備粉流程（取把手 → 敲渣 → 磨豆 → 布粉 → 填壓 → 扣回）、打奶與拉花、顧客點單、豆子與養豆天數、清潔保養
-- 每日紀錄、17 個成就、拉花收集冊
+- 濃縮、美式、拿鐵、卡布奇諾、馥列白、摩卡、焦糖瑪奇朵、濃縮通寧、阿芙佳朵等 16 種義式飲品，加上手沖、冰滴；節日期間另有 3 款季節限定
+- 完整備粉流程（取把手 → 敲渣 → 磨豆 → 布粉 → 填壓 → 扣回）、打奶與拉花、豆子與養豆天數、清潔保養（每台咖啡機分開計算）
+- 顧客點單（營業模式）：客人排隊、有耐心、會等到離開，有價格與小費、當日營業額；客人隨機點，自動換咖啡機與沖煮方式
+- 自動模式：照目前的設定重複沖煮
+- 每日紀錄、48 個成就（8 組分成銅／銀／金三級）、拉花收集冊
 - 繁體中文／English
 
 <p align="center">
@@ -41,6 +44,27 @@
   </tr>
 </table>
 
+### 手沖與冰滴
+
+<table width="100%">
+  <tr>
+    <td width="33%" align="center" valign="top"><img src="docs/images/pourover.png" alt="手沖注水" width="240" height="278"><br><b>手沖</b><br>沖煮時畫面拉近：悶蒸、分段繞圈注水、滴濾</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/pourover_serve.png" alt="分享壺倒進杯子" width="240" height="278"><br><b>倒進杯子</b><br>沖完拉遠，分享壺倒進杯子；左邊是手沖用磨豆機</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/colddrip.png" alt="冰滴塔" width="240" height="278"><br><b>冰滴</b><br>在背景用真實時間滴約 1 小時，滴完可以做 4 杯</td>
+  </tr>
+</table>
+
+右鍵「沖煮方式」切換義式咖啡機、手沖、冰滴；「飲品」選單只列出這個方式能做的飲品。
+
+### 營業模式
+
+<p align="center">
+  <img src="docs/images/business.png" alt="營業模式：點單紙後面疊著排隊的訂單" width="420">
+</p>
+
+右鍵勾選「顧客點單模式」：客人隨時上門排隊（最多 4 位），點單紙後面疊著排隊的訂單、下緣是客人剩下的耐心；
+咖啡師自己接單，客人點什麼就自動換到那台咖啡機或沖煮方式。狀態列顯示排隊人數與今日營業額。
+
 ## 安裝與執行
 
 開發與測試環境：Windows 11、Python 3.14、PySide6 6.12。
@@ -56,11 +80,17 @@ Windows 用 `pythonw` 不會多開一個主控台視窗；要看錯誤訊息時�
 
 | 動作 | 說明 |
 |---|---|
-| 左鍵點咖啡機或磨豆機 | 開始沖煮 |
+| 左鍵點咖啡機或磨豆機 | 開始沖煮（手沖、冰滴畫面點任何地方） |
 | 滑鼠停在機身上 | 顯示萃取曲線卡片（拿鐵類會同時顯示拉花） |
 | 左鍵拖曳 | 移動位置（會記住） |
-| 右鍵 | 選單：飲品、咖啡機、參數設定、豆子、清潔保養、紀錄與收集冊、自動模式、顧客點單、大小、Language、關於… |
-| 系統匣圖示 | 單擊叫回咖啡機；右鍵有沖煮、自動模式、結束 |
+| 右鍵 | 選單：沖煮方式、咖啡機、飲品、拉花圖案、參數設定、豆子、清潔保養、紀錄與收集冊、自動模式（含沖煮間隔）、顧客點單、視窗化顯示、大小、Language、關於… |
+| 系統匣圖示 | 單擊叫回咖啡機；右鍵有沖煮、自動模式、顧客點單、結束 |
+
+| 模式 | 說明 |
+|---|---|
+| 一般 | 點沖煮設備做目前選的飲品 |
+| 自動模式 | 每隔設定的間隔，照目前的飲品與參數再做一杯（豆子用完自己開新包、該清潔時自己清） |
+| 顧客點單 | 營業模式：客人隨機點、排隊、有耐心，咖啡師自己接單；點單時沖煮方式、咖啡機、飲品等選單鎖住 |
 
 同一份設定檔只會有一個 Café Desk 在跑，再開一次會把原本那台叫出來。完整的功能說明在 `main.py` 開頭。
 
@@ -106,12 +136,15 @@ python -m pytest
 
 [繁體中文](#café-desk-桌上咖啡吧) ｜ **English**
 
-A coffee machine desktop toy. A transparent, borderless window holds an espresso machine, a grinder and assorted gear. Click once and it makes a coffee with animation and synthesized sound effects, then gives you a simple score.
+A coffee machine desktop toy. A window holds an espresso machine, a grinder and assorted gear (a normal window by default; untick "Windowed" in the right-click menu to make it a transparent, borderless toy standing on your desktop). Click once and it makes a coffee with animation and synthesized sound effects, then gives you a simple score.
 
+- Three brew methods, each with its own scene: espresso machine, pour-over and cold drip (cold drip drips in the background in real time, even while the app is closed)
 - Four machines (DESK·01 dual-gauge steel machine, vintage lever machine, compact single-boiler machine, all-in-one with built-in grinder), each with traits that affect extraction
-- 16 drinks including espresso, americano, latte, cappuccino, flat white, mocha, caramel macchiato, espresso tonic and affogato, plus 3 seasonal specials during festivals
-- Full prep workflow (take the portafilter → knock out → grind → distribute → tamp → lock in), milk steaming and latte art, customer orders, beans and rest days, cleaning and maintenance
-- Daily records, 17 achievements, a latte art collection
+- 16 espresso drinks including espresso, americano, latte, cappuccino, flat white, mocha, caramel macchiato, espresso tonic and affogato, plus pour-over and cold drip, and 3 seasonal specials during festivals
+- Full prep workflow (take the portafilter → knock out → grind → distribute → tamp → lock in), milk steaming and latte art, beans and rest days, cleaning and maintenance (tracked per machine)
+- Customer orders (business mode): customers queue up, have limited patience and may leave, pay prices and tips toward today's revenue; they order at random and the barista switches machines and brew methods to match
+- Auto mode: keeps brewing your current drink with your current settings
+- Daily records, 48 achievements (8 sets with bronze / silver / gold tiers), a latte art collection
 - 繁體中文 / English
 
 <p align="center">
@@ -145,6 +178,27 @@ When a drink is done, the status bar shows stars, a score and a comment. Hover o
   </tr>
 </table>
 
+### Pour-over and cold drip
+
+<table width="100%">
+  <tr>
+    <td width="33%" align="center" valign="top"><img src="docs/images/pourover_en.png" alt="Pour-over" width="240" height="278"><br><b>Pour-over</b><br>The view zooms in while brewing: bloom, pulse pours, drawdown</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/pourover_serve_en.png" alt="Serving from the server" width="240" height="278"><br><b>Serve</b><br>It zooms back out and pours the server into the cup; the pour-over grinder is on the left</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/colddrip_en.png" alt="Cold drip tower" width="240" height="278"><br><b>Cold drip</b><br>Drips in the background for about an hour of real time, then makes 4 cups</td>
+  </tr>
+</table>
+
+Use "Brew Method" in the right-click menu to switch between the espresso machine, pour-over and cold drip; the drinks menu lists only what that method can make.
+
+### Business mode
+
+<p align="center">
+  <img src="docs/images/business_en.png" alt="Business mode: queued orders stacked behind the order slip" width="420">
+</p>
+
+Tick "Customer orders" in the right-click menu: customers keep arriving and queue up (up to 4), queued orders stack behind the slip and the bar at its bottom shows how much patience is left.
+The barista takes the orders and switches to the machine or brew method each drink needs. The status bar shows the queue and today's revenue.
+
 ## Install and run
 
 Developed and tested on Windows 11, Python 3.14, PySide6 6.12.
@@ -160,11 +214,17 @@ On Windows, `pythonw` avoids opening an extra console window, use `python` when 
 
 | Action | What it does |
 |---|---|
-| Left-click the machine or grinder | Start brewing |
+| Left-click the machine or grinder | Start brewing (anywhere in the pour-over and cold drip scenes) |
 | Hover over the machine | Show the extraction curve card (with latte art for milk drinks) |
 | Left-drag | Move the window (position is remembered) |
-| Right-click | Menu: drinks, machine, settings, beans, cleaning, records and collection, auto mode, customer orders, size, Language, About… |
-| Tray icon | Click to bring the machine back, right-click for brew, auto mode, quit |
+| Right-click | Menu: brew method, machine, drinks, latte art, settings, beans, cleaning, records and collection, auto mode (with interval), customer orders, windowed, size, Language, About… |
+| Tray icon | Click to bring the machine back, right-click for brew, auto mode, customer orders, quit |
+
+| Mode | What it does |
+|---|---|
+| Normal | Click the brewer to make the selected drink |
+| Auto mode | Makes the selected drink again with your settings at the chosen interval (opens a new bag and cleans when needed) |
+| Customer orders | Business mode: random orders, a queue and patience, the barista takes orders itself; brew method, machine, drink and similar menus are locked while it runs |
 
 Only one Café Desk runs per config file, launching it again brings the running one to the front. A full feature description is at the top of `main.py`.
 
