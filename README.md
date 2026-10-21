@@ -4,7 +4,7 @@
 
 放在桌面上的咖啡機擺件。視窗裡站著咖啡機、磨豆機和各種器具（預設是一般視窗；右鍵取消「視窗化顯示」就變成透明無邊框、直接站在桌面上），點一下就用動畫和合成音效做一杯咖啡，最後給一個簡單的分數。
 
-- 三種沖煮方式，各有自己的畫面：義式咖啡機、手沖、冰滴（冰滴在背景用真實時間慢慢滴，關掉程式也會繼續）
+- 三種沖煮方式，各有自己的畫面：義式咖啡機、手沖、冰滴（冰滴約 1 小時，依架好時記下的時間計算；關掉程式時不會執行，重開時依經過的時間算出進度）
 - 四台咖啡機（DESK·01 雙錶不鏽鋼機、復古拉桿機、小型單鍋爐機、內建磨豆的一體機），各有特性影響萃取
 - 濃縮、美式、拿鐵、卡布奇諾、馥列白、摩卡、焦糖瑪奇朵、濃縮通寧、阿芙佳朵等 16 種義式飲品，加上手沖、冰滴；節日期間另有 3 款季節限定
 - 完整備粉流程（取把手 → 敲渣 → 磨豆 → 布粉 → 填壓 → 扣回）、打奶與拉花、豆子與養豆天數、清潔保養（每台咖啡機分開計算）
@@ -50,7 +50,7 @@
   <tr>
     <td width="33%" align="center" valign="top"><img src="docs/images/pourover.png" alt="手沖注水" width="240" height="278"><br><b>手沖</b><br>沖煮時畫面拉近：悶蒸、分段繞圈注水、滴濾</td>
     <td width="33%" align="center" valign="top"><img src="docs/images/pourover_serve.png" alt="分享壺倒進杯子" width="240" height="278"><br><b>倒進杯子</b><br>沖完拉遠，分享壺倒進杯子；左邊是手沖用磨豆機</td>
-    <td width="33%" align="center" valign="top"><img src="docs/images/colddrip.png" alt="冰滴塔" width="240" height="278"><br><b>冰滴</b><br>在背景用真實時間滴約 1 小時，滴完可以做 4 杯</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/colddrip.png" alt="冰滴塔" width="240" height="278"><br><b>冰滴</b><br>依實際經過的時間滴約 1 小時（關掉程式時間也照算），滴完可以做 4 杯</td>
   </tr>
 </table>
 
@@ -138,7 +138,7 @@ python -m pytest
 
 A coffee machine desktop toy. A window holds an espresso machine, a grinder and assorted gear (a normal window by default; untick "Windowed" in the right-click menu to make it a transparent, borderless toy standing on your desktop). Click once and it makes a coffee with animation and synthesized sound effects, then gives you a simple score.
 
-- Three brew methods, each with its own scene: espresso machine, pour-over and cold drip (cold drip drips in the background in real time, even while the app is closed)
+- Three brew methods, each with its own scene: espresso machine, pour-over and cold drip (cold drip takes about an hour, measured from the time the tower was set up; nothing runs while the app is closed, and on the next launch the progress is worked out from the elapsed time)
 - Four machines (DESK·01 dual-gauge steel machine, vintage lever machine, compact single-boiler machine, all-in-one with built-in grinder), each with traits that affect extraction
 - 16 espresso drinks including espresso, americano, latte, cappuccino, flat white, mocha, caramel macchiato, espresso tonic and affogato, plus pour-over and cold drip, and 3 seasonal specials during festivals
 - Full prep workflow (take the portafilter → knock out → grind → distribute → tamp → lock in), milk steaming and latte art, beans and rest days, cleaning and maintenance (tracked per machine)
@@ -184,7 +184,7 @@ When a drink is done, the status bar shows stars, a score and a comment. Hover o
   <tr>
     <td width="33%" align="center" valign="top"><img src="docs/images/pourover_en.png" alt="Pour-over" width="240" height="278"><br><b>Pour-over</b><br>The view zooms in while brewing: bloom, pulse pours, drawdown</td>
     <td width="33%" align="center" valign="top"><img src="docs/images/pourover_serve_en.png" alt="Serving from the server" width="240" height="278"><br><b>Serve</b><br>It zooms back out and pours the server into the cup; the pour-over grinder is on the left</td>
-    <td width="33%" align="center" valign="top"><img src="docs/images/colddrip_en.png" alt="Cold drip tower" width="240" height="278"><br><b>Cold drip</b><br>Drips in the background for about an hour of real time, then makes 4 cups</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/colddrip_en.png" alt="Cold drip tower" width="240" height="278"><br><b>Cold drip</b><br>Takes about an hour of elapsed clock time (time keeps counting while the app is closed), then makes 4 cups</td>
   </tr>
 </table>
 
