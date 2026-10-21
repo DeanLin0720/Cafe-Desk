@@ -53,7 +53,7 @@ PO_STAND_X = 100              # 濾杯與分享壺的中心
 CD_TOWER_X = 84               # 冰滴塔左緣（塔寬 86）
 MK_STOVE_X = 116              # 摩卡壺爐子（與壺）的中心
 SY_X = 116                    # 虹吸壺（燈、下壺、上壺）的中心
-CUP_RIGHT = {"pourover": 135, "colddrip": 130, "moka": 135, "siphon": 130}  # 成品杯中心到視窗右緣（場景座標）
+CUP_RIGHT = {"pourover": 170, "colddrip": 160, "moka": 165, "siphon": 170}  # 成品杯中心到視窗右緣（場景座標）：右邊要留位置給倒的時候傾斜的壺
 # 沖煮時拉近：磨豆機與杯子淡出，沖煮器具放大到 GEAR_ZOOM 倍、移到視窗中央（FOCUS_X 是器具座標的中心）；
 # 沖完拉遠再倒進杯子。冰滴塔很高，拉近時頂端會伸進上方的透明區
 GEAR_ZOOM = {"pourover": 3.0, "colddrip": 1.6, "moka": 3.0, "siphon": 1.75}

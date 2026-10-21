@@ -10,6 +10,8 @@
 - 完整備粉流程（取把手 → 敲渣 → 磨豆 → 布粉 → 填壓 → 扣回）、打奶與拉花、豆子與養豆天數、清潔保養（每台咖啡機分開計算）
 - 顧客點單（營業模式）：客人排隊、有耐心、會等到離開，有價格與小費、當日營業額；客人隨機點，自動換咖啡機與沖煮方式
 - 自動模式：照目前的設定重複沖煮
+- 陪伴功能：環境音（下雨天的咖啡廳、森林雨聲與遠雷）、休息提醒、每天自動檢查新版本
+- 簡化的物理：倒的時候液面保持水平、越倒越空傾斜得越多，容器從杯子上方繞過；手沖的水珠受重力加速、細水柱斷成水滴
 - 每日紀錄、51 個成就（8 組分成銅／銀／金三級）、拉花收集冊
 - 繁體中文／English
 
@@ -54,7 +56,17 @@
   </tr>
 </table>
 
-右鍵「沖煮方式」切換義式咖啡機、手沖、冰滴；「飲品」選單只列出這個方式能做的飲品。
+### 摩卡壺與虹吸壺
+
+<table width="100%">
+  <tr>
+    <td width="33%" align="center" valign="top"><img src="docs/images/moka.png" alt="摩卡壺" width="240" height="278"><br><b>摩卡壺</b><br>小瓦斯爐點火，咖啡從中柱咕嚕咕嚕冒出來；火力越大火焰越大，太大會焦苦</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/siphon.png" alt="虹吸壺" width="240" height="278"><br><b>虹吸壺</b><br>酒精燈把水推上上壺，下粉、竹棒攪拌、浸泡；熄火後咖啡被吸回下壺</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/siphon_serve.png" alt="從下壺倒進杯子" width="240" height="278"><br><b>倒進杯子</b><br>拿掉上壺，從下壺倒進杯子；液面保持水平，越倒越空傾斜得越多</td>
+  </tr>
+</table>
+
+右鍵「沖煮方式」切換義式咖啡機、手沖、冰滴、摩卡壺、虹吸壺；「飲品」選單只列出這個方式能做的飲品。
 
 ### 營業模式
 
@@ -65,7 +77,12 @@
 右鍵勾選「顧客點單模式」：客人隨時上門排隊（最多 4 位），點單紙後面疊著排隊的訂單、下緣是客人剩下的耐心；
 咖啡師自己接單，客人點什麼就自動換到那台咖啡機或沖煮方式。狀態列顯示排隊人數與今日營業額。
 
-## 安裝與執行
+## 下載（Windows）
+
+到 [Releases](https://github.com/DeanLin0720/Cafe-Desk/releases/latest) 下載 `CafeDesk-vX.Y.Z-win64.7z`，解壓後執行 `CafeDesk.exe`，不需要安裝 Python。
+發佈檔由 GitHub Actions 從原始碼公開建置，可以用 `gh attestation verify <檔名> --repo DeanLin0720/Cafe-Desk` 確認檔案來自這個倉庫的建置，SHA256 附在同一個 Release。
+
+## 從原始碼執行
 
 開發與測試環境：Windows 11、Python 3.14、PySide6 6.12。
 
@@ -80,10 +97,10 @@ Windows 用 `pythonw` 不會多開一個主控台視窗；要看錯誤訊息時�
 
 | 動作 | 說明 |
 |---|---|
-| 左鍵點咖啡機或磨豆機 | 開始沖煮（手沖、冰滴畫面點任何地方） |
+| 左鍵點咖啡機或磨豆機 | 開始沖煮（手沖、冰滴、摩卡壺、虹吸壺的畫面點任何地方） |
 | 滑鼠停在機身上 | 顯示萃取曲線卡片（拿鐵類會同時顯示拉花） |
 | 左鍵拖曳 | 移動位置（會記住） |
-| 右鍵 | 選單：沖煮方式、咖啡機、飲品、拉花圖案、參數設定、豆子、清潔保養、紀錄與收集冊、自動模式（含沖煮間隔）、顧客點單、視窗化顯示、大小、Language、關於… |
+| 右鍵 | 選單：沖煮方式、咖啡機、飲品、拉花圖案、參數設定、豆子、清潔保養、紀錄與收集冊、自動模式（含沖煮間隔）、顧客點單、休息提醒、聲音（音量、環境音）、視窗化顯示、大小、Language、更新、關於… |
 | 系統匣圖示 | 單擊叫回咖啡機；右鍵有沖煮、自動模式、顧客點單、結束 |
 
 | 模式 | 說明 |
@@ -109,7 +126,9 @@ Windows 用 `pythonw` 不會多開一個主控台視窗；要看錯誤訊息時�
 | `cafe_desk.json` | 設定（刪除即恢復預設） |
 | `cafe_desk_records.db` | 每杯紀錄與成就（SQLite，每筆有簽章） |
 | `cafe_desk.log` | 錯誤紀錄（回報問題時請附上） |
-| `sound/` | 第一次執行時合成的音效 |
+| `sound/` | 第一次執行時合成的音效；環境音第一次選用時才合成 |
+
+唯一的網路連線是檢查更新：每天一次查詢 GitHub Releases 的最新版本號，不送出任何個人資料；右鍵「更新」可以關閉。
 
 ## 打包（Windows）
 
@@ -128,7 +147,7 @@ python -m pytest
 ```
 
 測試在無頭模式執行，不會開視窗也不會出聲。`tools/` 裡有壓力測試、各階段截圖、畫面回歸比對等工具。
-架構、慣例與注意事項見 `CLAUDE.md`，開發歷程與待辦見 `handoff.md`，版本變更見 `CHANGELOG.md`。
+版本變更見 `CHANGELOG.md`。推 `v*` tag 會由 GitHub Actions 測試、打包並發佈 Release（`.github/workflows/release.yml`）。
 
 ## 授權
 
@@ -150,6 +169,8 @@ A coffee machine desktop toy. A window holds an espresso machine, a grinder and 
 - Full prep workflow (take the portafilter → knock out → grind → distribute → tamp → lock in), milk steaming and latte art, beans and rest days, cleaning and maintenance (tracked per machine)
 - Customer orders (business mode): customers queue up, have limited patience and may leave, pay prices and tips toward today's revenue; they order at random and the barista switches machines and brew methods to match
 - Auto mode: keeps brewing your current drink with your current settings
+- Extras: ambience (a rainy-day café, forest rain with distant thunder), break reminders, a daily update check
+- Simple physics: liquid stays level while pouring and the vessel tips further as it empties, vessels go over the cup instead of through it, pour-over drips accelerate and a thin stream breaks into drops
 - Daily records, 51 achievements (8 sets with bronze / silver / gold tiers), a latte art collection
 - 繁體中文 / English
 
@@ -194,7 +215,17 @@ When a drink is done, the status bar shows stars, a score and a comment. Hover o
   </tr>
 </table>
 
-Use "Brew Method" in the right-click menu to switch between the espresso machine, pour-over and cold drip; the drinks menu lists only what that method can make.
+### Moka pot and siphon
+
+<table width="100%">
+  <tr>
+    <td width="33%" align="center" valign="top"><img src="docs/images/moka_en.png" alt="Moka pot" width="240" height="278"><br><b>Moka pot</b><br>On a small gas stove, coffee gurgles up through the center column; more heat means a bigger flame, and too much tastes scorched</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/siphon_en.png" alt="Siphon" width="240" height="278"><br><b>Siphon</b><br>An alcohol lamp pushes the water into the top chamber; add the grounds, stir with a bamboo paddle and steep, then the coffee is drawn back down when the flame goes out</td>
+    <td width="33%" align="center" valign="top"><img src="docs/images/siphon_serve_en.png" alt="Pouring from the bottom globe" width="240" height="278"><br><b>Serve</b><br>The top chamber comes off and the bottom globe pours into the cup; the liquid stays level and the globe tips further as it empties</td>
+  </tr>
+</table>
+
+Use "Brew Method" in the right-click menu to switch between the espresso machine, pour-over, cold drip, moka pot and siphon; the drinks menu lists only what that method can make.
 
 ### Business mode
 
@@ -205,7 +236,12 @@ Use "Brew Method" in the right-click menu to switch between the espresso machine
 Tick "Customer orders" in the right-click menu: customers keep arriving and queue up (up to 4), queued orders stack behind the slip and the bar at its bottom shows how much patience is left.
 The barista takes the orders and switches to the machine or brew method each drink needs. The status bar shows the queue and today's revenue.
 
-## Install and run
+## Download (Windows)
+
+Get `CafeDesk-vX.Y.Z-win64.7z` from [Releases](https://github.com/DeanLin0720/Cafe-Desk/releases/latest), extract it and run `CafeDesk.exe`. No Python needed.
+Release files are built publicly from source by GitHub Actions. `gh attestation verify <file> --repo DeanLin0720/Cafe-Desk` confirms a file came from this repository's build, and the SHA256 is attached to the same Release.
+
+## Run from source
 
 Developed and tested on Windows 11, Python 3.14, PySide6 6.12.
 
@@ -220,10 +256,10 @@ On Windows, `pythonw` avoids opening an extra console window, use `python` when 
 
 | Action | What it does |
 |---|---|
-| Left-click the machine or grinder | Start brewing (anywhere in the pour-over and cold drip scenes) |
+| Left-click the machine or grinder | Start brewing (anywhere in the pour-over, cold drip, moka pot and siphon scenes) |
 | Hover over the machine | Show the extraction curve card (with latte art for milk drinks) |
 | Left-drag | Move the window (position is remembered) |
-| Right-click | Menu: brew method, machine, drinks, latte art, settings, beans, cleaning, records and collection, auto mode (with interval), customer orders, windowed, size, Language, About… |
+| Right-click | Menu: brew method, machine, drinks, latte art, settings, beans, cleaning, records and collection, auto mode (with interval), customer orders, break reminder, sound (volume, ambience), windowed, size, Language, updates, About… |
 | Tray icon | Click to bring the machine back, right-click for brew, auto mode, customer orders, quit |
 
 | Mode | What it does |
@@ -249,7 +285,9 @@ Stored next to the program (next to `CafeDesk.exe` when packaged), or in the use
 | `cafe_desk.json` | Settings (delete to reset to defaults) |
 | `cafe_desk_records.db` | Per-cup records and achievements (SQLite, each row signed) |
 | `cafe_desk.log` | Error log (please attach it when reporting issues) |
-| `sound/` | Sound effects synthesized on first run |
+| `sound/` | Sound effects synthesized on first run; ambience is synthesized the first time you pick it |
+
+The only network access is the update check: once a day it asks GitHub Releases for the latest version number and sends no personal data. Turn it off under Updates in the right-click menu.
 
 ## Packaging (Windows)
 
@@ -268,7 +306,7 @@ python -m pytest
 ```
 
 Tests run headless: no windows, no sound. `tools/` has stress tests, per-stage screenshots and render regression tools.
-See `CLAUDE.md` for architecture and conventions, `handoff.md` for history and TODOs, and `CHANGELOG.md` for version changes.
+See `CHANGELOG.md` for version changes. Pushing a `v*` tag makes GitHub Actions test, package and publish a Release (`.github/workflows/release.yml`).
 
 ## License
 

@@ -53,3 +53,25 @@ def test_vessel_never_dips_into_the_cup(desk, machine, drink):
                 checked += 1
     assert checked > 0
     run_until_idle(desk)
+
+
+@pytest.mark.parametrize("machine", ["desk01", "lever"])
+@pytest.mark.parametrize("drink", ["pour_over", "moka_pot", "siphon"])
+def test_poured_vessel_stays_inside_the_window(desk, machine, drink):
+    """手沖台的壺倒進杯子時，傾斜的壺不會超出視窗右邊（杯子離右緣要留夠位置）"""
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QTransform
+    desk.set_machine(machine)
+    desk.bag["left"] = 250
+    assert desk.start_session(drink, True)
+    right = 0.0
+    while desk.busy():
+        desk.step(0.05, 0.1)
+        ss = desk.session
+        st = ss.stage if ss else None
+        v = ss.vessel if ss else None
+        if v and getattr(st, "physics", False):
+            m = QTransform().rotate(-v["tilt"])
+            right = max(right, max(v["x"] + m.map(QPointF(px, py)).x() * st.scale
+                                   for px, py in vessels.outline(v["kind"])))
+    assert 0 < right <= desk.machine.scene_w - 2, (drink, right, desk.machine.scene_w)
