@@ -23,7 +23,8 @@ class MachineRenderer:
         p.save()
         p.translate(m.mx, m.my)
         m.paint_static(self, p)
-        self.cup.paint_back(p)
+        if not self.cupless():
+            self.cup.paint_back(p)
         p.restore()
         if external:
             self.paint_grinder_static(p)
@@ -33,7 +34,8 @@ class MachineRenderer:
         m = self.machine
         p.save()
         p.translate(m.mx, m.my)
-        self.cup.paint_front(p)
+        if not self.cupless():
+            self.cup.paint_front(p)
         m.paint_front(self, p)
         p.restore()
 

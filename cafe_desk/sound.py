@@ -374,6 +374,24 @@ def _boil(seconds=1.6):
     return [math.tanh(v * 1.3) * 0.5 for v in buf]
 
 
+def _coin(seconds=0.7):
+    """小費：硬幣掉進玻璃罐——金屬的不和諧高頻泛音，彈跳兩三下、一下比一下小，加一點玻璃的餘響"""
+    rnd = random.Random(31)
+    n = int(SR * seconds)
+    out = [0.0] * n
+    metal = [(1.0, 1.0, 0.09), (2.41, 0.6, 0.06), (3.87, 0.35, 0.045), (5.12, 0.2, 0.03)]
+    for k, (start, amp) in enumerate(((0.0, 1.0), (0.11, 0.55), (0.19, 0.3), (0.245, 0.14))):
+        f0 = 2650 * (1 + 0.03 * k)
+        s0 = int(start * SR)
+        for i in range(s0, min(n, s0 + int(SR * 0.35))):
+            t = (i - s0) / SR
+            v = sum(a * math.sin(2 * math.pi * f0 * m * t) * math.exp(-t / d) for m, a, d in metal)
+            v += rnd.uniform(-1, 1) * math.exp(-t / 0.0012) * 0.5           # 碰撞的瞬間
+            v += 0.25 * math.sin(2 * math.pi * 1180 * t) * math.exp(-t / 0.12)  # 玻璃罐
+            out[i] += v * amp * 0.32
+    return out
+
+
 def _beep(seconds=0.5):
     """奶泡機完成的兩聲短嗶"""
     out = []
@@ -633,7 +651,7 @@ def _rain(seconds=30.0):
 AMBIENCE = {"cafe": _cafe, "rain": _rain}         # 環境音種類 → 合成函式；檔名 amb_<種類>.wav
 
 
-SFX_VERSION = "13"         # 修改音效合成參數時遞增，舊檔會自動重新產生
+SFX_VERSION = "14"         # 修改音效合成參數時遞增，舊檔會自動重新產生
 
 
 def sound_dir():
@@ -664,7 +682,7 @@ def build_sounds():
         "lock": _lock, "grinder": _grinder, "tap": _tap, "tamp": _tamp, "knock": _knock,
         "hiss": _hiss, "relay": _relay,
         "steam": _steam, "chirp": _chirp, "frother": _frother, "ice": _ice, "beep": _beep,
-        "flame": _flame, "gurgle": _gurgle, "boil": _boil,
+        "flame": _flame, "gurgle": _gurgle, "boil": _boil, "coin": _coin,
     }
     ver_file = os.path.join(d, "version.txt")
     try:
@@ -724,7 +742,7 @@ class SoundBank:
             for name in ("pump", "pour", "grinder", "steam", "chirp", "frother", "flame", "gurgle", "boil"):
                 self.fx[name] = make(files[name], loop=True)
             for name in ("click", "ding_hi", "ding_lo", "lock", "tap", "tamp", "knock", "hiss", "relay",
-                         "ice", "beep"):
+                         "ice", "beep", "coin"):
                 self.fx[name] = make(files[name])
             self.drips = [make(files[f"drip{i % 3}"]) for i in range(6)]
         except Exception as exc:          # 音訊初始化失敗就靜音執行，不讓程式掛掉

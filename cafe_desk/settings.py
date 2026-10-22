@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (QDialog, QSlider, QLabel, QGridLayout, QComboBox,
 from .drinks import DRINKS, DRINK_KEYS, DrinkParams, ART_CHOICES, MILK_KINDS, shot_params, whip_on, method_of
 from .model import ROASTS, Params, simulate
 from .i18n import T
-from . import beans, festivals, brew
+from . import beans, festivals, brew, theme, growth
 
 SLIDERS = [
     ("研磨粒徑", "grind_um", 150, 500, 5, "µm"),
@@ -74,6 +74,7 @@ class SettingsDialog(QDialog):
         self.app = app
         self.setWindowTitle(T("沖煮參數"))
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        theme.apply_dialog(self)
         grid = QGridLayout(self)
         self.sliders = {}
         self.espresso_rows = []                     # 只有義式咖啡機用得到的列（手沖／冰滴時隱藏）
@@ -127,6 +128,7 @@ class SettingsDialog(QDialog):
             self.drink.addItem(T(DRINKS[key]["name"]), key)
         self.drink.setCurrentIndex(self.drink_keys.index(app.drink) if app.drink in self.drink_keys else 0)
         self.drink.currentIndexChanged.connect(lambda _i: self.drink_changed())
+        self.refresh_locks()
         grid.addWidget(self.drink, r, 1)
         r += 1
         self.preset = QLabel()
@@ -196,10 +198,16 @@ class SettingsDialog(QDialog):
         self.sync_lock()
 
     def sync_lock(self):
-        """顧客點單時飲品與拉花圖案照訂單，不能改"""
+        """營業中飲品與拉花圖案照訂單、參數由咖啡師自己調，都不能改（離開營業後還原成你的設定）"""
         free = not self.app.order_mode
         self.drink.setEnabled(free)
         self.art.setEnabled(free)
+        for attr, (sl, *_r) in self.sliders.items():
+            sl.setEnabled(free and attr != "bean_age")
+        for sl, *_r in self.dsliders.values():
+            sl.setEnabled(free)
+        self.basket.setEnabled(free)
+        self.milk_kind.setEnabled(free)
 
     def sync_bean(self):
         """豆子換了：烘焙度、養豆天數跟著更新"""
@@ -223,6 +231,13 @@ class SettingsDialog(QDialog):
         self.app.set_drink(self.drink.currentData())
         self.app.drink_actions[self.app.drink].setChecked(True)
         self.update_visibility()
+
+    def refresh_locks(self):
+        """還沒解鎖的飲品（沖煮方式看店鋪等級、飲品看咖啡師稱號）：反灰並寫怎麼解鎖"""
+        model = self.drink.model()
+        for i, key in enumerate(self.drink_keys):
+            model.item(i).setEnabled(self.app.drink_open(key))
+            self.drink.setItemText(i, T(DRINKS[key]["name"]) + self.app.drink_lock(key))
 
     def sync_drink(self):
         """選單換了飲品時同步下拉選單"""
@@ -307,6 +322,10 @@ class SettingsDialog(QDialog):
             res = simulate(p, self.app.machine.traits)
             text = T("預估 {t:.0f} 秒 · EY {ey:.1f}% · TDS {tds:.1f}% · {score:.0f} 分", t=res.time, ey=res.ey,
                      tds=res.tds, score=res.score)
+        rank = growth.rank_of(self.app.stats.data["total"])
+        capped = growth.skill_score(res.score, rank)
+        if capped < res.score - 0.05:                 # 咖啡師稱號壓縮高分：預估顯示實際會拿到的分數
+            text += T("（{rank}手感：{score:.0f} 分）", rank=T(growth.rank_name(rank)), score=capped)
         self.preview.setText(text)
 
     def changed(self, attr=None):

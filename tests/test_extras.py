@@ -116,3 +116,29 @@ def test_ambience_setting_saved(desk):
     with open(desk_cfg(desk), encoding="utf-8") as f:
         saved = json.load(f)
     assert saved["ambience"] == "rain" and saved["amb_level"] == 0.5
+
+
+def test_custom_break_interval(desk, monkeypatch):
+    """休息提醒「自訂…」：輸入分鐘數；取消維持原設定；選單顯示自訂的值"""
+    monkeypatch.setattr(desk, "ask_break_minutes", lambda: 35)
+    desk.custom_break()
+    assert desk.break_min == 35
+    texts = [a.text() for a in desk.break_menu.actions()]
+    assert any("35" in t and t.endswith("…") for t in texts)
+    monkeypatch.setattr(desk, "ask_break_minutes", lambda: None)
+    desk.custom_break()
+    assert desk.break_min == 35, "取消：不變"
+    from cafe_desk import config
+    desk.save_config()
+    assert config.load()["break_min"] == 35
+
+
+def test_speed_only_outside_business(desk):
+    """播放速度只對手動、自動有效；營業中固定 1 倍，選單反灰"""
+    desk.speed = 4.0
+    assert desk.play_speed() == 4.0 and desk.speed_menu.isEnabled()
+    desk.set_mode("business")
+    assert desk.play_speed() == 1.0 and not desk.speed_menu.isEnabled()
+    assert "1×" in desk.speed_menu.title()
+    desk.set_mode("auto")
+    assert desk.play_speed() == 4.0 and desk.speed_menu.isEnabled()

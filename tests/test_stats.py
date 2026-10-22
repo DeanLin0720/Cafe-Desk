@@ -7,8 +7,9 @@ from cafe_desk import stats
 
 
 def _cup(score=88.0, drink="latte", **kw):
+    """預設是為客人做的一杯（成就只算訂單）"""
     c = {"drink": drink, "title": "熱拿鐵", "score": score, "comment": "", "machine": "lever", "milk": "dairy",
-         "origin": "kenya", "bean_age": 10, "dose": 18, "art": "heart", "art_q": 0.7, "seed": 3}
+         "origin": "kenya", "bean_age": 10, "dose": 18, "art": "heart", "art_q": 0.7, "seed": 3, "order": True}
     c.update(kw)
     return c
 
@@ -75,7 +76,7 @@ def test_appending_after_tamper_keeps_new_rows_valid(st, reload):
 def test_achievement_conditions(st):
     assert "perfect" in st.record(_cup(96), [])
     new = []
-    for _ in range(5):
+    for _ in range(stats.TIER_GROUPS["streak"][0][1]):     # 銅牌門檻（連續幾張 85 分以上）
         new += st.record(_cup(90), [])
     assert "streak" in new
     assert "rosetta" in st.record(_cup(art="rosetta"), [])
@@ -128,13 +129,17 @@ def test_old_row_with_new_fields_filled_is_tampered(cfg_path, reload):
 
 def test_revenue_walkouts_and_business_achievements(st, reload):
     new = []
-    for _ in range(15):
+    n = stats.TIER_GROUPS["no_walkout"][0][1]                # 20 位、每位 $154 → 營業額 $3,080
+    for _ in range(n):
         new += st.record(_cup(90, order=True, price=140, tip=14, wait=20.0), [])
-    assert "good_business" in new and "no_walkout" in new
+    assert "no_walkout" in new and "good_business" not in new, "銅牌營業額 $5,000 還沒到"
+    for _ in range(14):
+        new += st.record(_cup(90, order=True, price=140, tip=14, wait=20.0), [])
+    assert "good_business" in new
     st.record_walkout("latte")
     s = reload()
     assert s.tampered == 0
-    assert s.day()["revenue"] == 15 * 154 and s.day()["walkouts"] == 1
+    assert s.day()["revenue"] == (n + 14) * 154 and s.day()["walkouts"] == 1
     assert st.record(_cup(80), []) == []
 
 
@@ -157,7 +162,7 @@ def test_tier_groups_are_consistent():
 
 def test_tiers_unlock_in_order(st):
     new = []
-    for _ in range(20):
+    for _ in range(60):                                      # 銅：50 杯、一天 40 杯；連續好杯 10／30／60
         new += st.record(_cup(90), [])
     assert {"ten_cups", "busy_day", "streak", "streak_10", "streak_20"} <= set(new)
     assert "hundred_cups" not in new and "busy_day_40" not in new
@@ -194,9 +199,27 @@ def test_new_achievements(st, reload, monkeypatch):
     assert s.data["collection"]["machine_best"]["allinone"] == 92
 
 
+def test_only_orders_unlock_cup_achievements(st, monkeypatch):
+    """手動、自動做的杯子不解跟杯子有關的成就；保養、開豆子照舊；連續天數看有沒有營業"""
+    monkeypatch.setattr(stats, "clock_hour", lambda: 6)
+    for _ in range(12):
+        assert st.record(_cup(97, order=False, drink="pour_over", bloom_ok=True), []) == []
+    assert st.data["total"] == 12 and st.data["order_total"] == 0
+    assert st.data["collection"]["drinks"]["pour_over"]["count"] == 12, "圖鑑照樣記每一杯"
+    for kind in ("backflush", "wand", "drip", "knock"):
+        st.record_clean(kind)
+    assert st.unlocked("clean")
+    got = st.record(_cup(97, drink="pour_over", bloom_ok=True), [])
+    assert {"first_cup", "first_pourover", "pourover_90", "bloom", "perfect", "early_bird"} <= set(got)
+    for day in ("2026-07-29", "2026-07-30", "2026-07-31"):
+        st.day(day)["cups"] = 5                     # 那幾天只有自己做、沒有營業
+    assert st.day_streak() == 4 and st.day_streak("orders") == 1
+
+
 def test_tips_and_serve_30(st):
     new = []
-    for _ in range(30):
+    for _ in range(50):
         new += st.record(_cup(95, order=True, price=100, tip=20, wait=10.0), [])
     assert {"tips_500", "serve_30", "no_walkout", "no_walkout_30"} <= set(new)
-    assert st.day()["tips"] == 600
+    assert "no_walkout_50" not in new, "金牌要 100 位"
+    assert st.day()["tips"] == 1000

@@ -73,5 +73,24 @@ def test_poured_vessel_stays_inside_the_window(desk, machine, drink):
         if v and getattr(st, "physics", False):
             m = QTransform().rotate(-v["tilt"])
             right = max(right, max(v["x"] + m.map(QPointF(px, py)).x() * st.scale
-                                   for px, py in vessels.outline(v["kind"])))
+                                   for px, py in vessels.hull(v["kind"])))
     assert 0 < right <= desk.machine.scene_w - 2, (drink, right, desk.machine.scene_w)
+
+
+@pytest.mark.parametrize("machine", ["desk01", "lever", "compact", "allinone"])
+def test_squeeze_bottle_pours_upside_down_above_the_cup(desk, machine):
+    """醬料擠瓶：在杯子上方時是倒過來的（瓶嘴朝下、瓶身在上，不會掃進杯子），瓶嘴不低於杯口；醬從瓶嘴直直往下"""
+    desk.set_machine(machine)
+    desk.bag["left"] = 250
+    assert desk.start_session("mocha", True)
+    poured = 0
+    while desk.busy():
+        desk.step(0.05, 0.1)
+        ss = desk.session
+        st = ss.stage if ss else None
+        v = ss.vessel if ss else None
+        if v and v["kind"] == "squeeze" and st.cup_left <= v["x"] <= st.cup_right:
+            assert v["tilt"] >= 179.9, (st.phase, v["tilt"])
+            assert v["y"] <= st.cup_top, (st.phase, v["y"], st.cup_top)
+            poured += v["pour"] > 0
+    assert poured > 0

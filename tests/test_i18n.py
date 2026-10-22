@@ -38,3 +38,19 @@ def test_en_placeholders_match():
         a = {f for _, f, _, _ in fmt.parse(zh) if f}
         b = {f for _, f, _, _ in fmt.parse(en) if f}
         assert a == b, (zh, en)
+
+
+def test_money_follows_language():
+    """錢一律存台幣：中文顯示新台幣，英文依物價換算（20 台幣＝1 美金）顯示美金"""
+    from cafe_desk import i18n
+    try:
+        i18n.set_lang("zh")
+        assert i18n.money(120) == "NT$120" and i18n.money(180000) == "NT$180,000"
+        assert i18n.money_text(i18n.T("一天營業額達 $2,000")) == "一天營業額達 NT$2,000"
+        i18n.set_lang("en")
+        assert i18n.money(120) == "US$6.00"
+        assert i18n.money(180000) == f"US${180000 / i18n.TWD_PER_USD:,.0f}"
+        assert "US$100" in i18n.money_text(i18n.T("一天營業額達 $2,000"))
+        assert "$" not in i18n.T("錢包 {m}").replace("{m}", ""), "樣板裡不該再寫死 $"
+    finally:
+        i18n.set_lang("zh")

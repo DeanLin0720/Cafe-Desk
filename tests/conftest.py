@@ -53,6 +53,8 @@ def desk(qapp, cfg_path):
     w.host.close()
     w.deleteLater()
     qapp.processEvents()
+    from cafe_desk import store
+    store.apply_upgrades([])                          # 升級改的是共用的 MACHINES：還原，不影響其他測試
 
 
 def run_until_idle(w, limit=8000):
@@ -82,3 +84,13 @@ def until_making(w, limit=400):
         w.step(0.05, 0.05)
         n += 1
         assert n < limit, "一直沒開始做"
+
+
+@pytest.fixture
+def unlocked(monkeypatch):
+    """所有咖啡機與沖煮方式都當作已解鎖（測試要用到 Lv.1 還沒解鎖的設備時加這個 fixture）"""
+    from cafe_desk import growth
+    monkeypatch.setattr(growth, "MACHINE_LEVEL", {k: 1 for k in growth.MACHINE_LEVEL})
+    monkeypatch.setattr(growth, "METHOD_LEVEL", {k: 1 for k in growth.METHOD_LEVEL})
+    monkeypatch.setattr(growth, "DRINK_RANK", {})
+    monkeypatch.setattr(growth, "FESTIVAL_RANK", 0)

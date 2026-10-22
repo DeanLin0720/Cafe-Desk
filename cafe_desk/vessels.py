@@ -145,8 +145,21 @@ def moka():
     return body
 
 
+def moka_hull():
+    """摩卡壺整支的外形（原點＝壺嘴）：上壺、中間的接環、下壺、把手。咖啡只在上壺（moka()），
+    但拿去倒的時候下壺也跟著，判斷會不會撞進杯子要用整支（render/station.py 的 paint_moka_pot，壺底中心在 (30, 71)）"""
+    body = QPainterPath(QPointF(0, 0))
+    for x, y in ((7, 5), (53, 5), (63, 10), (67, 11), (66, 16), (61, 30), (57, 33), (48, 31), (47, 36), (48.5, 36),
+                 (48.5, 41.5), (47, 41), (52, 71), (8, 71), (13, 41), (11.5, 41.5), (11.5, 36), (13, 36), (10, 14)):
+        body.lineTo(x, y)
+    body.closeSubpath()
+    return body
+
+
 SHAPES = {"pitcher": pitcher, "kettle": kettle, "bottle": bottle, "tonic": tonic, "jug": jug,
           "server": server, "carafe": carafe, "globe": globe, "moka": moka}
+# 外形比內腔大很多的容器：碰撞與超出視窗用外形（沒列的，內腔外框就是外形）
+HULLS = {"moka": moka_hull}
 # 拿去倒時「內腔裡液體佔多少」：裝滿到能倒的最高水位是 1（冰滴壺只裝到瓶頸下面）
 CARAFE_FULL = 0.78
 
@@ -156,6 +169,13 @@ CARAFE_FULL = 0.78
 def outline(kind):
     """容器內腔的折線（原點＝倒出口）"""
     poly = SHAPES[kind]().toFillPolygon()
+    return tuple((pt.x(), pt.y()) for pt in poly)
+
+
+@lru_cache(maxsize=None)
+def hull(kind):
+    """容器整個外形的折線（原點＝倒出口）：碰撞、超出視窗用這個"""
+    poly = HULLS[kind]().toFillPolygon() if kind in HULLS else SHAPES[kind]().toFillPolygon()
     return tuple((pt.x(), pt.y()) for pt in poly)
 
 
@@ -230,8 +250,8 @@ def pour_tilt(kind, content, cap=MAX_TILT):
 
 @lru_cache(maxsize=None)
 def _dense(kind, step=3.0):
-    """內腔外框加密成每段不超過 step 的點（判斷碰撞時，長直線邊的中段也要算到）"""
-    pts = outline(kind)
+    """外形加密成每段不超過 step 的點（判斷碰撞時，長直線邊的中段也要算到）"""
+    pts = hull(kind)
     out = []
     for i in range(len(pts)):
         (x1, y1), (x2, y2) = pts[i - 1], pts[i]

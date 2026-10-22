@@ -29,6 +29,7 @@ class Traits:
     pressure_cap: float = 12.0     # 幫浦壓力上限（洩壓閥）
     milk: str = "frother"          # frother＝獨立奶泡機；wand＝蒸氣管
     steam_power: float = 1.0       # 蒸氣強度：越強打得越快、奶泡越細
+    frother_q: float = 0.62        # 獨立奶泡機打出的奶泡細緻度（商店的「專業奶泡機」會提高）
     steam_heatup: bool = False     # 單鍋爐：打奶前要先把鍋爐加熱到蒸氣溫度
     steam_temp: float = 125.0
     grinder: str = "external"      # external＝獨立磨豆機；integrated＝內建磨豆機
@@ -41,6 +42,7 @@ class Machine:
 
     scene_w = 430                  # 場景寬度
     drip_area = None               # 滴水盤（x1, x2, 上緣；機身座標）
+    tip_x = 410                    # 小費罐中心（場景座標）：咖啡機右邊的空位
     mx, my = 120, 18               # 機身原點（場景座標）
     group_pf = (114, 128)          # 把手扣上時濾杯左上角（機身座標）
     cup_cx, cup_base = 150, 314    # 杯底中心（機身座標）
@@ -278,9 +280,13 @@ class Machine:
         p.drawPath(tube)
         p.setPen(QPen(C("#eef1f3"), 1.8, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         p.drawPath(tube)
-        # 防燙套
+        # 防燙套：套在彎管上的一段（沿著彎管同一條曲線取 0–0.5，不然會跟管子錯開）
+        cx_, cy_ = tx, ey + 8
         grip = QPainterPath(QPointF(ex, ey))
-        grip.quadTo(QPointF(lerp(ex, tx, 0.5), ey + 6), QPointF(lerp(ex, tx, 0.75), lerp(ey, ty, 0.45)))
+        for i in range(1, 13):
+            t = 0.5 * i / 12
+            grip.lineTo(QPointF((1 - t) ** 2 * ex + 2 * (1 - t) * t * cx_ + t * t * tx,
+                                (1 - t) ** 2 * ey + 2 * (1 - t) * t * cy_ + t * t * ty))
         p.setPen(QPen(C(knob_color), 6.2, Qt.SolidLine, Qt.RoundCap))
         p.drawPath(grip)
         p.setPen(QPen(C("#ffffff", 50), 1.2, Qt.SolidLine, Qt.RoundCap))
@@ -336,6 +342,11 @@ class Machine:
             p.setPen(QPen(C("#ffffff" if light else "#3a4046", rnd.randint(8, 26)), 0.6))
             p.drawLine(QPointF(x, y), QPointF(x + rnd.uniform(30, 120), y))
         p.restore()
+
+    def drip_slots(self):
+        """滴水盤格柵縫隙的 x（機身座標）：水位畫在縫隙裡，要跟 paint_drip_tray 的縫隙對齊"""
+        x1, x2, _ = self.drip_area
+        return range(int(x1) + 12, int(x2) - 10, 7)
 
     def paint_drip_tray(self, p, x1, x2, top=340, bottom=364):
         tray = rrect(x1, top, x2, bottom, 8)

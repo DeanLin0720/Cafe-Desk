@@ -890,12 +890,15 @@ class MilkRenderer:
         watery = liquid in ("water", "cold_water", "tonic")
         alpha = 120 if watery else 245
         w0 = 3.0 if watery else (2.2 if liquid in SYRUPS else 3.6)
+        squeeze = v["kind"] == "squeeze"           # 擠瓶倒著：濃稠的醬從瓶嘴直直往下掉（瓶子左右移，落點跟著瓶嘴）
+        if squeeze:
+            cx = x0
         n = 16
         left, right = [], []
         for i in range(n + 1):
             t = i / n
             y = lerp(y0, surf, t)
-            x = lerp(x0, cx, t ** 0.6) + math.sin(self.anim_t * 14 + t * 8) * 0.4 * t
+            x = lerp(x0, cx, t ** 0.6) + math.sin(self.anim_t * 14 + t * 8) * (0.15 if squeeze else 0.4) * t
             w = w0 * (1 - 0.35 * t) / 2
             left.append(QPointF(x - w, y))
             right.append(QPointF(x + w, y))
@@ -1172,12 +1175,14 @@ class MilkRenderer:
         if level <= 0.05:
             return
         x1, x2, top = area
-        h = 11 * min(1.0, level)
+        h = 12 * min(1.0, level)
+        y = top + 17.6 - h
         p.setPen(Qt.NoPen)
         shimmer = 0.5 + 0.5 * math.sin(self.anim_t * 2)
-        for x in range(int(x1) + 12, int(x2) - 10, 7):
-            p.fillRect(QRectF(x - 1.1, top + 17 - h, 2.2, h), C(mix("#6a5040", "#9ab8c8", 0.4), 150))
-            p.fillRect(QRectF(x - 1.1, top + 17 - h, 2.2, 0.8), C("#d8f0ff", int(90 + 60 * shimmer)))
+        water = C(mix("#9a7458", "#b4d2e0", 0.45 - 0.25 * min(1.0, level)), 235)   # 越滿越混濁
+        for x in self.machine.drip_slots():
+            p.fillRect(QRectF(x - 1.2, y, 2.4, h), water)
+            p.fillRect(QRectF(x - 1.2, y, 2.4, 1.1), C("#eef9ff", int(150 + 90 * shimmer)))
         if level > 1.0:                                       # 溢出
             p.setBrush(C("#a8c8d8", 90))
             p.drawEllipse(QPointF((x1 + x2) / 2, top + 2), (x2 - x1) * 0.42, 2.2)

@@ -26,6 +26,7 @@ class Desk01(Machine):
                     temp_noise=0.15, boiler_draw=0.25, milk="frother")
 
     drip_area = (32, 268, 340)            # 滴水盤（x1, x2, 上緣；機身座標）
+    tip_x = 411                           # 小費罐中心（場景座標）
     scene_w = 500
     frother_pos = (439, 296)          # 奶泡機玻璃壺的倒出口（場景座標）
     mx, my = 120, 18
@@ -174,13 +175,16 @@ class Desk01(Machine):
         tray = rrect(32, 340, 268, 364, 8)
         p.fillPath(tray, vgrad(340, 364, [(0, C("#c9ced3")), (0.15, C("#8d949b")), (1, C("#4b5157"))]))
         p.setPen(QPen(C("#2c3135"), 2.2, Qt.SolidLine, Qt.RoundCap))
-        for x in range(46, 256, 7):
+        for x in self.drip_slots():
             p.drawLine(QPointF(x, 346), QPointF(x, 357))
         p.setPen(QPen(C("#ffffff", 50), 0.8))
-        for x in range(47, 257, 7):
-            p.drawLine(QPointF(x + 1.2, 346), QPointF(x + 1.2, 357))
+        for x in self.drip_slots():
+            p.drawLine(QPointF(x + 2.2, 346), QPointF(x + 2.2, 357))
 
         self.paint_scale(p)
+
+    def drip_slots(self):
+        return range(46, 256, 7)
 
     def paint_front(self, a, p):
         for c, r in ((self.gauge_c, self.gauge_r), (self.temp_c, self.temp_r)):

@@ -5,19 +5,24 @@ import platform
 from PySide6 import __version__ as QT_VERSION
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGridLayout
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGridLayout, QMessageBox
 
-from . import __version__, paths, errlog
+from . import __version__, paths, errlog, theme
 from .i18n import T
 from .stats import db_path
+
+
+DANGER = "QPushButton { color: #a8321e; border-color: #d29a86; }"     # 無法復原的動作：紅字
 
 
 class AboutDialog(QDialog):
     def __init__(self, app):
         super().__init__(None)
+        self.app = app
         self.setWindowTitle(T("關於 Café Desk"))
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         self.setWindowIcon(app.icon)
+        theme.apply_dialog(self)
         lay = QVBoxLayout(self)
         lay.setSpacing(8)
 
@@ -62,6 +67,10 @@ class AboutDialog(QDialog):
         b = QPushButton(T("開啟資料夾"))
         b.clicked.connect(self.open_folder)
         row.addWidget(b)
+        reset = QPushButton(T("重新遊玩…"))
+        reset.setStyleSheet(DANGER)
+        reset.clicked.connect(self.confirm_reset)
+        row.addWidget(reset)
         row.addStretch(1)
         close = QPushButton(T("關閉"))
         close.setDefault(True)
@@ -69,6 +78,28 @@ class AboutDialog(QDialog):
         row.addWidget(close)
         lay.addLayout(row)
         self.setMinimumWidth(380)
+
+    def confirm_reset(self):
+        """重新遊玩：先講清楚會刪掉什麼、保留什麼，預設按鈕是「取消」"""
+        box = QMessageBox(self)
+        theme.apply_dialog(box)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(T("重新遊玩"))
+        box.setText(T("確定要從頭開始嗎？這個動作無法復原。"))
+        box.setInformativeText(T("會刪除：每一杯的紀錄、成就、拉花收集與圖鑑、店鋪等級與咖啡師稱號、"
+                                 "錢包與商店買的升級和精品豆、清潔保養計數、目前的豆子與冰滴。\n\n"
+                                 "會保留：沖煮參數、聲音與音樂清單、語言、視窗位置與大小。"))
+        ok = box.addButton(T("刪除並重新開始"), QMessageBox.DestructiveRole)
+        ok.setStyleSheet(DANGER)
+        cancel = box.addButton(T("取消"), QMessageBox.RejectRole)
+        box.setDefaultButton(cancel)
+        box.exec()
+        if box.clickedButton() is not ok:
+            return
+        if not self.app.reset_progress():
+            QMessageBox.information(self, T("重新遊玩"), T("咖啡師正在做飲品，等這杯做完再試一次。"))
+            return
+        self.close()
 
     def open_folder(self):
         QDesktopServices.openUrl(QUrl.fromLocalFile(self.dir))

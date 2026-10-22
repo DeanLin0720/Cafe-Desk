@@ -1,4 +1,5 @@
 """覆蓋層：磅秤顯示（機身座標）、狀態列與萃取曲線卡片（視窗座標）、環境光"""
+import math
 import time
 from datetime import datetime
 
@@ -9,7 +10,7 @@ from ..gfx import C, mix, rrect
 from ..layout import WIN_H, TOP_PAD
 from ..drinks import DRINKS, ART_NAMES, MILK_NAMES, milk_plan, is_milk, base_of
 from ..model import STYLES
-from ..i18n import T
+from ..i18n import T, money, retext
 from .. import maintenance, festivals, brew
 from ..util import clamp, lerp
 
@@ -109,8 +110,8 @@ class OverlayRenderer:
             return [(T("點擊咖啡機開始沖煮{name}", name=T(DRINKS[self.drink]["name"])), "#efe6da")]
         n = int(round(r.score / 20))
         return [("★" * n, "#ffc24a"), ("☆" * (5 - n), "#6a5e50"),
-                (T("  {name} {score:.0f} 分 · {comment}", name=r.title or T(DRINKS[r.drink]["name"]), score=r.score,
-                   comment=r.comment), "#efe6da")]
+                (T("  {name} {score:.0f} 分 · {comment}", name=retext(r.title) or T(DRINKS[r.drink]["name"]), score=r.score,
+                   comment=retext(r.comment)), "#efe6da")]
 
     def paint_status(self, p):
         """狀態列：內容沒變就直接貼上次畫好的圖（文字排版每幀重畫很花時間）"""
@@ -147,7 +148,7 @@ class OverlayRenderer:
         else:
             drink = self.drink
         info = (f"{T(DRINKS[drink]['name'])} · {T(p_.roast)} {p_.dose:g}g→{p_.yield_g:g}g · {p_.grind_um:.0f}µm · "
-                f"{p_.temp:g}°C")
+                f"{round(p_.temp, 1):g}°C")             # 溫度最多一位小數（咖啡師調的參數不一定是整數）
         if self.session:
             dp = self.session.dp
         elif self.result is not None and self.last_dp is not None and not (o and o.state == "waiting"):
@@ -159,14 +160,14 @@ class OverlayRenderer:
         if family == "pourover":
             info = T("{name} · {roast} {dose:g}g：{water:.0f}g · {um:.0f}µm · {t:g}°C · 悶蒸 {b:.0f}s · {n:.0f} 段注水",
                      name=T(DRINKS[drink]["name"]), roast=T(p_.roast), dose=dp.po_dose, water=dp.po_dose * dp.po_ratio,
-                     um=dp.po_grind, t=dp.po_temp, b=dp.po_bloom, n=dp.po_pulses)
+                     um=dp.po_grind, t=round(dp.po_temp, 1), b=dp.po_bloom, n=dp.po_pulses)
         elif family == "moka":
             info = T("{name} · {roast} {dose:g}g · {um:.0f}µm · 火力 {h:g}",
                      name=T(DRINKS[drink]["name"]), roast=T(p_.roast), dose=dp.mk_dose, um=dp.mk_grind, h=dp.mk_heat)
         elif family == "siphon":
             info = T("{name} · {roast} {dose:g}g：{water:.0f}g · {um:.0f}µm · {t:g}°C · 浸泡 {s:.0f}s",
                      name=T(DRINKS[drink]["name"]), roast=T(p_.roast), dose=dp.sy_dose, water=dp.sy_dose * brew.SIPHON_RATIO,
-                     um=dp.sy_grind, t=dp.sy_temp, s=dp.sy_steep)
+                     um=dp.sy_grind, t=round(dp.sy_temp, 1), s=dp.sy_steep)
         elif family == "colddrip":
             b = self.cold
             dose, ratio, um, rate = (b["dose"], b["ratio"], b["grind"], b["rate"]) if b else \
@@ -200,8 +201,8 @@ class OverlayRenderer:
         if s and s.style in STYLES:
             info += T(" · 以 {name} 標準評分", name=STYLES[s.style]["name"])
         if self.business():
-            info = T("營業中 · 排隊 {n} · 今日 ${rev:,} · ", n=len(self.queue),
-                     rev=self.stats.day()["revenue"]) + info
+            info = T("營業中 Lv.{lv} · 排隊 {n} · 今日 {rev} · ", lv=self.shop_level(), n=len(self.queue),
+                     rev=money(self.stats.day()["revenue"])) + info
         elif self.order_mode and not self.busy():
             if o is None:
                 remain = max(0, int(self.next_order_at - time.perf_counter()))
@@ -293,17 +294,18 @@ class OverlayRenderer:
         p.restore()
 
     def toast_now(self):
-        """目前顯示中的成就通知：(文字, 不透明度)；沒有時是 (None, 0)"""
+        """目前顯示中的通知：(文字, 不透明度, 樣式)；沒有時是 (None, 0, None)"""
         now = time.perf_counter()
         self.toasts = [t for t in self.toasts if t[2] > now]
         if not self.toasts or now < self.toasts[0][1]:
-            return None, 0.0
-        text, start, end = self.toasts[0]
-        return text, clamp(min((now - start) / 0.3, (end - now) / 0.5), 0, 1)
+            return None, 0.0, None
+        text, start, end, kind = self.toasts[0]
+        return text, clamp(min((now - start) / 0.3, (end - now) / 0.5), 0, 1), kind
 
     def paint_toasts(self, p):
-        """成就解鎖通知：暫時取代狀態列（同一個位置，交叉淡入淡出），不會蓋到咖啡機"""
-        text, a = self.toast_now()
+        """通知：暫時取代狀態列（同一個位置，交叉淡入淡出），不會蓋到咖啡機。
+        成就類（trophy）是金框加小獎盃；一般通知（info）是跟狀態列一樣的素色框、沒有圖示"""
+        text, a, kind = self.toast_now()
         if text is not None and a > 0:
             f = QFont(self.ui, 9.5)
             f.setBold(True)
@@ -314,6 +316,15 @@ class OverlayRenderer:
             tw = fm.horizontalAdvance(text)
             p.save()
             p.setOpacity(a)
+            if kind != "trophy":
+                p.setPen(QPen(C("#ffffff", 50), 1))
+                p.setBrush(C("#1a1613", 235))
+                p.drawRoundedRect(r, 14, 14)
+                p.setFont(f)
+                p.setPen(C("#efe6da"))
+                p.drawText(r, Qt.AlignCenter, text)
+                p.restore()
+                return
             p.setPen(QPen(C("#ffd27a", 160), 1))
             p.setBrush(C("#2a1f12", 240))
             p.drawRoundedRect(r, 14, 14)
@@ -354,6 +365,31 @@ class OverlayRenderer:
         p.setFont(f)
         p.drawText(rect, flags, QFontMetricsF(f).elidedText(text, Qt.ElideRight, rect.width()))
 
+    def fit_title(self, p, x, y, w, text, font, min_two=7.0):
+        """品名：縮 1 pt 以內一行放得下就一行；不然依單字斷成兩行（必要時縮到 min_two），
+        還是放不下才交給 fit_text 縮字加刪節號。回傳用掉的高度（英文介面的長品名用）"""
+        f = QFont(font)
+        base = f.pointSizeF()
+        h = base * 16 / 9
+        f.setPointSizeF(base - 1)
+        words = text.split()
+        if QFontMetricsF(f).horizontalAdvance(text) > w and len(words) > 1:
+            size = base
+            while size >= min_two:
+                f.setPointSizeF(size)
+                fm = QFontMetricsF(f)
+                splits = [(" ".join(words[:i]), " ".join(words[i:])) for i in range(1, len(words))]
+                rows = min(splits, key=lambda r: max(fm.horizontalAdvance(r[0]), fm.horizontalAdvance(r[1])))
+                if max(fm.horizontalAdvance(r) for r in rows) <= w:
+                    lh = size * 1.5
+                    p.setFont(f)
+                    for i, row in enumerate(rows):
+                        p.drawText(QRectF(x, y + i * lh, w, lh), Qt.AlignLeft | Qt.AlignVCenter, row)
+                    return 2 * lh
+                size -= 0.5
+        self.fit_text(p, QRectF(x, y, w, h), text, font)
+        return h
+
     # ───────────── 訂單卡（視窗座標，上方透明區左側） ─────────────
     ORDER_W = 98
 
@@ -364,7 +400,7 @@ class OverlayRenderer:
     def paint_order_card(self, p):
         o = self.order
         a = self.order_alpha
-        if o is None or a <= 0.01:
+        if o is None or a <= 0.01 or not self.order_mode:     # 手動、自動模式不顯示點單紙
             return
         w, h = self.ORDER_W, 120
         slide = (1 - a) * -24                    # 從上方滑進來
@@ -405,10 +441,9 @@ class OverlayRenderer:
         big.setBold(True)
         p.setFont(big)
         p.setPen(C("#2a1d12"))
-        self.fit_text(p, QRectF(x0, r.top() + 23, iw, 16), o.title, big)
+        y = r.top() + 25 + self.fit_title(p, x0, r.top() + 23, iw, o.title, big)
         p.setFont(QFont(self.ui, 7))
         p.setPen(C("#5a4632"))
-        y = r.top() + 41
         for line in o.mod_lines[:2]:
             self.fit_text(p, QRectF(x0, y, iw, 12), f"· {line}", QFont(self.ui, 7))
             y += 12
@@ -419,13 +454,13 @@ class OverlayRenderer:
         p.setFont(QFont(self.ui, 7))
         if self.business() and o.state in ("waiting", "making"):
             p.setPen(C("#5a4632"))
-            p.drawText(foot.adjusted(0, 0, -5 if queued else 0, 0), Qt.AlignRight | Qt.AlignBottom, f"${o.price}")
+            p.drawText(foot.adjusted(0, 0, -5 if queued else 0, 0), Qt.AlignRight | Qt.AlignBottom, money(o.price))
         if o.state == "waiting" and o.patience > 0:
             # 耐心條：剩下的耐心，越少越紅
             left = clamp(1 - o.wait / o.patience, 0, 1)
-            p.fillRect(QRectF(x0, r.bottom() - 4, iw, 1.6), C("#e0d6c2"))
-            col = C("#6a9a4a") if left > 0.5 else (C("#c08a2a") if left > 0.25 else C("#c0392b"))
-            p.fillRect(QRectF(x0, r.bottom() - 4, iw * left, 1.6), col)
+            p.fillPath(rrect(x0, r.bottom() - 5, x0 + iw, r.bottom() - 2, 1.5), C("#e0d6c2"))
+            if left > 0:
+                p.fillPath(rrect(x0, r.bottom() - 5, x0 + iw * left, r.bottom() - 2, 1.5), C(self.patience_color(left)))
         if queued:
             # 排隊人數徽章：貼在疊起來的訂單右下角
             c = QPointF(r.right() - 1, r.bottom() + 1)
@@ -470,6 +505,46 @@ class OverlayRenderer:
             p.setFont(QFont(self.ui, 6.5))
             p.setPen(C("#3a2a1a"))
             p.drawText(foot, Qt.AlignLeft | Qt.AlignBottom | Qt.TextWordWrap, f"「{o.reaction}」")
+        p.restore()
+        if self.business():
+            self.paint_patience_row(p, a, TOP_PAD + 5)        # 疊起來的排隊紙下緣跟磨豆機豆倉之間
+
+    @staticmethod
+    def patience_color(left):
+        return "#6aa84f" if left > 0.5 else ("#d99a2b" if left > 0.25 else "#d9483b")
+
+    def paint_patience_row(self, p, a, y):
+        """營業模式：點單紙下面一排計時圈，每位還在等的客人一個（櫃台這位在前、排隊的依序在後），
+        圈裡是客人名字的第一個字，外圈是剩下的耐心，越少越紅，最後四分之一會閃"""
+        o = self.order
+        waiting = ([o] if o is not None and o.state == "waiting" else []) + list(self.queue)
+        waiting = [w for w in waiting if w.patience > 0][:6]
+        if not waiting:
+            return
+        p.save()
+        p.setOpacity(a)
+        f = QFont(self.ui, 5.5)
+        f.setBold(True)
+        p.setFont(f)
+        rad = 6.5
+        for i, w in enumerate(waiting):
+            c = QPointF(4 + rad + 1 + i * (2 * rad + 4), y)
+            left = clamp(1 - w.wait / w.patience, 0, 1)
+            col = self.patience_color(left)
+            urgent = left <= 0.25
+            k = 0.55 + 0.45 * abs(math.sin(self.anim_t * 5)) if urgent else 1.0
+            p.setPen(Qt.NoPen)
+            p.setBrush(C("#f7f1e3" if not urgent else "#f6dcd4"))
+            p.drawEllipse(c, rad, rad)
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(C("#000000", 45), 2.2))
+            p.drawEllipse(c, rad + 1.6, rad + 1.6)
+            if left > 0:
+                p.setPen(QPen(QColor(C(col)) if k == 1.0 else C(col, int(255 * k)), 2.2, Qt.SolidLine, Qt.FlatCap))
+                p.drawArc(QRectF(c.x() - rad - 1.6, c.y() - rad - 1.6, 2 * rad + 3.2, 2 * rad + 3.2), 90 * 16,
+                          int(left * 360 * 16))
+            p.setPen(C("#3a2a1a"))
+            p.drawText(QRectF(c.x() - rad, c.y() - rad, 2 * rad, 2 * rad), Qt.AlignCenter, T(w.name)[:1])
         p.restore()
 
     def paint_chart(self, p):

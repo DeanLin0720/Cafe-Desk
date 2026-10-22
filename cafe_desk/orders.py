@@ -10,6 +10,7 @@
 import random
 from dataclasses import dataclass, field
 
+from . import growth
 from .drinks import DRINKS, ART_NAMES, MILK_KINDS, FESTIVAL_DRINKS, base_of
 from .festivals import adjust_weights
 from .i18n import T
@@ -143,13 +144,15 @@ def price_of(drink):
     return PRICES.get(drink, FESTIVAL_PRICE)
 
 
-def arrival_gap(rnd=random):
-    """營業模式：下一位客人幾秒後到；偶爾一陣尖峰連著來（營業中也跑完整備粉，所以比一般咖啡店慢一點）"""
-    return rnd.uniform(12, 25) if rnd.random() < 0.18 else rnd.uniform(46, 115)
+def arrival_gap(rnd=random, level=1):
+    """營業模式：下一位客人幾秒後到；偶爾一陣尖峰連著來（營業中也跑完整備粉，所以比一般咖啡店慢一點）。
+    店鋪等級越高客人越多（growth.arrival_k）"""
+    gap = rnd.uniform(12, 25) if rnd.random() < 0.18 else rnd.uniform(46, 115)
+    return gap * growth.arrival_k(level)
 
 
-def patience(rnd=random, method="espresso"):
-    return rnd.uniform(165, 265) * PACE.get(method, 1.0)
+def patience(rnd=random, method="espresso", level=1):
+    return rnd.uniform(165, 265) * PACE.get(method, 1.0) * growth.patience_k(level)
 
 
 def wait_penalty(order):
@@ -164,17 +167,17 @@ def tip(order):
     return int(round(order.price * rate))
 
 
-def order_params(order, dp, rnd=random):
-    """依訂單改飲品參數；咖啡師手感：打奶溫度與奶泡量每杯有些誤差"""
+def order_params(order, dp, rnd=random, skill=1.0):
+    """依訂單改飲品參數；咖啡師手感：打奶溫度與奶泡量每杯有些誤差（skill 是熟練度的誤差倍率，growth.skill）"""
     d = dp.copy()
     temp = order.has("temp")
     d.milk_temp = {"low": 54.0, "high": 66.0}.get(temp, d.milk_temp)
-    d.milk_temp = clamp(d.milk_temp + rnd.gauss(0, 2.8), 45, 74)
+    d.milk_temp = clamp(d.milk_temp + rnd.gauss(0, 2.8 * skill), 45, 74)
     foam = order.has("foam")
     if foam:
         d.foam = 50.0 if foam == "more" else 15.0
     for attr in ("foam", "capp_foam", "flat_foam"):
-        setattr(d, attr, clamp(getattr(d, attr) + rnd.gauss(0, 4), 3, 90))
+        setattr(d, attr, clamp(getattr(d, attr) + rnd.gauss(0, 4 * skill), 3, 90))
     d.milk_kind = order.has("milk") or "dairy"
     d.whip = order.has("whip") != "no"
     if order.has("scoop") == "big":

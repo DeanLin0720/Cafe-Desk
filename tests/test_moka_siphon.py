@@ -67,7 +67,7 @@ def test_moka_flow(desk):
     assert abs(desk.contents["water"] - brew.moka_beverage(desk.dp)) < 0.5
     assert desk.bag["left"] == 250 - desk.dp.mk_dose
     assert desk.result.drink == "moka_pot" and desk.result.score >= 80
-    assert "moka_85" in desk.stats.data["achievements"]
+    assert "moka_85" not in desk.stats.data["achievements"], "自己沖的不算成就（要為客人做）"
 
 
 def test_siphon_flow(desk):
@@ -122,7 +122,8 @@ def test_siphon_order_in_business_mode(desk):
 def test_all_methods_achievement(cfg_path):
     st = Stats()
     try:
-        cup = dict(score=80, comment="", machine=None, milk=None, origin="kenya", bean_age=10, dose=15, festival=None)
+        cup = dict(score=80, comment="", machine=None, milk=None, origin="kenya", bean_age=10, dose=15, festival=None,
+                   order=True)
         got = set()
         for d in ("latte", "pour_over", "cold_drip", "moka_pot"):
             got |= set(st.record(dict(cup, drink=d, title=d), []))

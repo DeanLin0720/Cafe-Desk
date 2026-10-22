@@ -77,6 +77,10 @@ def pourover_time(dp):
     return dp.po_bloom + 110 * fine ** 1.6 * (water / 240) ** 0.7 + 8 * (dp.po_pulses - 1)
 
 
+FINES_K = 1.0       # 手沖用磨豆機的細粉倍率：萃取不均乘上它（商店的鬼齒刀盤會降低，store.apply_upgrades 設定）
+CLARITY = 0.0       # 手沖用磨豆機的乾淨度：甜感加成（鬼齒刀盤細粉少，杯子比較乾淨、甜）
+
+
 def simulate_pourover(dp, roast, bean_age, origin):
     """手沖萃取：研磨、水溫、粉水比、悶蒸、注水段數 → Result（time、ey、tds、channeling＝萃取不均、甜感、分數）"""
     r = ROASTS[roast]
@@ -87,14 +91,14 @@ def simulate_pourover(dp, roast, bean_age, origin):
     bloom_ok = clamp(dp.po_bloom / 30, 0, 1) * (1 - clamp((dp.po_bloom - 60) / 60, 0, 0.5))
     uneven = (0.10 if dp.po_pulses <= 1 else 0.0) + max(0.0, 450 - dp.po_grind) / 200 * 0.3 \
         + co2 * 0.15 * (1 - bloom_ok)
-    uneven = clamp(uneven, 0, 0.6)
+    uneven = clamp(uneven * FINES_K, 0, 0.6)
     drive = (fine ** 0.8 * math.exp((dp.po_temp - 93) / 12) * (t / 180) ** 0.35 * (dp.po_ratio / 16) ** 0.3
              * (0.88 + 0.12 * bloom_ok))
     ey = r["ey_max"] * (1 - math.exp(-1.35 * r["sol"] * drive)) * (1 - 0.3 * uneven)
     beverage = dp.po_dose * (dp.po_ratio - RETAIN_K)
     tds = ey * dp.po_dose / max(1.0, beverage)
     lo, hi = r["target"]
-    sweet = clamp(8.5 - abs(ey - (lo + hi) / 2) * 1.3 - uneven * 6 - stale * 2 + sweet_bonus(origin))
+    sweet = clamp(8.5 - abs(ey - (lo + hi) / 2) * 1.3 - uneven * 6 - stale * 2 + sweet_bonus(origin) + CLARITY)
     score = (0.40 * _band(ey, lo, hi, 15) + 0.25 * _band(tds, *TDS_POUR, 120)
              + 0.35 * sweet * 10 - uneven * 40 - stale * 10)
     return Result(t, ey, tds, uneven, sweet, clamp(score, 0, 100))
@@ -110,13 +114,13 @@ def simulate_colddrip(dp, roast, bean_age, origin):
     fine = 550.0 / dp.cd_grind
     hours = cold_hours(dp)
     stale = clamp((bean_age - 30) / 40, 0, 1)
-    uneven = clamp(max(0.0, 400 - dp.cd_grind) / 200 * 0.3 + max(0.0, dp.cd_rate - 16) * 0.02, 0, 0.5)
+    uneven = clamp((max(0.0, 400 - dp.cd_grind) / 200 * 0.3 + max(0.0, dp.cd_rate - 16) * 0.02) * FINES_K, 0, 0.5)
     drive = fine ** 0.8 * (hours / 6) ** 0.4 * (dp.cd_ratio / 10) ** 0.3
     ey = r["ey_max"] * 0.85 * (1 - math.exp(-1.7 * r["sol"] * drive)) * (1 - 0.3 * uneven)
     beverage = dp.cd_dose * (dp.cd_ratio - RETAIN_K)
     tds = ey * dp.cd_dose / max(1.0, beverage)
     lo, hi = r["target"][0] - 2.0, r["target"][1] - 2.0             # 冷萃萃取率低一點也好喝
-    sweet = clamp(8.8 - abs(ey - (lo + hi) / 2) * 1.2 - uneven * 6 - stale * 2 + sweet_bonus(origin))
+    sweet = clamp(8.8 - abs(ey - (lo + hi) / 2) * 1.2 - uneven * 6 - stale * 2 + sweet_bonus(origin) + CLARITY)
     score = (0.40 * _band(ey, lo, hi, 15) + 0.25 * _band(tds, *TDS_COLD, 80)
              + 0.35 * sweet * 10 - uneven * 40 - stale * 10)
     return Result(hours * 3600, ey, tds, uneven, sweet, clamp(score, 0, 100))
@@ -143,13 +147,13 @@ def simulate_moka(dp, roast, bean_age, origin):
     stale = clamp((bean_age - 30) / 40, 0, 1)
     scorch = clamp((dp.mk_heat - 3.5) / 1.5, 0, 1)
     choke = max(0.0, 240 - dp.mk_grind) / 60
-    uneven = clamp(0.3 * scorch + 0.2 * choke + max(0.0, dp.mk_grind - 450) / 150 * 0.1, 0, 0.6)
+    uneven = clamp((0.3 * scorch + 0.2 * choke + max(0.0, dp.mk_grind - 450) / 150 * 0.1) * FINES_K, 0, 0.6)
     drive = fine ** 0.8 * math.exp((temp - 94) / 12) * (flow_t / 55) ** 0.3 * (1 + 0.15 * choke)
     ey = r["ey_max"] * (1 - math.exp(-1.6 * r["sol"] * drive)) * (1 - 0.25 * uneven)
     beverage = moka_beverage(dp)
     tds = ey * dp.mk_dose / max(1.0, beverage)
     lo, hi = r["target"]
-    sweet = clamp(8.2 - abs(ey - (lo + hi) / 2) * 1.3 - uneven * 6 - stale * 2 + sweet_bonus(origin))
+    sweet = clamp(8.2 - abs(ey - (lo + hi) / 2) * 1.3 - uneven * 6 - stale * 2 + sweet_bonus(origin) + CLARITY)
     score = (0.40 * _band(ey, lo, hi, 15) + 0.25 * _band(tds, *TDS_MOKA, 40)
              + 0.35 * sweet * 10 - uneven * 40 - stale * 10)
     return Result(heat_t + flow_t, ey, tds, uneven, sweet, clamp(score, 0, 100))
@@ -169,12 +173,12 @@ def simulate_siphon(dp, roast, bean_age, origin):
     fine = 600.0 / dp.sy_grind
     stale = clamp((bean_age - 30) / 40, 0, 1)
     clog = max(0.0, 450 - dp.sy_grind) / 150
-    uneven = clamp(0.3 * clog + max(0.0, dp.sy_temp - 94) * 0.03, 0, 0.6)
+    uneven = clamp((0.3 * clog + max(0.0, dp.sy_temp - 94) * 0.03) * FINES_K, 0, 0.6)
     drive = (fine ** 0.8 * math.exp((dp.sy_temp - 91) / 12) * (dp.sy_steep / 50) ** 0.45 * (1 + 0.2 * clog))
     ey = r["ey_max"] * (1 - math.exp(-1.45 * r["sol"] * drive)) * (1 - 0.25 * uneven)
     tds = ey * dp.sy_dose / max(1.0, siphon_beverage(dp))
     lo, hi = r["target"]
-    sweet = clamp(8.6 - abs(ey - (lo + hi) / 2) * 1.3 - uneven * 6 - stale * 2 + sweet_bonus(origin))
+    sweet = clamp(8.6 - abs(ey - (lo + hi) / 2) * 1.3 - uneven * 6 - stale * 2 + sweet_bonus(origin) + CLARITY)
     score = (0.40 * _band(ey, lo, hi, 15) + 0.25 * _band(tds, *TDS_SIPHON, 120)
              + 0.35 * sweet * 10 - uneven * 40 - stale * 10)
     return Result(90 + dp.sy_steep + 40 * (1 + clog), ey, tds, uneven, sweet, clamp(score, 0, 100))
@@ -212,18 +216,18 @@ BARISTA = {"淺焙": dict(po_grind=500, po_temp=96, cd_grind=440, cd_ratio=11, c
                        mk_grind=400, mk_heat=2.0, sy_grind=640, sy_temp=90, sy_steep=45)}
 
 
-def barista_dial(dp, roast, rnd=random):
-    """咖啡師這一杯的手沖／冰滴參數（單杯副本，不寫回使用者設定）；每杯手感有些誤差"""
+def barista_dial(dp, roast, rnd=random, skill=1.0):
+    """咖啡師這一杯的手沖／冰滴參數（單杯副本，不寫回使用者設定）；每杯手感有些誤差（skill：熟練度的誤差倍率）"""
     d = dp.copy()
     for k, v in BARISTA.get(roast, BARISTA["中焙"]).items():
         setattr(d, k, v)
-    d.po_grind = clamp(d.po_grind + rnd.gauss(0, 15), 400, 1000)
-    d.po_temp = clamp(d.po_temp + rnd.gauss(0, 0.7), 85, 100)
-    d.po_bloom = clamp(35 + rnd.gauss(0, 4), 20, 60)
-    d.mk_grind = clamp(d.mk_grind + rnd.gauss(0, 12), 200, 600)
+    d.po_grind = clamp(d.po_grind + rnd.gauss(0, 15 * skill), 400, 1000)
+    d.po_temp = round(clamp(d.po_temp + rnd.gauss(0, 0.7 * skill), 85, 100) * 2) / 2   # 手沖壺溫度設定是 0.5°C 一格
+    d.po_bloom = clamp(35 + rnd.gauss(0, 4 * skill), 20, 60)
+    d.mk_grind = clamp(d.mk_grind + rnd.gauss(0, 12 * skill), 200, 600)
     d.mk_dose, d.sy_dose = 17.0, 15.0
-    d.sy_grind = clamp(d.sy_grind + rnd.gauss(0, 15), 400, 900)
-    d.sy_steep = clamp(d.sy_steep + rnd.gauss(0, 4), 20, 90)
+    d.sy_grind = clamp(d.sy_grind + rnd.gauss(0, 15 * skill), 400, 900)
+    d.sy_steep = clamp(d.sy_steep + rnd.gauss(0, 4 * skill), 20, 90)
     return d
 
 

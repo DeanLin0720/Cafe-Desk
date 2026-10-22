@@ -235,6 +235,7 @@ class Barista:
     def __init__(self):
         self.shots_on_bag = 0
         self.good_streak = 0
+        self.skill = 1.0                # 熟練度的手感誤差倍率（growth.skill），desk 會更新
 
     def shake_up(self, p):
         """換一包豆子或連續好杯後：依烘焙度重新設定起始參數"""
@@ -272,7 +273,7 @@ class Barista:
         if res.channeling > 0.2:
             p.distribution = min(95.0, p.distribution + 15)
             p.preinfusion = max(p.preinfusion, 5.0)
-        p.distribution = clamp(p.distribution + random.uniform(-8, 4), 40, 100)
+        p.distribution = clamp(p.distribution + random.uniform(-8, 4) * self.skill, 40, 100)
         p.grind_um = clamp(p.grind_um, 160, 480)
         p.bean_age += 1
 

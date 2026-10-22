@@ -219,8 +219,8 @@ def steam_time(dp, traits, device, drink="latte"):
     return 22.0 * amount * heat / max(0.3, traits.steam_power) + 3.0
 
 
-def evaluate_milk(dp, traits, device, rnd=random, drink="latte"):
-    """依打奶溫度、奶泡量、設備、指定圖案，算出奶泡細緻度與拉花結果"""
+def evaluate_milk(dp, traits, device, rnd=random, drink="latte", skill=1.0):
+    """依打奶溫度、奶泡量、設備、指定圖案，算出奶泡細緻度與拉花結果（skill：熟練度的手感誤差倍率）"""
     _, foam, target, tol = milk_plan(drink, dp)
     t = dp.milk_temp
     tf = 1 - clamp(abs(t - 60) / 16, 0, 1) ** 1.4
@@ -228,12 +228,13 @@ def evaluate_milk(dp, traits, device, rnd=random, drink="latte"):
         tf -= (t - 68) * 0.05                      # 燙到：甜感流失、奶泡變粗
     ff = 1 - clamp(abs(foam - target) / tol, 0, 1)
     if device == "frother":
-        base = 0.62
+        base = getattr(traits, "frother_q", 0.62)
     else:
         base = clamp(0.72 + 0.14 * (traits.steam_power - 1), 0.5, 0.95)
     base *= MILK_KINDS.get(dp.milk_kind, MILK_KINDS["dairy"])["texture"]    # 植物奶較難打出細緻奶泡
     texture = clamp(base * (0.55 + 0.45 * ff) * (0.62 + 0.38 * clamp(tf, 0, 1)) * 1.12
-                    + rnd.gauss(0, 0.06), 0, 1)
+                    + 0.16 * (1 - skill)                  # 熟練的咖啡師打的奶泡比較細（大師 +0.08）
+                    + rnd.gauss(0, 0.06 * skill), 0, 1)
     # 卡布奇諾奶泡厚，拉花難度較高；馥列白奶泡薄，最好拉葉子
     eff = texture - {"cappuccino": 0.1, "cortado": 0.05}.get(drink, 0.0)
     wanted = dp.art if dp.art in ART_NEED else "auto"
@@ -242,10 +243,10 @@ def evaluate_milk(dp, traits, device, rnd=random, drink="latte"):
         # 瑪奇朵：奶泡點；焦糖瑪奇朵：奶泡上濃縮的印子＋焦糖格紋；摩卡加鮮奶油：看不到拉花
         art = {"macchiato": "dot", "caramel_macchiato": "mark"}.get(drink, "whip")
         wanted = "auto"
-        art_q = clamp(texture + rnd.gauss(0, 0.07), 0.05, 1)
+        art_q = clamp(texture + rnd.gauss(0, 0.07 * skill), 0.05, 1)
     elif wanted == "auto" and drink == "rose_latte" and eff >= 0.42:
         art = "heart"                              # 玫瑰拿鐵：情人節一律拉愛心
-        art_q = clamp(eff + rnd.gauss(0, 0.07), 0.05, 1)
+        art_q = clamp(eff + rnd.gauss(0, 0.07 * skill), 0.05, 1)
     elif wanted == "auto":
         if eff < 0.42:
             art = "blob"
@@ -256,20 +257,20 @@ def evaluate_milk(dp, traits, device, rnd=random, drink="latte"):
         else:
             art = rnd.choice(("rosetta", "rosetta", "tulip") if drink == "flat_white"
                              else ("heart", "tulip", "rosetta", "rosetta"))
-        art_q = clamp(eff + rnd.gauss(0, 0.07), 0.05, 1)
+        art_q = clamp(eff + rnd.gauss(0, 0.07 * skill), 0.05, 1)
     else:
         need = ART_NEED[wanted]
         name = T(ART_NAMES[wanted])
         if eff >= need:
             art = wanted
-            art_q = clamp(eff + rnd.gauss(0, 0.06), 0.05, 1)
+            art_q = clamp(eff + rnd.gauss(0, 0.06 * skill), 0.05, 1)
         elif eff >= need - 0.14:                   # 差一點：圖案出來了但糊糊的
             art = wanted
-            art_q = clamp(eff - 0.3 + rnd.gauss(0, 0.04), 0.05, 0.4)
+            art_q = clamp(eff - 0.3 + rnd.gauss(0, 0.04 * skill), 0.05, 0.4)
             note = T("{name}有點糊", name=name)
         else:                                      # 差太多：變成一坨白點
             art = "blob"
-            art_q = clamp(eff + rnd.gauss(0, 0.05), 0.05, 1)
+            art_q = clamp(eff + rnd.gauss(0, 0.05 * skill), 0.05, 1)
             note = T("想拉{name}，奶泡不夠細", name=name)
     milk_score = 100 * clamp(0.5 * clamp(tf, 0, 1) + 0.5 * ff, 0, 1)
     if art == "blob":
@@ -500,7 +501,16 @@ class PourStage(Stage):
         cup, m = s.app.cup, s.app.machine
         # 傾倒時容器嘴的位置：杯口右上方
         self.pour_pos = (m.mx + cup.TR - 6, m.my + cup.T - 34)
-        enter = self.start_pos or (self.pour_pos[0] + 70, self.pour_pos[1] - 60)
+        self.squeeze = self.vessel == "squeeze"
+        if self.squeeze:
+            # 醬料擠瓶：在杯子右邊倒過來（瓶嘴朝正下方），平移到杯子正上方、瓶嘴剛好在杯口上面，
+            # 濃稠的醬直直往下掉、左右來回淋；擠完平移回右邊再轉正。杯子上方到沖煮頭的空間不夠在那裡翻轉
+            cx = m.mx + cup.CX
+            self.pour_pos = (cx + 3, m.my + cup.T - 10)
+            self.high = (m.mx + cup.TR + (28 * cup.k if cup.handle else 4) + 14, self.pour_pos[1])
+            self.sway = (cup.TR - cup.TL) * 0.2
+        enter = self.start_pos or ((self.high[0] + 50, self.high[1] - 50) if self.squeeze else
+                                   (self.pour_pos[0] + 70, self.pour_pos[1] - 60))
         self.v = {"kind": self.vessel, "x": enter[0], "y": enter[1], "tilt": 0.0,
                   "alpha": 0.0 if self.start_pos is None else 1.0, "fill": 1.0, "liquid": self.liquid,
                   "pour": 0.0}
@@ -509,7 +519,7 @@ class PourStage(Stage):
         self.phase, self.t, self.poured = "enter", 0.0, 0.0
         # 會流的液體：傾斜角度由剩下的液量決定（液面碰到倒出口才流得出來，見 vessels.py）；醬料擠瓶照舊倒過來擠
         self.physics = self.vessel in vessels.SHAPES
-        self.max_tilt = 150 if self.vessel == "squeeze" else 55
+        self.max_tilt = 180 if self.vessel == "squeeze" else 55
         self.pre = 1.0 if self.vessel == "squeeze" else 0.55
         self.c_full, self.c_empty = self._contents(s)
         self.v["content"] = self.c_full
@@ -581,6 +591,9 @@ class PourStage(Stage):
     def update(self, s, dt):
         self.t += dt
         v = self.v
+        if self.squeeze:
+            self.update_squeeze(s, dt)
+            return
         if self.phase == "enter":
             k = clamp(self.t / 0.8, 0, 1)
             if self.path:
@@ -641,6 +654,54 @@ class PourStage(Stage):
                 v["x"], v["y"] = self._along(self.path, k)
             else:
                 v["x"], v["y"] = arc_move(self.exit_from, self.exit_to, k, 14)
+            if self.home is None:
+                v["alpha"] = 1 - k
+            if k >= 1:
+                s.vessel = None
+                self.done = True
+
+    def update_squeeze(self, s, dt):
+        """醬料擠瓶：杯子右邊倒過來 → 平移到杯子上方 → 瓶嘴朝下左右淋 → 平移回右邊 → 轉正離開"""
+        v = self.v
+        if self.phase == "enter":
+            k = clamp(self.t / 0.8, 0, 1)
+            v["x"], v["y"] = arc_move(self.enter_from, self.high, k, 14)
+            v["tilt"] = 180 * ease(k)
+            v["alpha"] = max(v["alpha"], clamp(k * 2, 0, 1))
+            if k >= 1:
+                self.phase, self.t = "tilt", 0.0
+        elif self.phase == "tilt":                    # 倒著平移到杯子正上方
+            k = ease(clamp(self.t / 0.45, 0, 1))
+            v["x"] = lerp(self.high[0], self.pour_pos[0], k)
+            v["y"] = lerp(self.high[1], self.pour_pos[1], k)
+            if self.t >= 0.45:
+                self.phase, self.t = "pour", 0.0
+                s.events.append("pour_start")
+        elif self.phase == "pour":
+            step = min(self.rate * dt, self.grams - self.poured)
+            self.poured += step
+            frac = clamp(self.poured / max(1.0, self.grams), 0, 1)
+            s.add_liquid(self.liquid, step, 0.0)
+            v["fill"] = 1 - frac
+            v["pour"] = 1.0
+            v["x"] = self.pour_pos[0] + math.sin(self.t * 4.5) * self.sway * min(1.0, self.t * 3)
+            if self.poured >= self.grams - 0.01:
+                self.phase, self.t = "untilt", 0.0
+                self.lift_from = (v["x"], v["y"])
+                v["pour"] = 0.0
+                s.events.append("pour_stop")
+        elif self.phase == "untilt":                  # 還倒著，先平移離開杯子上方
+            k = ease(clamp(self.t / 0.4, 0, 1))
+            v["x"] = lerp(self.lift_from[0], self.high[0], k)
+            v["y"] = lerp(self.lift_from[1], self.high[1], k)
+            if self.t >= 0.4:
+                self.phase, self.t = "exit", 0.0
+                self.exit_from = self.high
+                self.exit_to = self.home or (self.high[0] + 50, self.high[1] - 50)
+        elif self.phase == "exit":                    # 邊離開邊轉正
+            k = clamp(self.t / 0.7, 0, 1)
+            v["x"], v["y"] = arc_move(self.exit_from, self.exit_to, k, 14)
+            v["tilt"] = 180 * (1 - ease(k))
             if self.home is None:
                 v["alpha"] = 1 - k
             if k >= 1:
@@ -867,7 +928,7 @@ class Session:
             stages.append(PourStage("squeeze", "vanilla", self.dp.vanilla_g, 8.0))
         milk_stages = []
         if family == "milk":
-            self.milk = evaluate_milk(self.dp, t, t.milk, drink=drink)
+            self.milk = evaluate_milk(self.dp, t, t.milk, drink=drink, skill=app.skill())
             if t.steam_heatup:
                 milk_stages.append(HeatStage())
             milk_stages.append(SteamStage())

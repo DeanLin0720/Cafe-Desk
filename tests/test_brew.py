@@ -65,7 +65,7 @@ def test_pourover_scene_and_flow(desk):
     assert desk.contents["water"] == dp.po_dose * (dp.po_ratio - brew.RETAIN_K)
     assert desk.bag["left"] == 250 - dp.po_dose
     assert desk.result.drink == "pour_over" and 0 <= desk.result.score <= 100
-    assert {"first_pourover"} <= set(desk.stats.data["achievements"])
+    assert "first_pourover" not in desk.stats.data["achievements"], "自己沖的不算成就（要為客人做）"
     desk.set_method("espresso")
     assert desk.width() == machine_w and desk.drink != "pour_over"
     assert desk.cup.CX == desk.machine.cup_cx, "回到咖啡機：杯子放回沖煮頭下"
@@ -86,7 +86,7 @@ def test_method_filters_drinks_and_menu(desk):
     assert desk.auto_drink() is None, "冰滴還在滴：自動模式等滴完"
 
 
-def test_cold_drip_survives_restart(qapp, cfg_path):
+def test_cold_drip_survives_restart(qapp, cfg_path, unlocked):
     from cafe_desk.desk import CafeDesk
     w = CafeDesk()
     w.show_window()
@@ -119,7 +119,7 @@ def test_cold_drip_survives_restart(qapp, cfg_path):
         w2.host.close()
 
 
-def test_orders_exclude_cold_drip_until_ready(desk):
+def test_orders_exclude_cold_drip_until_ready(desk, unlocked):
     rnd = random.Random(1)
     assert all(orders.make_order(i, rnd, exclude=("cold_drip",)).drink != "cold_drip" for i in range(400))
     desk.set_method("colddrip")

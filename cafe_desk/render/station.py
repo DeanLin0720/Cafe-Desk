@@ -94,9 +94,9 @@ class StationRenderer:
         """器具的位置：手沖壺是器具座標（在放大的器具圖層裡移動）；分享壺、冰滴壺會拿去倒，回傳場景座標"""
         scx = brew.PO_STAND_X
         if name == "kettle_rest":
-            return scx + 28, FLOOR - 33
+            return scx + 36, FLOOR - 33              # 壺嘴不要疊到分享壺的把手
         if name == "kettle_pour":
-            return scx + 3, FLOOR - 62 - 44 - 16      # 濾杯正上方
+            return scx + 3, FLOOR - 62 - 44 - 28      # 濾杯正上方；夠高，傾斜時壺身與壺嘴根部才不會壓進杯口
         if name == "server":                         # 分享壺的倒出口（左上壺嘴）
             return self.gear_to_scene(scx - 22, FLOOR - 62)
         if name == "moka":                           # 摩卡壺的壺嘴
@@ -290,9 +290,9 @@ class StationRenderer:
     def paint_dripper(self, p, cx, base_y, st, roast, tds):
         """V 形濾杯（底部尖端插在分享壺口）：濾紙、粉床、水位、底下滴落"""
         top_y = base_y - 44
-        cone = QPainterPath()
-        cone.moveTo(cx - 26, top_y)
-        cone.lineTo(cx + 26, top_y)
+        cone = QPainterPath()                       # 上緣跟著杯口橢圓的前半圈（直線的話左右兩角會凸出杯口）
+        cone.moveTo(cx - 25, top_y)
+        cone.arcTo(QRectF(cx - 25, top_y - 6.5, 50, 13), 180, 180)
         cone.lineTo(cx + 8, base_y - 6)
         cone.lineTo(cx - 8, base_y - 6)
         cone.closeSubpath()

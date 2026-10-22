@@ -2,17 +2,21 @@
 import datetime
 
 from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import QPainter, QPixmap, QPen, QFont, QColor
+from PySide6.QtGui import QPainter, QPixmap, QPen, QFont, QColor, QPainterPath
 from PySide6.QtWidgets import (QDialog, QTabWidget, QVBoxLayout, QHBoxLayout, QLabel, QWidget, QGridLayout,
-                               QScrollArea, QPushButton, QFrame)
+                               QScrollArea, QPushButton, QFrame, QProgressBar)
 
 from .drinks import DRINKS, DRINK_KEYS, FESTIVAL_DRINKS, ART_NAMES, MILK_KINDS
 from .beans import ORIGINS
 from .festivals import today, FESTIVALS
-from .i18n import T
+from . import growth, theme, store, beans, brew
+from .i18n import T, money, money_text, retext
 from .machines import MACHINES
 from .stats import ACHIEVEMENTS, ART_BOOK, TIER_GROUPS, TIER_OF
 from .render.milk import make_art
+from .render.icons import drink_icon
+from .render import gear_icons
+from .drinks import method_of
 
 ACCENT = "#8a5426"
 
@@ -55,6 +59,52 @@ def _medals(have, dpr=1.0):
             p.drawEllipse(c, r - 0.5, r - 0.5)
     p.end()
     return pm
+
+
+def _dash(kind="dash"):
+    """收據的虛線（dash）或行與行之間的點線（dot），樣式在 theme.DIALOG_QSS"""
+    f = QFrame()
+    f.setObjectName(kind)
+    f.setFixedHeight(1)
+    return f
+
+
+def _bar(prog):
+    bar = QProgressBar()
+    bar.setRange(0, 1000)
+    bar.setValue(int(prog * 1000))
+    bar.setTextVisible(False)
+    bar.setFixedHeight(8)
+    bar.setStyleSheet(f"QProgressBar{{background:#e8dfd2;border:none;border-radius:4px;}}"
+                      f"QProgressBar::chunk{{background:{theme.ACCENT};border-radius:4px;}}")
+    return bar
+
+
+class Receipt(QWidget):
+    """一張收據：白一點的紙、右下影子、下緣鋸齒（成就頁用）"""
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect()).adjusted(1, 1, -5, -5)
+        path = QPainterPath()
+        path.moveTo(r.left(), r.top())
+        path.lineTo(r.right(), r.top())
+        path.lineTo(r.right(), r.bottom())
+        teeth = max(8, int(r.width() // 14))
+        step = r.width() / teeth
+        for i in range(teeth):
+            x = r.right() - i * step
+            path.lineTo(x - step / 2, r.bottom() - 5)
+            path.lineTo(x - step, r.bottom())
+        path.closeSubpath()
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(90, 70, 40, 40))
+        p.drawPath(path.translated(3, 3))
+        p.setBrush(QColor("#fffdf7"))
+        p.setPen(QPen(QColor("#e4dac6"), 1))
+        p.drawPath(path)
+        p.end()
 
 
 class DaysChart(QWidget):
@@ -114,28 +164,34 @@ class DaysChart(QWidget):
 
 
 class RecordsDialog(QDialog):
-    def __init__(self, app):
+    def __init__(self, app, tab=None):
         super().__init__(None)
         self.app = app
         self.setWindowTitle(T("紀錄與收集冊"))
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-        self.resize(560, 520)
+        self.resize(760, 560)                       # 英文分頁名稱較長（店鋪、商店、說明分頁）
+        theme.apply_dialog(self)
         lay = QVBoxLayout(self)
         if app.stats.tampered:
             warn = QLabel(T("⚠ 偵測到 {n} 筆紀錄被修改或刪除，這些紀錄不列入統計", n=app.stats.tampered))
             warn.setStyleSheet("color:#b03020; font-weight:bold; padding:4px;")
             warn.setWordWrap(True)
             lay.addWidget(warn)
-        tabs = QTabWidget()
+        tabs = self.tabs = QTabWidget()
         lay.addWidget(tabs)
         st = app.stats.data
         tabs.addTab(self.today_tab(), T("今天"))
+        tabs.addTab(self.scroll(self.shop_tab()), T("店鋪"))
+        tabs.addTab(self.scroll(self.store_tab()), T("商店"))
         tabs.addTab(self.days_tab(), T("近兩週"))
         tabs.addTab(self.scroll(self.recent_tab()), T("最近幾杯"))
         n = len(st["achievements"])
         tabs.addTab(self.scroll(self.achievements_tab()), T("成就 {n}/{total}", n=n, total=len(ACHIEVEMENTS)))
         tabs.addTab(self.scroll(self.art_tab()), T("拉花收集"))
         tabs.addTab(self.scroll(self.book_tab()), T("圖鑑"))
+        tabs.addTab(self.scroll(self.guide_tab()), T("說明"))
+        if tab == "shop":
+            tabs.setCurrentIndex(2)
         row = QHBoxLayout()
         row.addStretch(1)
         b = QPushButton(T("關閉"))
@@ -148,6 +204,7 @@ class RecordsDialog(QDialog):
         sa = QScrollArea()
         sa.setWidgetResizable(True)
         sa.setFrameShape(QFrame.NoFrame)
+        w.setObjectName("page")                      # 紙張底色（theme.DIALOG_QSS）
         sa.setWidget(w)
         return sa
 
@@ -160,7 +217,8 @@ class RecordsDialog(QDialog):
         rows = [(T("杯數"), f"{cups}"),
                 (T("平均分數"), f"{d['score_sum'] / cups:.1f}" if cups else "—"),
                 (T("點單"), f"{d['orders']}"),
-                (T("營業額"), f"${d['revenue']:,}"),
+                (T("營業額"), money(d["revenue"])),
+                (T("比上一個營業日"), self.revenue_change(d)),
                 (T("等太久離開的客人"), f"{d['walkouts']}"),
                 (T("平均等待"), T("{s:.0f} 秒", s=d["wait_sum"] / d["waited"]) if d["waited"] else "—"),
                 (T("用掉的豆子"), f"{d['beans_g']:.0f} g")]
@@ -173,9 +231,9 @@ class RecordsDialog(QDialog):
         best = d.get("best")
         g.addWidget(_title(T("今天最好的一杯")), r, 0, 1, 2)
         if best:
-            name = best.get("title") if best.get("title") not in DRINKS else T(DRINKS[best["drink"]]["name"])
+            name = retext(best.get("title")) if best.get("title") not in DRINKS else T(DRINKS[best["drink"]]["name"])
             g.addWidget(QLabel(T("{name} · {score:.0f} 分", name=name, score=best["score"])), r + 1, 0, 1, 2)
-            g.addWidget(_muted(best.get("comment", "")), r + 2, 0, 1, 2)
+            g.addWidget(_muted(retext(best.get("comment", ""))), r + 2, 0, 1, 2)
         else:
             g.addWidget(_muted(T("今天還沒有做咖啡")), r + 1, 0, 1, 2)
         r += 3
@@ -189,6 +247,319 @@ class RecordsDialog(QDialog):
         g.setRowStretch(r, 1)
         g.setColumnStretch(1, 1)
         return w
+
+    def revenue_change(self, d):
+        """今日營業額跟上一個有接單的日子比"""
+        prev = growth.last_business_day(self.app.stats, today().isoformat())
+        pv = self.app.stats.data["days"][prev]["revenue"] if prev else 0
+        if not d["orders"] or not pv:
+            return "—"
+        k = (d["revenue"] - pv) / pv
+        return T("{arrow} {pct:.0f}%（{day}：{rev}）", arrow="↑" if k >= 0 else "↓", pct=abs(k) * 100, day=prev, rev=money(pv))
+
+    def shop_tab(self):
+        """店鋪等級（累積營業額）與咖啡師熟練度（總杯數）"""
+        w = QWidget()
+        g = QGridLayout(w)
+        st = self.app.stats.data
+        rev, cups = st["revenue_total"], st["total"]
+        lv, nxt, prog = growth.level_progress(rev)
+        g.addWidget(_title(T("店鋪 Lv.{n} {name}", n=lv, name=T(growth.level_name(lv)))), 0, 0, 1, 2)
+        g.addWidget(_bar(prog), 1, 0, 1, 2)
+        rows = [(T("累積營業額"), money(rev)),
+                (T("下一級"), T("Lv.{n}：還差 {m}", n=lv + 1, m=money(nxt - rev)) if nxt else T("已經是最高等級")),
+                (T("來客"), T("比開店時多 {p:.0f}%", p=(1 / growth.arrival_k(lv) - 1) * 100)),
+                (T("客人耐心"), T("多 {p:.0f}%", p=(growth.patience_k(lv) - 1) * 100)),
+                (T("排隊上限"), T("{n} 位", n=growth.queue_max(lv)))]
+        r = 2
+        for k, v in rows:
+            g.addWidget(QLabel(k), r, 0)
+            lab = QLabel(v)
+            lab.setStyleSheet(f"font-weight:bold; color:{ACCENT};")
+            g.addWidget(lab, r, 1)
+            r += 1
+        g.addWidget(_muted(T("店鋪等級依營業模式的累積營業額（含小費）計算，等級越高客人越多、越有耐心。")), r, 0, 1, 2)
+        r += 1
+        rank = growth.rank_of(cups)
+        g.addWidget(_title(T("咖啡師：{name}", name=T(growth.rank_name(rank)))), r, 0, 1, 2)
+        left = growth.rank_next(cups)
+        rows = [(T("做過的咖啡"), T("{n} 杯", n=cups)),
+                (T("下一個稱號"), T("{name}：還差 {n} 杯", name=T(growth.rank_name(rank + 1)), n=left)
+                 if left is not None else T("已經是最高稱號")),
+                (T("手感誤差"), T("新手的 {p:.0f}%", p=growth.skill(cups) * 100))]
+        r += 1
+        for k, v in rows:
+            g.addWidget(QLabel(k), r, 0)
+            lab = QLabel(v)
+            lab.setStyleSheet(f"font-weight:bold; color:{ACCENT};")
+            g.addWidget(lab, r, 1)
+            r += 1
+        g.addWidget(_muted(T("每做一杯都算（手動、自動、營業）。越熟練，打奶溫度、奶泡量、研磨與拉花的誤差越小。")), r, 0, 1, 2)
+        r += 1
+        days = [(k, v) for k, v in sorted(st["days"].items(), reverse=True) if v.get("orders")][:7]
+        if days:
+            g.addWidget(_title(T("最近的營業日")), r, 0, 1, 2)
+            r += 1
+            for k, v in days:
+                g.addWidget(QLabel(k), r, 0)
+                g.addWidget(QLabel(T("服務 {n} 位 · {rev} · 小費 {tip}", n=v["orders"], rev=money(v["revenue"]),
+                                     tip=money(v["tips"]))), r, 1)
+                r += 1
+        g.setRowStretch(r, 1)
+        g.setColumnStretch(1, 1)
+        return w
+
+    # 設備圖鑑：(種類, key, 名稱, 說明)；種類 machine／grinder（義式獨立磨豆機）／station（沖煮台，key 是沖煮方式或 grinder）
+    GEAR_TEXT = {"grinder": "DESK·01、復古拉桿、小型單鍋爐共用", "station_grinder": "手沖、冰滴、摩卡壺、虹吸壺共用",
+                 "pourover": "濾杯加細口壺，悶蒸後分段注水", "colddrip": "冰水一滴一滴滴過咖啡粉，約一小時",
+                 "moka": "爐火加熱下壺，蒸氣壓把咖啡推上來", "siphon": "酒精燈把水推上上壺，熄火後咖啡被吸回"}
+    STATION_DRINK = {"pourover": "pour_over", "colddrip": "cold_drip", "moka": "moka_pot", "siphon": "siphon"}
+
+    def gear_cards(self, g, r):
+        """圖鑑的設備區：每台咖啡機、磨豆機、沖煮台一張卡片（縮圖、名稱、解鎖條件或使用紀錄、說明、已買的升級）"""
+        app = self.app
+        col = app.stats.data["collection"]
+        owned = app.stats.data["owned"]
+        dpr = self.devicePixelRatioF()
+        items = []
+        for k, m in MACHINES.items():
+            ok = app.machine_open(k)
+            best = col["machine_best"].get(k)
+            sub = (T("最高 {s:.0f} 分", s=best) if best else T("還沒用過")) if ok else \
+                T("店鋪 Lv.{n} 解鎖", n=growth.MACHINE_LEVEL[k])
+            pic = gear_icons.machine_icon(app, m, 150, 104, not ok, dpr)
+            items.append((pic, T(m.name), sub, T(m.traits.summary), store.upgrade_names(k, owned), ok))
+        ok = app.machine_open("desk01")
+        items.append((gear_icons.grinder_icon(app, 150, 104, not ok, dpr), T("獨立磨豆機"), T("Lv.1 就有"),
+                      T(self.GEAR_TEXT["grinder"]), [n for k, (t, n, *_r) in store.UPGRADES.items()
+                                                      if t == store.EXTERNAL and k in owned], ok))
+        for kind in ("grinder", "pourover", "colddrip", "moka", "siphon"):
+            method = "pourover" if kind == "grinder" else kind
+            ok = app.method_open(method)
+            if kind == "grinder":
+                name, text = T("手沖用磨豆機"), T(self.GEAR_TEXT["station_grinder"])
+                ups = [n for k, (t, n, *_r) in store.UPGRADES.items() if t == store.STATION and k in owned]
+                sub = T("跟著手沖解鎖") if ok else T("店鋪 Lv.{n} 解鎖", n=growth.METHOD_LEVEL[method])
+            else:
+                name, text, ups = T(brew.METHODS[kind]), T(self.GEAR_TEXT[kind]), []
+                info = col["drinks"].get(self.STATION_DRINK[kind])
+                if not ok:
+                    sub = T("店鋪 Lv.{n} 解鎖", n=growth.METHOD_LEVEL[method])
+                elif info:
+                    sub = T("{n} 杯 · 最高 {s:.0f} 分", n=info["count"], s=info["best"])
+                else:
+                    sub = T("還沒用過")
+            items.append((gear_icons.station_icon(app, kind, 150, 104, not ok, dpr), name, sub, text, ups, ok))
+        g.addWidget(_title(T("設備（{n}/{total}）", n=sum(1 for it in items if it[5]), total=len(items))), r, 0, 1, 4)
+        r += 1
+        cols = 3
+        box = QGridLayout()
+        box.setHorizontalSpacing(14)
+        box.setVerticalSpacing(10)
+        for i, (pm, name, sub, text, ups, ok) in enumerate(items):
+            card = QVBoxLayout()
+            card.setSpacing(1)
+            pic = QLabel()
+            pic.setPixmap(pm)
+            pic.setAlignment(Qt.AlignCenter)
+            card.addWidget(pic)
+            lab = QLabel(name)
+            lab.setAlignment(Qt.AlignCenter)
+            lab.setWordWrap(True)
+            lab.setStyleSheet("font-weight:bold;" if ok else f"color:{theme.FAINT};")
+            card.addWidget(lab)
+            note = QLabel(sub)
+            note.setAlignment(Qt.AlignCenter)
+            note.setStyleSheet(f"color:{ACCENT if ok else theme.FAINT}; font-size:11px;")
+            card.addWidget(note)
+            desc = QLabel(text + ("<br>★ " + T("、").join(T(u) for u in ups) if ups else ""))
+            desc.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+            desc.setWordWrap(True)
+            desc.setStyleSheet(f"color:{theme.MUTED if ok else theme.FAINT}; font-size:11px;")
+            card.addWidget(desc)
+            card.addStretch(1)
+            box.addLayout(card, i // cols, i % cols)
+        for c in range(cols):
+            box.setColumnStretch(c, 1)
+        g.addLayout(box, r, 0, 1, 4)
+        return r + 1
+
+    def guide_tab(self):
+        """遊戲說明：操作、三種模式的差別、營業怎麼玩、成長、商店、成就、小技巧（數字從遊戲資料算，改數值不用改這裡）"""
+        outer = QWidget()
+        ol = QVBoxLayout(outer)
+        ol.setContentsMargins(14, 12, 14, 12)
+        paper = Receipt()
+        ol.addWidget(paper)
+        ol.addStretch(1)
+        lay = QVBoxLayout(paper)
+        lay.setContentsMargins(28, 20, 28, 32)
+        lay.setSpacing(5)
+        head = QLabel(T("遊戲說明"))
+        head.setAlignment(Qt.AlignCenter)
+        head.setStyleSheet(f"font-size:17px; font-weight:bold; color:{theme.INK_DARK};")
+        lay.addWidget(head)
+        sub = QLabel("Café Desk")
+        sub.setAlignment(Qt.AlignCenter)
+        sub.setStyleSheet(f"color:{theme.MUTED};")
+        lay.addWidget(sub)
+
+        def section(title):
+            lay.addWidget(_dash())
+            lab = QLabel(title)
+            lab.setStyleSheet(f"font-weight:bold; color:{ACCENT}; font-size:13px; padding-top:2px;")
+            lay.addWidget(lab)
+
+        def bullet(text):
+            lab = QLabel(f"<table><tr><td style='padding-right:6px; color:{theme.MUTED}'>·</td><td>{text}</td></tr></table>")
+            lab.setWordWrap(True)
+            lay.addWidget(lab)
+
+        section(T("基本操作"))
+        bullet(T("點一下咖啡機（或沖煮台）做一杯；左鍵拖曳移動視窗；右鍵打開選單；滑鼠停在機身上看萃取曲線。"))
+        bullet(T("右鍵「參數設定…」調研磨、粉量、水溫等參數，下方會預估這組參數拿幾分。"))
+
+        section(T("三種模式（右鍵選單上方三選一）"))
+        bullet(T("<b>手動</b>：點一下做一杯。"))
+        bullet(T("<b>自動</b>：照目前的飲品與參數一直做同一杯，間隔在「自動間隔」選；適合當擺件。"))
+        bullet(T("<b>營業</b>：客人排隊點單，咖啡師自己接單、賺營業額；這是遊戲的主體。"))
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(18)
+        cols = (T("手動"), T("自動"), T("營業"))
+        for c, name in enumerate(cols):
+            lab = QLabel(f"<b>{name}</b>")
+            lab.setAlignment(Qt.AlignCenter)
+            grid.addWidget(lab, 0, c + 1)
+        rows = ((T("咖啡師稱號"), (1, 1, 1)), (T("營業額、錢包"), (0, 0, 1)), (T("店鋪等級、設備解鎖"), (0, 0, 1)),
+                (T("成就（跟杯子有關的）"), (0, 0, 1)), (T("客人、耐心、小費"), (0, 0, 1)))
+        for r, (name, marks) in enumerate(rows, start=1):
+            grid.addWidget(QLabel(name), r, 0)
+            for c, ok in enumerate(marks):
+                lab = QLabel("✓" if ok else "—")
+                lab.setAlignment(Qt.AlignCenter)
+                lab.setStyleSheet(f"color:{ACCENT if ok else theme.FAINT}; font-weight:bold;")
+                grid.addWidget(lab, r, c + 1)
+        grid.setColumnStretch(0, 1)
+        lay.addLayout(grid)
+
+        section(T("營業怎麼玩"))
+        bullet(T("客人陸續進門排隊，每位都有耐心（點單紙下緣的細條），等太久會離開。"))
+        bullet(T("分數＝飲品 65%＋照訂單要求 35%，等太久會扣分；84 分以上給 10% 小費，92 分以上 20%。"))
+        bullet(T("離開營業模式或跨過午夜時，會出一張打烊日報。"))
+
+        section(T("店鋪等級：看累積營業額"))
+        bullet(T("等級越高，客人越多、越有耐心、出杯越快，排隊上限也變多；最高 Lv.{n}。", n=growth.MAX_LEVEL))
+        names = {**{k: T(m.name) for k, m in MACHINES.items()}, **{k: T(v) for k, v in brew.METHODS.items()}}
+        by_level = {}
+        for table in (growth.MACHINE_LEVEL, growth.METHOD_LEVEL):
+            for k, lv in table.items():
+                by_level.setdefault(lv, []).append(names[k])
+        unlock = "<br>".join(T("Lv.{lv}：{names}", lv=lv, names=T("、").join(by_level[lv])) for lv in sorted(by_level))
+        bullet(T("設備依店鋪等級解鎖：<br>{list}", list=unlock))
+
+        section(T("咖啡師稱號：看做過的總杯數（三種模式都算）"))
+        ranks = " → ".join(T("{name} {n} 杯", name=T(name), n=cups) if cups else T(name)
+                           for cups, name, _k in growth.RANKS)
+        bullet(ranks)
+        lines = []
+        for r, (_c, rname, _e) in enumerate(growth.RANKS):
+            ks = [k for k in DRINK_KEYS if growth.drink_rank(k) == r and method_of(k) == "espresso"]
+            extra = [T("節日限定")] if r == growth.FESTIVAL_RANK else []
+            if ks or extra:
+                lines.append(T("{rank}：{names}", rank=T(rname), names=T("、").join([T(DRINKS[k]["name"]) for k in ks] + extra)))
+        bullet(T("飲品依咖啡師稱號解鎖（沖煮台的飲品看店鋪等級）：<br>{list}", list="<br>".join(lines)))
+        pct = "、".join(f"{T(name)} {k * 100:.0f}%" for (_c, name, _e), k in zip(growth.RANKS, growth.SCORE_K))
+        bullet(T("越熟練手感越穩、奶泡越細；而且 {base:.0f} 分以上的部分依稱號打折：{pct}。",
+                 base=growth.SCORE_FROM, pct=pct))
+
+        section(T("錢包與商店（「商店」分頁）"))
+        bullet(T("錢包＝累積營業額 － 已花的錢；花錢不會掉級。"))
+        bullet(T("咖啡機與磨豆機升級讓設備更穩、更好喝；精品豆比較甜，營業中用它做的飲品售價 ×{k:g}。", k=beans.PREMIUM_PRICE_K))
+
+        section(T("成就"))
+        bullet(T("跟杯子有關的成就只算營業模式裡為客人做的杯子；清潔保養、開豆子、等冰滴照常算。"))
+        bullet(T("分級成就有銅、銀、金三級，「成就」分頁會顯示下一級還差多少。"))
+
+        section(T("小技巧"))
+        bullet(T("豆子烘焙後 7–21 天最好喝；豆子用完要開新包（自動、營業時咖啡師會自己開）。"))
+        bullet(T("狀態列出現 ⚠ 就是該清潔保養了，太久沒清會扣分。"))
+        bullet(T("冰滴要先架冰滴塔，之後在背景滴約 1 小時（關掉程式也照算）。"))
+        bullet(T("右鍵「聲音」可以開環境音，「音樂」可以播放自己的音檔。"))
+        return outer
+
+    def store_tab(self):
+        """商店：錢包餘額、咖啡機升級（一次性）、精品咖啡豆（一包一包買）"""
+        app = self.app
+        st = app.stats.data
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setSpacing(6)
+        lay.addWidget(_title(T("商店")))
+        bal = app.wallet()
+        purse = QLabel(T("錢包 {m}", m=money(bal)))
+        purse.setStyleSheet(f"font-size:20px; font-weight:bold; color:{ACCENT};")
+        lay.addWidget(purse)
+        lay.addWidget(_muted(T("累積營業額 {a} － 已花 {b}。店鋪等級照累積營業額計算，花錢不會掉級。",
+                               a=money(st["revenue_total"]), b=money(st["spent"]))))
+
+        def row(name, sub, desc, label, enabled, tip, fn):
+            box = QHBoxLayout()
+            lab = QLabel(f"<b>{name}</b>　<span style='color:{theme.MUTED}'>{sub}</span><br>"
+                         f"<span style='color:{theme.MUTED}'>{desc}</span>")
+            lab.setWordWrap(True)
+            box.addWidget(lab, 1)
+            b = QPushButton(label)
+            b.setEnabled(enabled)
+            b.setMinimumWidth(116)
+            if tip:
+                b.setToolTip(tip)
+            b.clicked.connect(fn)
+            box.addWidget(b)
+            lay.addLayout(box)
+
+        lay.addWidget(_dash())
+        lay.addWidget(_title(T("咖啡機升級")))
+        for key, (targets, name, desc, price, _c) in store.UPGRADES.items():
+            have = key in st["owned"]
+            short = max(0, price - bal)
+            opened = app.upgrade_open(key)
+            if not opened:
+                need = growth.METHOD_LEVEL["pourover"] if targets == store.STATION else \
+                    min(growth.MACHINE_LEVEL[k] for k in targets)
+                tip = T("店鋪 Lv.{n} 解鎖後才能升級", n=need)
+            else:
+                tip = T("還差 {m}", m=money(short)) if (not have and short) else ""
+            row(T(name), T(store.target_name(key)), T(desc),
+                T("已購買") if have else money(price), not have and short == 0 and opened, tip,
+                lambda _=False, k=key: self.buy(app.buy_upgrade, k))
+        lay.addWidget(_dash())
+        lay.addWidget(_title(T("精品咖啡豆")))
+        lay.addWidget(_muted(T("一包 {g:.0f} g，取代目前這包：咖啡師沒在忙就馬上開封，正在做飲品就這杯做完換上（營業中也能買）。"
+                               "甜感比一般豆高，營業中用這包做的飲品售價 ×{k:g}。", g=beans.BAG_G, k=beans.PREMIUM_PRICE_K)))
+        waiting = app.pending_bag if beans.is_premium(app.pending_bag or "") else None
+        for key, (name, roast, flavor, sweet, price) in beans.PREMIUM.items():
+            short = max(0, price - bal)
+            now = app.bag["origin"] == key
+            if waiting:
+                tip = T("已經有一包精品豆等著換上")
+            else:
+                tip = T("還差 {m}", m=money(short)) if short else (T("咖啡師正在做飲品：這杯做完換上") if app.busy() else "")
+            note = T("（正在用這包，剩 {g:.0f} g）", g=app.bag["left"]) if now else ""
+            if waiting == key:
+                note = T("（已買，這杯做完換上）")
+            row(T(name), T("{roast} · 甜感 +{s:g}", roast=T(roast), s=sweet), T(flavor) + note,
+                T("待換上") if waiting == key else T("買一包 {m}", m=money(price)), short == 0 and not waiting, tip,
+                lambda _=False, k=key: self.buy(app.buy_beans, k))
+        lay.addStretch(1)
+        return w
+
+    def buy(self, fn, key):
+        """按下購買：成功後重畫商店分頁（餘額、按鈕狀態會變）"""
+        if fn(key):
+            i = self.tabs.currentIndex()
+            self.tabs.removeTab(i)
+            self.tabs.insertTab(i, self.scroll(self.store_tab()), T("商店"))
+            self.tabs.setCurrentIndex(i)
 
     def days_tab(self):
         w = QWidget()
@@ -216,27 +587,45 @@ class RecordsDialog(QDialog):
             g.addWidget(_muted(T("還沒有紀錄")), 0, 0)
         for i, c in enumerate(rows):
             ts = (c["ts"] or "")[5:16].replace("T", " ")
-            name = c["title"] if c["title"] and c["title"] not in DRINKS else T(DRINKS.get(c["drink"], {}).get("name", c["drink"]))
+            name = retext(c["title"]) if c["title"] and c["title"] not in DRINKS else T(DRINKS.get(c["drink"], {}).get("name", c["drink"]))
             g.addWidget(_muted(ts), i, 0)
             g.addWidget(QLabel(name + ("  " + T("（點單）") if c.get("is_order") else "")), i, 1)
             sc = QLabel(T("{score:.0f} 分", score=float(c["score"] or 0)))
             sc.setStyleSheet(f"font-weight:bold; color:{ACCENT};")
             g.addWidget(sc, i, 2)
-            com = _muted(c["comment"] or "")
+            com = _muted(retext(c["comment"] or ""))
             g.addWidget(com, i, 3)
         g.setColumnStretch(3, 1)
         g.setRowStretch(len(rows) + 1, 1)
         return w
 
     def achievements_tab(self):
-        w = QWidget()
-        g = QGridLayout(w)
+        """成就頁：排成一張收據（分級成就、單項成就兩段，右邊是解鎖日期）"""
         st = self.app.stats
         got = st.data["achievements"]
         info = {k: (n, d) for k, n, d in ACHIEVEMENTS}
         values = st.tier_values()
+        outer = QWidget()
+        ol = QVBoxLayout(outer)
+        ol.setContentsMargins(14, 12, 14, 12)
+        paper = Receipt()
+        ol.addWidget(paper)
+        ol.addStretch(1)
+        lay = QVBoxLayout(paper)
+        lay.setContentsMargins(26, 20, 26, 30)
+        lay.setSpacing(6)
+        head = QLabel(T("成就紀錄"))
+        head.setAlignment(Qt.AlignCenter)
+        head.setStyleSheet(f"font-size:17px; font-weight:bold; color:{theme.INK_DARK};")
+        lay.addWidget(head)
+        n, total = len(got), len(ACHIEVEMENTS)
+        sub = QLabel(T("已解鎖 {n} / {total}", n=n, total=total))
+        sub.setAlignment(Qt.AlignCenter)
+        sub.setStyleSheet(f"color:{theme.MUTED};")
+        lay.addWidget(sub)
+        lay.addWidget(_bar(n / total))
+        tiers_rows, single_rows = [], []
         shown = set()
-        i = 0
         for key, name, desc in ACHIEVEMENTS:
             if key in TIER_OF:
                 # 分級成就：一組一列，三個獎牌；名稱是目前最高級，說明是下一級
@@ -251,28 +640,49 @@ class RecordsDialog(QDialog):
                 name = info[top][0]
                 if level < 3:
                     nxt = tiers[level][0]
-                    desc = T("{desc}（目前 {n:,}）", desc=T(info[nxt][1]), n=values[group])
+                    now = money(values[group]) if group == "revenue" else f"{values[group]:,}"
+                    desc = T("{desc}（目前 {n}）", desc=money_text(T(info[nxt][1])), n=now)
                     desc = T("下一級：{desc}", desc=desc) if ok else desc
                 else:
-                    desc = T("已達最高級：{desc}", desc=T(info[top][1]))
+                    desc = T("已達最高級：{desc}", desc=money_text(T(info[top][1])))
                 icon = QLabel()
                 icon.setPixmap(_medals([k in got for k, _ in tiers], self.devicePixelRatioF()))
                 date = max(got[k] for k, _ in tiers if k in got) if ok else ""
-                lab = QLabel(f"<b>{T(name)}</b><br><span style='color:#7a6a5a'>{desc}</span>")
+                tiers_rows.append((icon, T(name), desc, ok, date))
             else:
                 ok = key in got
                 icon = QLabel("🏆" if ok else "🔒")
-                icon.setStyleSheet("font-size:18px;" + ("" if ok else "color:#b0a898;"))
-                date = got[key] if ok else ""
-                lab = QLabel(f"<b>{T(name)}</b><br><span style='color:#7a6a5a'>{T(desc)}</span>")
-            if not ok:
-                lab.setStyleSheet("color:#9a8e80;")
-            g.addWidget(icon, i, 0)
-            g.addWidget(lab, i, 1)
-            g.addWidget(_muted(date), i, 2)
-            i += 1
-        g.setColumnStretch(1, 1)
-        return w
+                icon.setStyleSheet("font-size:16px;" + ("" if ok else f"color:{theme.FAINT};"))
+                single_rows.append((icon, T(name), money_text(T(desc)), ok, got.get(key, "")))
+        for title, rows in ((T("分級成就"), tiers_rows), (T("單項成就"), single_rows)):
+            lay.addWidget(_dash())
+            sec = QLabel(title)
+            sec.setStyleSheet(f"font-weight:bold; color:{theme.MUTED}; letter-spacing:2px; padding-top:2px;")
+            lay.addWidget(sec)
+            for i, (icon, name, desc, ok, date) in enumerate(rows):
+                if i:
+                    lay.addWidget(_dash("dot"))
+                row = QHBoxLayout()
+                row.setSpacing(10)
+                icon.setFixedWidth(48)
+                icon.setAlignment(Qt.AlignCenter)
+                row.addWidget(icon)
+                ink = theme.INK if ok else theme.FAINT
+                lab = QLabel(f"<span style='font-weight:bold; color:{ink}'>{name}</span><br>"
+                             f"<span style='color:{theme.MUTED if ok else theme.FAINT}'>{desc}</span>")
+                lab.setWordWrap(True)
+                row.addWidget(lab, 1)
+                d = QLabel(date if ok else T("未解鎖"))
+                d.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                d.setStyleSheet(f"color:{theme.MUTED if ok else theme.FAINT}; font-family:Consolas, monospace;")
+                row.addWidget(d)
+                lay.addLayout(row)
+        lay.addWidget(_dash())
+        foot = QLabel(T("全部解鎖了，謝謝光臨！") if n >= total else T("— 還有 {n} 個等你解鎖 —", n=total - n))
+        foot.setAlignment(Qt.AlignCenter)
+        foot.setStyleSheet(f"color:{theme.MUTED}; padding-top:2px;")
+        lay.addWidget(foot)
+        return outer
 
     def art_tab(self):
         w = QWidget()
@@ -326,30 +736,52 @@ class RecordsDialog(QDialog):
         w = QWidget()
         g = QGridLayout(w)
         col = self.app.stats.data["collection"]
-        g.addWidget(_title(T("飲品")), 0, 0, 1, 3)
-        r = 1
         keys = list(DRINK_KEYS) + list(FESTIVAL_DRINKS)
-        for k in keys:
+        g.addWidget(_title(T("飲品（{n}/{total}）", n=sum(1 for k in keys if k in col["drinks"]), total=len(keys))),
+                    0, 0, 1, 4)
+        dpr = self.devicePixelRatioF()
+        for i, k in enumerate(keys):                 # 一張卡片：側面圖、名稱、杯數與最高分；沒做過是灰色剪影
             info = col["drinks"].get(k)
+            card = QVBoxLayout()
+            card.setSpacing(1)
+            pic = QLabel()
+            pic.setPixmap(drink_icon(k, 84, bool(info), dpr))
+            pic.setAlignment(Qt.AlignCenter)
+            card.addWidget(pic)
             name = T(DRINKS[k]["name"]) if info else "？？？"
             if DRINKS[k].get("festival"):
                 name += T("（{fest}限定）", fest=T(FESTIVALS[DRINKS[k]["festival"]][0]))
             lab = QLabel(name)
-            if not info:
-                lab.setStyleSheet("color:#9a8e80;")
-            g.addWidget(lab, r, 0)
-            g.addWidget(QLabel(T("{n} 杯", n=info["count"]) if info else ""), r, 1)
-            g.addWidget(QLabel(T("最高 {s:.0f} 分", s=info["best"]) if info else ""), r, 2)
-            r += 1
+            lab.setAlignment(Qt.AlignCenter)
+            lab.setWordWrap(True)
+            lab.setStyleSheet("font-weight:bold;" if info else f"color:{theme.FAINT};")
+            card.addWidget(lab)
+            m = method_of(k)
+            if info:
+                sub = T("{n} 杯 · 最高 {s:.0f} 分", n=info["count"], s=info["best"])
+            elif not self.app.method_open(m):
+                sub = T("店鋪 Lv.{n} 解鎖", n=growth.METHOD_LEVEL[m])
+            elif not self.app.drink_open(k):
+                sub = T("咖啡師「{rank}」解鎖", rank=T(growth.rank_name(growth.drink_rank(k))))
+            else:
+                sub = T("還沒做過")
+            note = QLabel(sub)
+            note.setAlignment(Qt.AlignCenter)
+            note.setStyleSheet(f"color:{theme.MUTED if info else theme.FAINT}; font-size:11px;")
+            card.addWidget(note)
+            r, c = divmod(i, 4)
+            g.addLayout(card, 1 + r, c)
+        r = 2 + (len(keys) - 1) // 4
+        r = self.gear_cards(g, r)
         for title, items, names in (
-                (T("咖啡機"), col["machines"], {k: m.name for k, m in MACHINES.items()}),
                 (T("牛奶"), col["milks"], {k: v["name"] for k, v in MILK_KINDS.items()}),
                 (T("豆子產地"), col["origins"], {k: v[0] for k, v in ORIGINS.items()})):
-            g.addWidget(_title(T("{title}（{n}/{total}）", title=title, n=len(items), total=len(names))), r, 0, 1, 3)
+            g.addWidget(_title(T("{title}（{n}/{total}）", title=title, n=len(items), total=len(names))), r, 0, 1, 4)
             r += 1
             text = T("、").join(T(names[k]) for k in names if k in items) or "—"
-            g.addWidget(_muted(text), r, 0, 1, 3)
+            g.addWidget(_muted(text), r, 0, 1, 4)
             r += 1
-        g.setColumnStretch(0, 1)
+        for c in range(4):
+            g.setColumnStretch(c, 1)
         g.setRowStretch(r, 1)
         return w

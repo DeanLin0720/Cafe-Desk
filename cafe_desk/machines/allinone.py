@@ -26,6 +26,7 @@ class AllInOne(Machine):
                     milk="wand", steam_power=0.85, grinder="integrated")
 
     drip_area = (52, 288, 338)            # 滴水盤（x1, x2, 上緣；機身座標）
+    tip_x = 440                           # 小費罐中心（場景座標）
     scene_w = 478
     mx, my = MX, MY
     group_pf = (160, 128)
