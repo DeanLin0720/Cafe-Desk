@@ -17,6 +17,7 @@ class MachineRenderer:
 
     def paint_background(self, p):
         m = self.machine
+        self.paint_side_counter(p)               # 營業模式：咖啡機右邊的出杯台與出餐架
         external = m.traits.grinder == "external"
         if external:
             self.paint_grinder_shadow(p)
@@ -25,6 +26,8 @@ class MachineRenderer:
         m.paint_static(self, p)
         if not self.cupless():
             self.cup.paint_back(p)
+            if self.twin_live():                       # 雙頭機第二個沖煮頭下的杯子
+                self.twin["cup"].paint_back(p)
         p.restore()
         if external:
             self.paint_grinder_static(p)
@@ -36,6 +39,8 @@ class MachineRenderer:
         p.translate(m.mx, m.my)
         if not self.cupless():
             self.cup.paint_front(p)
+            if self.twin_live():
+                self.twin["cup"].paint_front(p)
         m.paint_front(self, p)
         p.restore()
 

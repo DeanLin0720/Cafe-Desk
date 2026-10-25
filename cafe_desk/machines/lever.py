@@ -30,7 +30,6 @@ class Lever(Machine):
                     sweet_add=0.5, pressure_cap=10.0, milk="wand", steam_power=1.3)
 
     drip_area = (40, 230, 340)            # 滴水盤（x1, x2, 上緣；機身座標）
-    tip_x = 425                           # 小費罐中心（場景座標）
     scene_w = 455
     mx, my = 150, 18
     group_pf = (99, 128)

@@ -102,26 +102,51 @@ def test_old_records_count_without_spam(qapp, cfg_path):
         w.host.close()
 
 
-def test_tip_drops_coin_and_jar_paints(desk):
+def test_counter_delivery_flow(desk):
+    """營業中做完一杯：杯子在出杯台、拍成圖收起來，切到櫃檯畫面（不顯示咖啡機），客人取走後才評分（飄出小費），再切回來；
+    咖啡師在交付時要等（busy）"""
+    from cafe_desk.orders import Order
     desk.set_order_mode(True)
-    assert desk.tip_jar_on()
-    desk.drop_coin(24)
-    desk.host.grab()
-    for _ in range(20):
-        desk.step(0.05, 0.05)
-    assert desk.coins == [] or all(c["landed"] for c in desk.coins)
+    assert desk.side_on() and desk.cup_anchor()[0] + desk.machine.mx > desk.machine.scene_w, "杯子在出杯台"
+    o = Order(1, "Amy", "latte", [], price=120, patience=999, to_go=True)
+    desk.order = o
+    desk.start_order(o)
+    phases, floats, counter = set(), False, False
+    n = 0
+    while desk.busy():
+        if desk.delivery is not None:
+            phases.add(desk.delivery["phase"])
+            counter = counter or desk.counter_view
+            assert not desk.making(), "交付時咖啡師沒有在做下一杯"
+        floats = floats or bool(desk.reg_floats)
+        desk.step(0.05, 0.25)
+        n += 1
+        if n % 30 == 0:
+            desk.host.grab()
+        assert n < 8000
+    assert phases == {"in", "place", "pickup", "out"} and counter and floats
+    assert desk.counter_view and desk.cup_away and desk.scale_weight() == 0, "沒有客人等著做：留在櫃檯"
+    assert desk.stats.data["order_to_go"] == 1
+    desk.start_session("espresso", True)                 # 下一杯換上新杯子
+    assert not desk.cup_away
+    desk.step(0.05, 0.05)
+    assert not desk.counter_view, "開始做飲品切回咖啡機"
     for m in ("pourover", "siphon"):
         desk.set_method(m)
         desk.host.grab()
 
 
-def test_jar_hidden_outside_business(desk):
-    assert not desk.business() and not desk.tip_jar_on()
+def test_side_counter_hidden_outside_business(desk):
+    assert not desk.business() and not desk.side_on()
+    from cafe_desk.render.station import UNIFORM_W
+    assert desk._scene_w == UNIFORM_W, "視窗一律統一寬度"
+    assert desk.cup_anchor() == (desk.machine.cup_cx, desk.machine.cup_base), "杯子在沖煮頭下"
 
 
 def test_business_order_finishes_with_level(desk, monkeypatch):
     """高等級營業：排隊上限變大、做完一單正常記帳"""
     monkeypatch.setattr(desk, "shop_level", lambda: 10)
+    monkeypatch.setattr(orders, "party_size", lambda rnd=None: 1)   # 一杯一張單：做完、結帳就記一杯
     desk.set_order_mode(True)
     desk.arrive_in = 0
     desk.step(0.05, 0.05)
@@ -256,7 +281,7 @@ def test_unlock_table():
     assert growth.method_open("siphon", 8) and not growth.method_open("siphon", 7)
     assert growth.unlocked_at(2) == [("method", "pourover")]
     assert sorted(lv for lv in list(growth.MACHINE_LEVEL.values()) + list(growth.METHOD_LEVEL.values())) == \
-        [1, 1, 2, 3, 4, 5, 6, 7, 8], "Lv.2–8 每一級剛好解鎖一樣"
+        [1, 1, 2, 3, 4, 5, 6, 7, 8, 9], "Lv.2–9 每一級剛好解鎖一樣"
 
 
 def test_level1_only_desk01_and_espresso(desk):
@@ -331,12 +356,23 @@ def test_guide_tab(desk):
     dlg.close()
 
 
-def test_tip_jar_only_in_business(desk):
-    desk.stats.record({"drink": "latte", "title": "拿鐵", "score": 91, "comment": "", "order": True,
-                       "price": 120, "tip": 30}, [])
-    assert not desk.tip_jar_on(), "今天有小費，但手動模式不顯示小費罐"
+def test_side_counter_only_in_business(desk):
+    from cafe_desk.render.shop import SIDE_W
+    w0 = desk._scene_w
     desk.set_mode("business")
-    assert desk.tip_jar_on()
+    assert desk.side_on() and desk._scene_w == w0, "營業模式多了出杯台，視窗一樣大"
+    assert desk.scene_dx() + desk.machine.scene_w + SIDE_W <= desk._scene_w, "出杯台放得下"
+    from cafe_desk.render.station import POUR_PAD
+    h = desk.machine.hover_area                       # 咖啡機置中；出杯台右邊要留倒入的空間，放不下就往左移
+    centered = abs(desk.scene_dx() + (h[0] + h[2]) / 2 - desk._scene_w / 2) < 1
+    room = desk._scene_w - (desk.scene_dx() + desk.machine.scene_w + SIDE_W)
+    assert room >= POUR_PAD - 1e-6 and (centered or abs(room - POUR_PAD) < 1e-6)
+    assert desk.cup.CX + desk.machine.mx > desk.machine.scene_w, "杯子換到出杯台"
+    desk.set_method("pourover")
+    assert not desk.side_on(), "沖煮台沒有出杯台"
+    desk.set_mode("manual")
+    desk.set_method("espresso")
+    assert desk._scene_w == w0 and desk.cup.CX == desk.machine.cup_cx
 
 
 def test_welcome_hint_only_for_new_players(desk, qapp, cfg_path):
@@ -379,7 +415,7 @@ def test_drinks_unlock_by_barista_title(desk):
 
 
 def test_equipment_book(desk):
-    """圖鑑的設備區：4 台咖啡機、2 台磨豆機、4 種沖煮台；Lv.1 只有 DESK·01 與獨立磨豆機解鎖"""
+    """圖鑑的設備區：5 台咖啡機、2 台磨豆機、4 種沖煮台；Lv.1 只有 DESK·01 與獨立磨豆機解鎖"""
     from PySide6.QtWidgets import QLabel
     from cafe_desk.records import RecordsDialog
     from cafe_desk.render import gear_icons
@@ -390,5 +426,97 @@ def test_equipment_book(desk):
     assert desk.method == "espresso", "畫沖煮台縮圖不能改到目前的沖煮方式"
     dlg = RecordsDialog(desk)
     texts = [lab.text() for lab in dlg.findChildren(QLabel)]
-    assert "設備（2/10）" in texts and "店鋪 Lv.7 解鎖" in texts
+    assert "設備（2/11）" in texts and "店鋪 Lv.7 解鎖" in texts and "店鋪 Lv.9 解鎖" in texts
     dlg.close()
+
+
+def test_business_brews_into_jigger_then_pours(desk):
+    """營業模式：濃縮先萃取到量杯（杯子裡還沒有），照順序倒進杯子；外帶熱飲一開始就是紙杯"""
+    from cafe_desk.orders import Order
+    desk.set_order_mode(True)
+    o = Order(1, "Amy", "latte", [], price=120, patience=999, to_go=True)
+    desk.order = o
+    desk.start_order(o)
+    assert desk.cup.kind == "paper_latte" and desk.cup.paper == "l"
+    seen_jigger = poured = False
+    n = 0
+    while desk.busy():
+        ss = desk.session
+        if ss and ss.stage_name == "brew" and ss.jigger is not None and desk.shot and desk.shot.weight > 10:
+            seen_jigger = True
+            assert desk.cup_espresso() == 0 and desk.jigger_level() is not None, "萃取中濃縮在量杯裡"
+        if ss and ss.stage_name == "pour" and getattr(ss.stage, "vessel", "") in ("pitcher", "jug"):
+            poured = poured or desk.shot_frac >= 0.999
+        desk.step(0.05, 0.5)
+        n += 1
+        if n % 60 == 0:
+            desk.host.grab()
+        assert n < 8000
+    assert seen_jigger and poured, "量杯倒完才倒牛奶"
+
+
+def test_manual_brews_straight_into_cup(desk):
+    desk.start_session("latte", True)
+    assert desk.cup.kind == "latte"
+    n = 0
+    while desk.busy():
+        assert desk.session is None or desk.session.jigger is None, "手動模式直接萃取到杯子"
+        desk.step(0.05, 0.5)
+        n += 1
+        assert n < 8000
+
+
+def test_business_always_windowed(desk):
+    """營業模式一律視窗化；手動／自動照使用者的設定，可以切換"""
+    desk.set_windowed(False)
+    assert not desk.is_windowed()
+    desk.set_mode("business")
+    assert desk.is_windowed() and desk.windowed_act.isChecked(), "營業中一律視窗化：勾起來"
+    assert not desk.windowed_act.isEnabled(), "營業中反灰"
+    desk.windowed_act.trigger()                       # 營業中點了不改設定、保持勾選
+    assert desk.windowed_act.isChecked() and desk.is_windowed() and not desk.windowed
+    assert not desk.windowed, "使用者的設定不變"
+    desk.set_mode("auto")
+    assert not desk.is_windowed(), "回到自動模式照使用者的設定"
+    assert not desk.windowed_act.isChecked()
+    desk.set_windowed(True)
+    assert desk.is_windowed()
+
+
+def test_flip_clock_only_in_business(desk, monkeypatch):
+    """右上角翻頁鐘：只在營業模式；數字變了會翻；設定可以關掉、改成營業計時"""
+    assert not desk.clock_shown()
+    desk.set_mode("business")
+    assert desk.clock_shown()
+    desk.update_clock()
+    assert desk._clock and len(desk._clock["digits"]) == 4
+    desk.set_clock("seconds", True)
+    desk.update_clock()
+    assert len(desk._clock["digits"]) == 6
+    desk._clock["digits"][-1] = "x"                    # 假裝上一秒是別的數字
+    desk.update_clock()
+    assert desk.clock_flipping()
+    desk.host.grab()
+    desk.set_clock("hour12", True)
+    assert 1 <= int(desk.clock_text()[:2]) <= 12
+    desk.set_clock("on", False)
+    desk.update_clock()
+    assert desk._clock is None
+    desk.set_clock("on", True)
+    desk.set_mode("manual")
+    desk.update_clock()
+    assert desk._clock is None
+
+
+def test_window_is_16_9_with_size_choices(desk):
+    """視窗一律 16:9；大小選項是 960×540–1920×1080；舊版縮放換成最接近的"""
+    from cafe_desk.desk import window_scale
+    from cafe_desk.render.station import UNIFORM_W, WINDOW_SIZES
+    from cafe_desk.layout import WIN_H, TOP_PAD
+    assert abs(UNIFORM_W / (WIN_H + TOP_PAD) - 16 / 9) < 1e-9
+    for px in WINDOW_SIZES:
+        desk.set_scale(px / UNIFORM_W)
+        assert (desk.width(), desk.height()) == (px, px * 9 // 16)
+    assert window_scale(None) * UNIFORM_W == 1280
+    assert round(window_scale(1.0) * UNIFORM_W) == 960, "舊版 100%（800 寬）→ 960×540"
+    assert round(window_scale(1.5) * UNIFORM_W) == 1280, "舊版 150%（1200 寬）→ 1280×720"

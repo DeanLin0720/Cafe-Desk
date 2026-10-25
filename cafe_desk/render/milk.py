@@ -20,6 +20,7 @@ from ..layout import ROAST_LOOK, TOP_PAD, liquid_look
 from ..model import ROASTS
 from ..util import clamp, lerp
 from .. import vessels
+from ..cups import ICED_CUPS
 from .station import brew_color
 
 MILK = "#f4eee4"
@@ -336,7 +337,7 @@ class MilkRenderer:
                     ic["y"], ic["vy"], ic["landed"] = ic["rest"], 0.0, True
                     self.sound.once("tamp", 0.2)
             else:
-                e = self.shot.weight if self.shot else 0.0
+                e = self.cup_espresso()
                 heat = clamp(e / 36, 0, 1)
                 ic["melt"] = min(1.0, ic["melt"] + sdt * (0.0012 + 0.011 * heat * (1 - 0.5 * ic["melt"])))
         if (kind == "caramel_macchiato" or self.contents["syrup"] > 0) and self.shot and self.contents["milk"] > 0:
@@ -401,7 +402,7 @@ class MilkRenderer:
         """美式、拿鐵、冰拿鐵的杯中液體"""
         kind = self.drink_kind()
         c, s = self.contents, self.shot
-        e = s.weight if s else 0.0
+        e = self.cup_espresso()
         liquid = e + c["water"] + c["milk"] + c["syrup"]
         if liquid <= 0.05:
             return
@@ -706,7 +707,7 @@ class MilkRenderer:
         """阿芙佳朵：杯中一球香草冰淇淋，濃縮淋上去後慢慢融化成咖啡色漩渦"""
         ic = self.icecream
         s = self.shot
-        e = s.weight if s else 0.0
+        e = self.cup_espresso()
         melted = ic["g"] * ic["melt"] * 0.8 if ic else 0.0
         liquid = e + melted
         cup = self.cup
@@ -811,7 +812,7 @@ class MilkRenderer:
 
     def liquid_weight(self):
         c = self.contents
-        return (self.shot.weight if self.shot else 0.0) + c["water"] + c["milk"]
+        return self.cup_espresso() + c["water"] + c["milk"]
 
     # ───────────── 冰塊與凝結水珠（機身座標） ─────────────
     def paint_ice(self, p):
@@ -849,7 +850,7 @@ class MilkRenderer:
 
     def paint_condensation(self, p):
         a = self.condense
-        if a <= 0.01 or self.cup.kind != "iced":
+        if a <= 0.01 or self.cup.kind not in ICED_CUPS:
             return
         cup = self.cup
         rnd = random.Random(77)
@@ -872,7 +873,11 @@ class MilkRenderer:
     # ───────────── 傾倒流柱（機身座標） ─────────────
     def paint_pour_stream(self, p):
         ss = self.session
-        v = ss.vessel if ss else None
+        if ss:
+            self._pour_stream(p, ss, ss.vessel)
+            self._pour_stream(p, ss, ss.jigger)             # 營業模式的量杯倒濃縮
+
+    def _pour_stream(self, p, ss, v):
         if not v or v.get("pour", 0) <= 0:
             return
         m = self.machine
@@ -884,6 +889,8 @@ class MilkRenderer:
             res = ss.brew_res
             roast = self.cold["roast"] if (liquid == "colddrip" and self.cold) else self.params.roast
             col = brew_color(roast, res.tds, 0.8 if liquid == "colddrip" else 1.0)[0]
+        elif liquid == "espresso":
+            col = self.espresso_color()[0]
         else:
             col = {"water": WATER, "cold_water": WATER, "tonic": TONIC, "cold_milk": self.milk_col(), "hot_milk": FOAM,
                    **{k: v["color"] for k, v in SYRUPS.items()}}[liquid]
@@ -933,6 +940,8 @@ class MilkRenderer:
             self.paint_squeeze(p, v)
         elif kind == "scoop":
             self.paint_scoop(p, v)
+        elif kind == "jigger":
+            self.paint_jigger(p, v)
         elif kind in ("server", "carafe", "moka", "globe"):
             self.paint_station_vessel(p, v)                  # 分享壺、冰滴壺、摩卡壺、虹吸壺下壺（render/station.py）
         p.restore()
@@ -1062,6 +1071,36 @@ class MilkRenderer:
             p.setPen(QPen(C("#ffffff", 70), 0.7))
             p.drawLine(*line)
             p.setPen(Qt.NoPen)
+
+    def paint_jigger(self, p, v):
+        """營業模式的濃縮量杯：小玻璃杯、刻度線，裡面是濃縮與一層薄 crema"""
+        glass = vessels.jigger()
+        p.fillPath(glass, C("#ffffff", 26))
+        s = self.shot
+        content = v.get("content", 0.0)
+        if s is not None and content > 0.005:
+            top_c, bot_c = self.espresso_color()
+            region = vessels.liquid_region(p, glass, content)
+            if not region.isEmpty():
+                r = region.boundingRect()
+                p.fillPath(region, vgrad(r.top(), r.bottom(), [(0, C(ROAST_LOOK[s.p.roast]["crema"])),
+                                                              (min(0.35, 3.0 / max(1.0, r.height())), C(top_c)),
+                                                              (1, C(bot_c))]))
+        p.setPen(QPen(C("#ffffff", 170), 1.3))
+        p.setBrush(Qt.NoBrush)
+        p.drawPath(glass)
+        p.save()
+        p.scale(vessels.JIGGER_K, vessels.JIGGER_K)             # 把手、刻度、反光照 1 倍的形狀畫
+        hd = QPainterPath(QPointF(43.5, 11))                    # 把手（只描線）
+        hd.cubicTo(QPointF(54, 11), QPointF(55, 34), QPointF(42.5, 36))
+        p.setPen(QPen(C("#ffffff", 150), 2.0, Qt.SolidLine, Qt.RoundCap))
+        p.drawPath(hd)
+        p.setPen(QPen(C("#ffffff", 120), 0.5))                  # 刻度
+        for y in (38.0, 27.0, 16.0):
+            p.drawLine(QPointF(33, y), QPointF(39.5, y))
+        p.setPen(Qt.NoPen)
+        p.fillPath(rrect(9, 9, 11.5, 44, 1.0), C("#ffffff", 70))
+        p.restore()
 
     def paint_bottle(self, p, v):
         glass = vessels.bottle()
@@ -1295,7 +1334,7 @@ class MilkRenderer:
         else:
             look = ROAST_LOOK[s.p.roast]
             crema = mix(look["crema"], "#7a4a2a", 0.25)
-            f = self.contents["milk"] / max(1.0, self.contents["milk"] + s.weight)
+            f = self.contents["milk"] / max(1.0, self.contents["milk"] + self.cup_espresso())
             if st is not None and st[0] == "dot":                 # 瑪奇朵：底色就是 crema
                 f = 0.0
             base = mix(crema, "#e9d6bb", clamp(0.2 + 0.7 * f, 0, 0.85))
@@ -1316,7 +1355,7 @@ class MilkRenderer:
 
     def art_rect(self, with_chart):
         w, h = 124, 120
-        cx = self.machine.card_cx
+        cx = self.machine.card_cx + self.scene_dx()
         lo = self.cards_left()
         if with_chart:
             left = clamp(cx - 169, lo, self._scene_w - 4 - 344)

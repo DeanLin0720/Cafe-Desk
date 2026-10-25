@@ -81,7 +81,7 @@ class LiquidRenderer:
 
     def paint_liquid_espresso(self, p):
         s = self.shot
-        if not s or s.weight <= 0.05:
+        if not s or self.cup_espresso() <= 0.05:
             return
         ly, cx, rx, ry = self.surface_geom()
         wob = (0.5 * min(1.0, self.last_flow) if s.phase == "brew" else 0.0) * math.sin(self.anim_t * 21)
@@ -175,13 +175,14 @@ class LiquidRenderer:
         s = self.shot
         if not s:
             return
-        ly = self.surface_y()
+        jl = self.jigger_level()                    # 營業模式：流進拿在沖煮頭下的量杯
+        ly = jl if jl is not None else self.surface_y()
         flow = self.last_flow
         merge = clamp((flow - 0.9) / 0.9, 0, 1)
         w0 = clamp(1.3 + flow * 1.3, 1.5, 4.6)
         wob = s.res.channeling * 5 + 0.3
         prog = s.progress
-        SPOUT_Y, CX = self.machine.spout_y, self.cup.CX
+        SPOUT_Y, CX = self.machine.spout_y, self.machine.cup_cx     # 流柱在沖煮頭正下方（營業模式杯子在出杯台）
         for k, sx in enumerate(self.machine.spouts):
             st = self.stream[k]
             if st["head"] <= 0:
@@ -219,8 +220,7 @@ class LiquidRenderer:
 
     def paint_wall_film(self, p, ly, crema):
         """掛杯：crema 沾在液面上方的杯壁，沿兩側內壁留下一道漸淡的薄膜"""
-        s = self.shot
-        if s.weight < 3:
+        if self.cup_espresso() < 3:
             return
         h = 3 + self.film_h
         for side in (-1, 1):

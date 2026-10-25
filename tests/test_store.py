@@ -211,3 +211,17 @@ def test_pending_bag_survives_restart(qapp, cfg_path):
         w.timer.stop()
         w.stats.db.close()
         w.host.close()
+
+
+def test_duo_upgrades_stack():
+    """雙頭機的四項升級疊加：通道效應兩項相加，其他照設定"""
+    from cafe_desk.machines import MACHINES
+    base = type(MACHINES["duo"]).traits
+    try:
+        store.apply_upgrades(["duo_burr", "duo_steam", "duo_preinfuse", "duo_boiler"])
+        t = MACHINES["duo"].traits
+        assert abs(t.channel_add - (base.channel_add - 0.06)) < 1e-9
+        assert t.steam_power == 1.9 and t.sweet_add == 0.3 and t.boiler_heat == 1.0 and t.boiler_draw == 0.05
+        assert MACHINES["allinone"].traits == type(MACHINES["allinone"]).traits, "只改雙頭機"
+    finally:
+        store.apply_upgrades([])

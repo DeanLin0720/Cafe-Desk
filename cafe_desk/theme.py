@@ -27,6 +27,7 @@ def _indicators(sel):
 {sel}::indicator:exclusive:unchecked {{ border-radius: 6px; }}
 {sel}::indicator:exclusive:checked {{ border-radius: 6px; }}
 {sel}::indicator:disabled {{ border-color: #d4c9b4; background: #f1ead8; }}
+{sel}::indicator:checked:disabled {{ border-color: #c4a47a; background: #dcb98a; }}
 """
 
 

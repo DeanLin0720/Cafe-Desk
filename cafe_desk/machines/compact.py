@@ -21,7 +21,6 @@ class Compact(Machine):
                     milk="wand", steam_power=0.95, steam_heatup=True, steam_temp=125.0)
 
     drip_area = (44, 226, 338)            # 滴水盤（x1, x2, 上緣；機身座標）
-    tip_x = 428                           # 小費罐中心（場景座標）
     scene_w = 470
     mx, my = 160, 18
     group_pf = (99, 128)

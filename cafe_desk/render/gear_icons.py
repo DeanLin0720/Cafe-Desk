@@ -8,7 +8,7 @@ from PySide6.QtGui import QImage, QPainter, QPixmap, QColor, QFont
 from .. import brew
 from ..layout import WIN_H
 
-CANVAS_W = 560
+CANVAS_W = 680                  # 最寬的雙頭機（場景寬 660）也放得下
 
 
 def _render(fn):
@@ -96,6 +96,18 @@ def machine_icon(app, m, w=150, h=110, locked=False, dpr=1.0):
         m.paint_front(app, p)
         p.restore()
     return _thumb(_render(draw), w, h, locked, dpr)
+
+
+def machine_image(app, m):
+    """一台咖啡機的圖（不含杯子與機身外的配件，例如敲渣盒），裁掉空白、不縮小（櫃檯畫面後檯擺的那台）"""
+    def draw(p):
+        p.save()
+        p.translate(m.mx, m.my)
+        m.paint_static(app, p)
+        m.paint_front(app, p)
+        p.restore()
+    img = _render(draw)
+    return img.copy(_bbox(img))
 
 
 def grinder_icon(app, w=150, h=110, locked=False, dpr=1.0):

@@ -102,7 +102,8 @@ def test_wait_penalty_and_tip():
     assert o.tip == 12 and o.revenue == 132              # 85 分：10% 小費
 
 
-def test_business_queue_and_walkout(desk, unlocked):
+def test_business_queue_and_walkout(desk, unlocked, monkeypatch):
+    monkeypatch.setattr(orders, "party_size", lambda rnd=None: 1)   # 一杯一張單：做完、結帳就記營業額
     desk.auto = True
     desk.set_order_mode(True)
     assert desk.business()
@@ -111,7 +112,7 @@ def test_business_queue_and_walkout(desk, unlocked):
         desk.busy = lambda: True
         desk.update_order(0.5, 0, 25.0)
     assert desk.order is not None
-    assert len(desk.queue) <= orders.QUEUE_MAX - 1
+    assert desk.people() <= orders.QUEUE_MAX, "排隊上限算客人（點好幾杯的算一位）"
     assert desk.stats.day()["walkouts"] >= 1, "等到耐心用完要離開並記錄"
     assert any("先走了" in t[0] for t in desk.toasts), "做飲品中也要看得到有人離開（通知，不是狀態列）"
     del desk.busy
@@ -124,7 +125,7 @@ def test_business_queue_and_walkout(desk, unlocked):
     run_until_idle(desk)
     assert o.state in ("done", "leaving") and o.price > 0
     d = desk.stats.day()
-    assert d["revenue"] >= o.price and d["waited"] == 1
+    assert d["revenue"] >= o.price and d["waited"] >= 1      # 雙頭機解鎖時後面同類的客人會一起做
 
 
 def test_leaving_order_mode_clears_queue(desk):
@@ -156,8 +157,12 @@ def test_mode_menu_three_way(desk):
     assert labels[i + 3] == desk.interval_menu.title(), "自動間隔就在三選一下面"
 
 
-def test_espresso_orders_use_random_machine(desk, unlocked):
+def test_espresso_orders_use_random_machine(desk, unlocked, monkeypatch):
+    """雙頭機還沒解鎖時，點義式隨機挑一台已解鎖的咖啡機（解鎖後一律用雙頭機，見 test_duo.py）"""
+    from cafe_desk import growth
     from cafe_desk.machines import MACHINES
+    from cafe_desk.render.shop import SIDE_W
+    monkeypatch.setitem(growth.MACHINE_LEVEL, "duo", 99)
     desk.set_order_mode(True)
     random.seed(2)
     used = set()
@@ -165,11 +170,11 @@ def test_espresso_orders_use_random_machine(desk, unlocked):
         desk.order = Order(1, "Amy", "espresso", [])
         desk.make_order()
         used.add(desk.machine.key)
-        assert desk.width() == int(desk.machine.scene_w * desk.scale_f)
+        assert desk.scene_dx() + desk.machine.scene_w + SIDE_W <= desk._scene_w, "營業模式多一段出杯台"
         run_until_idle(desk)
-        if used == set(MACHINES):
+        if used == set(MACHINES) - {"duo"}:
             break
-    assert used == set(MACHINES), "四台都會輪到"
+    assert used == set(MACHINES) - {"duo"}, "每一台解鎖的都會輪到"
 
 
 def test_auto_mode_repeats_selected_drink(desk, unlocked):

@@ -3,6 +3,7 @@ import random
 
 import pytest
 
+from cafe_desk.render.station import UNIFORM_W
 from cafe_desk import brew, orders
 from cafe_desk.drinks import DrinkParams
 
@@ -102,7 +103,7 @@ def test_cold_drip_survives_restart(qapp, cfg_path, unlocked):
     w2.show_window()
     try:
         assert w2.cold is not None and not w2.cold["done"]
-        assert w2.method == "colddrip" and w2.width() == w2.machine.scene_w * w2.scale_f
+        assert w2.method == "colddrip" and w2.width() == UNIFORM_W * w2.scale_f
         assert w2.start_session("cold_drip", False) is False      # 還在滴
         w2.cold["start"] -= w2.cold["dur"]
         w2.step(0.05, 0.05)

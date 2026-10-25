@@ -3,7 +3,7 @@
     python tools/stress.py [亂數種子] [機器,機器]
     在 tools/out/ 產生暫存設定檔與資料庫；有錯誤會丟例外
 """
-import sys, os, json, random, time
+import sys, os, json, random
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _OUT = os.path.join(_ROOT, "tools", "out")
 os.makedirs(_OUT, exist_ok=True)
@@ -13,9 +13,13 @@ os.environ.setdefault("CAFE_DESK_DATE", "2026-10-20")
 sys.path.insert(0, _ROOT)
 from PySide6.QtWidgets import QApplication
 app = QApplication([])
-from cafe_desk import paths, desk, drinks, orders, festivals, maintenance, brew
+from cafe_desk import paths, desk, drinks, orders, festivals, maintenance, brew, growth
+growth.MACHINE_LEVEL = {k: 1 for k in growth.MACHINE_LEVEL}          # 設備、飲品全部當作已解鎖（不然會退回 DESK·01）
+growth.METHOD_LEVEL = {k: 1 for k in growth.METHOD_LEVEL}
+growth.DRINK_RANK, growth.FESTIVAL_RANK = {}, 0
 random.seed(int(sys.argv[1]) if len(sys.argv) > 1 else 1)
-machines = sys.argv[2].split(",") if len(sys.argv) > 2 else ["desk01", "lever", "compact", "allinone"]
+from cafe_desk.machines import MACHINES
+machines = sys.argv[2].split(",") if len(sys.argv) > 2 else list(MACHINES)
 res = []
 fd = festivals.festival_drink()
 for mk in machines:
@@ -24,6 +28,7 @@ for mk in machines:
         if os.path.exists(p): os.remove(p)
     json.dump({"x": 0, "y": 0, "machine": mk, "pf_used": True}, open(paths.CONFIG_PATH, "w"))
     w = desk.CafeDesk(); w.show_window(); w.warming = False; w.boiler.temp = w.params.temp
+    assert w.machine.key == mk, f"{mk} 沒有換上"
     def run(fn):
         r = fn(); n = 0
         while w.busy():

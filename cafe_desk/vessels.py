@@ -156,8 +156,27 @@ def moka_hull():
     return body
 
 
+JIGGER_K = 2.0                # 量杯的放大倍數（形狀以 1 倍寫，畫刻度、把手時也乘這個）
+
+
+def jigger():
+    """營業模式的濃縮量杯：像小拉花杯的玻璃量杯，左上角有倒口（原點）；放在沖煮頭下的滴水盤上接濃縮"""
+    glass = QPainterPath()
+    glass.moveTo(0, 0)
+    glass.lineTo(6, 3)
+    glass.lineTo(44, 3)
+    glass.lineTo(42, 47)
+    glass.quadTo(QPointF(41.5, 51), QPointF(38, 51))
+    glass.lineTo(10, 51)
+    glass.quadTo(QPointF(6.5, 51), QPointF(6, 47))
+    glass.lineTo(4, 6)
+    glass.closeSubpath()
+    return QTransform().scale(JIGGER_K, JIGGER_K).map(glass)
+
+
 SHAPES = {"pitcher": pitcher, "kettle": kettle, "bottle": bottle, "tonic": tonic, "jug": jug,
-          "server": server, "carafe": carafe, "globe": globe, "moka": moka}
+          "server": server, "carafe": carafe, "globe": globe, "moka": moka, "jigger": jigger}
+JIGGER_CAP = 160.0            # 量杯畫面上的「滿」是幾 g（量杯放大後，一份濃縮也看得到液面）
 # 外形比內腔大很多的容器：碰撞與超出視窗用外形（沒列的，內腔外框就是外形）
 HULLS = {"moka": moka_hull}
 # 拿去倒時「內腔裡液體佔多少」：裝滿到能倒的最高水位是 1（冰滴壺只裝到瓶頸下面）

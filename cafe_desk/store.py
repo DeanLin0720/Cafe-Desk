@@ -19,9 +19,22 @@ UPGRADES = {
                       {"channel_add": 0.0}),
     "grinder_flat": (EXTERNAL, "平刀盤", "獨立磨豆機換成平刀盤：研磨更均勻、通道效應更少，三台用獨立磨豆機的咖啡機都受惠", 15000,
                      {"channel_delta": -0.04}),
+    # 營業用雙頭機（店鋪 Lv.9 解鎖）：四項可以一起買，效果疊加
+    "duo_burr": (("duo",), "營業級平刀盤", "雙頭機內建磨豆機換成大平刀盤：研磨更均勻，通道效應更少", 30000,
+                 {"channel_delta": -0.04}),
+    "duo_steam": (("duo",), "自動打奶蒸氣管", "雙頭機蒸氣管換成大孔徑自動款：蒸氣更強（1.5 → 1.9），打奶更快、奶泡更細", 35000,
+                  {"steam_power": 1.9}),
+    "duo_preinfuse": (("duo",), "壓力曲線（預浸）", "萃取前先低壓預浸，粉餅吸飽水再加壓：甜感更好，通道效應再少一點", 40000,
+                      {"sweet_add": 0.3, "channel_delta": -0.02}),
+    "duo_boiler": (("duo",), "雙鍋爐快速回溫", "加大加熱器：鍋爐回溫更快，兩杯一起萃取時水溫幾乎不掉", 25000,
+                   {"boiler_heat": 1.0, "boiler_draw": 0.05}),
     "station_ghost": (STATION, "鬼齒刀盤", "手沖用磨豆機換成鬼齒刀盤：細粉更少，手沖、冰滴、摩卡壺、虹吸壺喝起來更乾淨、更甜，研磨偏細也比較不會萃取不均", 12000,
                       {"fines": 0.6, "clarity": 0.8}),
 }
+# 商店卡片的圖示（render/icons.py 的 upgrade_icon）
+UPGRADE_ICONS = {"desk01_frother": "frother", "lever_collar": "collar", "compact_pid": "pid", "allinone_burr": "conical",
+                 "duo_burr": "flat", "duo_steam": "steam", "duo_preinfuse": "preinfuse", "duo_boiler": "boiler",
+                 "grinder_flat": "flat", "station_ghost": "ghost"}
 TARGET_NAMES = {EXTERNAL: "獨立磨豆機", STATION: "手沖用磨豆機"}
 
 

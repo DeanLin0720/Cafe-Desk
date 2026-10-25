@@ -56,11 +56,14 @@ class ParticleSystem:
                 spawn(random.choice(SPOUTS), SPOUT_Y + 3, vx=random.uniform(-50, 50),
                       vy=random.uniform(0, 35), size=1.2, spray=True)
 
+        jl = self.jigger_level()                       # 營業模式：滴進拿在沖煮頭下的量杯
         alive = []
         for d in self.drops:
             d["vy"] += 600 * sdt
             d["x"] += d["vx"] * sdt
             d["y"] += d["vy"] * sdt
+            if jl is not None and d["y"] >= jl and abs(d["x"] - m.cup_cx) < 30:
+                continue
             l, r = cup.cup_x(min(max(d["y"], cup.T), cup.B))
             if d["y"] >= surf and l < d["x"] < r:
                 self.ripples.append({"x": d["x"], "y": surf, "age": 0.0, "life": 0.7, "r": 10})
@@ -85,7 +88,7 @@ class ParticleSystem:
         self.splash = alive
 
         # 流柱落點持續產生漣漪
-        if s and s.phase == "brew" and any(st["head"] >= 1 for st in self.stream):
+        if s and s.phase == "brew" and jl is None and any(st["head"] >= 1 for st in self.stream):
             self._ripple_clock += sdt
             if self._ripple_clock > 0.12:
                 self._ripple_clock = 0.0
@@ -99,8 +102,8 @@ class ParticleSystem:
         # 蒸氣
         intensity = 0.0
         from ..drinks import DRINKS
-        if not DRINKS[self.drink_kind()]["hot"]:
-            s = None                                    # 冰飲不冒煙
+        if not DRINKS[self.drink_kind()]["hot"] or (self.cup_away and not self._in_twin):
+            s = None                                    # 冰飲不冒煙；杯子送去收銀台了也不冒
         if s and s.phase == "done":
             age = time.perf_counter() - s.done_clock
             intensity = max(0.0, 1 - age / 150) * min(1.0, age / 2 + 0.4)

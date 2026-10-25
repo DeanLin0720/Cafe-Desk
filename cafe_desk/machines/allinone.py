@@ -6,7 +6,7 @@ import math
 import random
 
 from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import QPainter, QPixmap, QPen, QPainterPath, QRadialGradient, QFont
+from PySide6.QtGui import QPainter, QPixmap, QPen, QPainterPath, QRadialGradient
 
 from ..gfx import mix, C, vgrad, hgrad, rrect
 from ..layout import BEAN_COLORS
@@ -14,7 +14,6 @@ from ..util import clamp
 from .base import Machine, Traits
 
 PRESSURE_RANGE = (0.0, 12.0)
-BODY = [(0, "#3c3d41"), (0.12, "#2e2f33"), (0.6, "#26272a"), (1, "#18191b")]
 MX, MY = 80, 18
 
 
@@ -26,7 +25,6 @@ class AllInOne(Machine):
                     milk="wand", steam_power=0.85, grinder="integrated")
 
     drip_area = (52, 288, 338)            # 滴水盤（x1, x2, 上緣；機身座標）
-    tip_x = 440                           # 小費罐中心（場景座標）
     scene_w = 478
     mx, my = MX, MY
     group_pf = (160, 128)
@@ -64,19 +62,6 @@ class AllInOne(Machine):
         path.addPath(rrect(16, 326, 324, 366, 10))
         path.addPath(rrect(30, -24, 128, 50, 6))
         return path
-
-    def paint_speckled(self, p, path, x1, y1, x2, y2, seed):
-        p.fillPath(path, vgrad(y1, y2, [(pos, C(col)) for pos, col in BODY]))
-        p.save()
-        p.setClipPath(path)
-        rnd = random.Random(seed)
-        p.setPen(Qt.NoPen)
-        n = int((x2 - x1) * (y2 - y1) / 22)
-        for _ in range(n):
-            p.setBrush(C("#9a9ca0" if rnd.random() < 0.5 else "#0a0a0b", rnd.randint(40, 110)))
-            p.drawEllipse(QPointF(rnd.uniform(x1, x2), rnd.uniform(y1, y2)), 0.45, 0.45)
-        p.fillRect(QRectF(x1, y1, x2 - x1, 2), C("#ffffff", 40))
-        p.restore()
 
     def paint_static(self, a, p):
         self.paint_soft_shadow(p, self.silhouette(), 360, 426)
@@ -167,24 +152,6 @@ class AllInOne(Machine):
         self.paint_drip_tray(p, 52, 288, top=338)
         self.paint_scale(p)
 
-    def paint_square_dial(self, a, p):
-        from ..layout import dial_angle
-        cx, cy = self.gauge_c
-        r = self.gauge_r
-        p.setPen(QPen(C("#3a3a3a"), 0.8))
-        for v in range(13):
-            ang = math.radians(dial_angle(v, *PRESSURE_RANGE))
-            r1 = r * (0.72 if v % 3 == 0 else 0.84)
-            p.drawLine(QPointF(cx + r1 * math.cos(ang), cy - r1 * math.sin(ang)),
-                       QPointF(cx + r * math.cos(ang), cy - r * math.sin(ang)))
-        zr = r * 0.92
-        p.setPen(QPen(C("#f0a050"), 2.2, Qt.SolidLine, Qt.FlatCap))
-        a0, a1 = dial_angle(10, *PRESSURE_RANGE), dial_angle(8, *PRESSURE_RANGE)
-        p.drawArc(QRectF(cx - zr, cy - zr, zr * 2, zr * 2), int(a0 * 16), int((a1 - a0) * 16))
-        p.setFont(QFont(a.mono, 5))
-        p.setPen(C("#3a3a3a"))
-        p.drawText(QRectF(cx - 10, cy + 6, 20, 8), Qt.AlignCenter, "bar")
-
     def paint_front(self, a, p):
         # 豆倉玻璃的反光
         x1, y1, x2, y2 = self.hopper
@@ -229,14 +196,7 @@ class AllInOne(Machine):
     def paint_dynamic(self, a, p):
         wf = a.workflow
         grinding = bool(wf and wf.grinding)
-        x1, y1, x2, y2 = self.hopper
-        # 豆倉：煙燻玻璃 + 豆子 + 上蓋
-        p.fillPath(rrect(x1, y1, x2, y2, 6), C("#2a2622", 120))
-        jig = math.sin(a.anim_t * 90) * 0.5 if grinding else 0.0
-        p.drawPixmap(QPointF(x1, y1 + jig), self.bean_pixmap(a, a.hopper))
-        p.fillPath(rrect(x1, y1, x2, y2, 6), C("#3a3632", 70))
-        p.fillPath(rrect(x1 - 4, y1 - 10, x2 + 4, y1 + 1, 5), vgrad(y1 - 10, y1 + 1, [(0, C("#3a3b3e")),
-                                                                                      (1, C("#121314"))]))
+        self.paint_hopper(a, p, grinding)
         # 研磨刻度窗：橘色指示對應研磨粒徑
         k = clamp((a.params.grind_um - 150) / 350, 0, 1)
         p.fillPath(rrect(36 + 80 * k, 41, 44 + 80 * k, 45, 1.5), C("#f0a050"))
@@ -249,6 +209,16 @@ class AllInOne(Machine):
             self.paint_lamp(a, p, (218, 98), True, "#ff7a40", 2.0)
         self.paint_wand(a, p)
         self.paint_steam_knob(a, p, self.knob, 7)
+
+    def paint_hopper(self, a, p, grinding):
+        """豆倉：煙燻玻璃 + 豆子 + 上蓋（磨豆時豆子跟著抖）"""
+        x1, y1, x2, y2 = self.hopper
+        p.fillPath(rrect(x1, y1, x2, y2, 6), C("#2a2622", 120))
+        jig = math.sin(a.anim_t * 90) * 0.5 if grinding else 0.0
+        p.drawPixmap(QPointF(x1, y1 + jig), self.bean_pixmap(a, a.hopper))
+        p.fillPath(rrect(x1, y1, x2, y2, 6), C("#3a3632", 70))
+        p.fillPath(rrect(x1 - 4, y1 - 10, x2 + 4, y1 + 1, 5), vgrad(y1 - 10, y1 + 1, [(0, C("#3a3b3e")),
+                                                                                      (1, C("#121314"))]))
 
     def paint_dynamic_scene(self, a, p):
         wf = a.workflow

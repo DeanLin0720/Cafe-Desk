@@ -14,6 +14,8 @@ from ..gfx import C, vgrad, hgrad, rrect
 from ..layout import PF_TIPS, PF_TIP_Y, PF_BASKET_W, dial_angle
 from ..util import clamp
 
+SPECKLE_BODY = [(0, "#3c3d41"), (0.12, "#2e2f33"), (0.6, "#26272a"), (1, "#18191b")]   # 深色顆粒烤漆的底色
+
 
 @dataclass
 class Traits:
@@ -33,6 +35,7 @@ class Traits:
     steam_heatup: bool = False     # 單鍋爐：打奶前要先把鍋爐加熱到蒸氣溫度
     steam_temp: float = 125.0
     grinder: str = "external"      # external＝獨立磨豆機；integrated＝內建磨豆機
+    groups: int = 1                # 沖煮頭數量：2＝營業用雙頭機（萃取時同時打奶，營業中可以成對做兩杯）
 
 
 class Machine:
@@ -42,7 +45,6 @@ class Machine:
 
     scene_w = 430                  # 場景寬度
     drip_area = None               # 滴水盤（x1, x2, 上緣；機身座標）
-    tip_x = 410                    # 小費罐中心（場景座標）：咖啡機右邊的空位
     mx, my = 120, 18               # 機身原點（場景座標）
     group_pf = (114, 128)          # 把手扣上時濾杯左上角（機身座標）
     cup_cx, cup_base = 150, 314    # 杯底中心（機身座標）
@@ -342,6 +344,39 @@ class Machine:
             p.setPen(QPen(C("#ffffff" if light else "#3a4046", rnd.randint(8, 26)), 0.6))
             p.drawLine(QPointF(x, y), QPointF(x + rnd.uniform(30, 120), y))
         p.restore()
+
+    def paint_speckled(self, p, path, x1, y1, x2, y2, seed):
+        """深色顆粒烤漆（一體機、營業用雙頭機）"""
+        import random
+        p.fillPath(path, vgrad(y1, y2, [(pos, C(col)) for pos, col in SPECKLE_BODY]))
+        p.save()
+        p.setClipPath(path)
+        rnd = random.Random(seed)
+        p.setPen(Qt.NoPen)
+        n = int((x2 - x1) * (y2 - y1) / 22)
+        for _ in range(n):
+            p.setBrush(C("#9a9ca0" if rnd.random() < 0.5 else "#0a0a0b", rnd.randint(40, 110)))
+            p.drawEllipse(QPointF(rnd.uniform(x1, x2), rnd.uniform(y1, y2)), 0.45, 0.45)
+        p.fillRect(QRectF(x1, y1, x2 - x1, 2), C("#ffffff", 40))
+        p.restore()
+
+    def paint_square_dial(self, a, p, center=None, r=None, vrange=(0.0, 12.0)):
+        """方形壓力錶的刻度與 8–10 bar 色區（錶框由機器自己畫；預設用 gauge_c、gauge_r）"""
+        cx, cy = center or self.gauge_c
+        r = r or self.gauge_r
+        p.setPen(QPen(C("#3a3a3a"), 0.8))
+        for v in range(13):
+            ang = math.radians(dial_angle(v, *vrange))
+            r1 = r * (0.72 if v % 3 == 0 else 0.84)
+            p.drawLine(QPointF(cx + r1 * math.cos(ang), cy - r1 * math.sin(ang)),
+                       QPointF(cx + r * math.cos(ang), cy - r * math.sin(ang)))
+        zr = r * 0.92
+        p.setPen(QPen(C("#f0a050"), 2.2, Qt.SolidLine, Qt.FlatCap))
+        a0, a1 = dial_angle(10, *vrange), dial_angle(8, *vrange)
+        p.drawArc(QRectF(cx - zr, cy - zr, zr * 2, zr * 2), int(a0 * 16), int((a1 - a0) * 16))
+        p.setFont(QFont(a.mono, 5))
+        p.setPen(C("#3a3a3a"))
+        p.drawText(QRectF(cx - 10, cy + 6, 20, 8), Qt.AlignCenter, "bar")
 
     def drip_slots(self):
         """滴水盤格柵縫隙的 x（機身座標）：水位畫在縫隙裡，要跟 paint_drip_tray 的縫隙對齊"""

@@ -11,6 +11,7 @@ import random
 from dataclasses import dataclass, field
 
 from . import growth
+from .cups import SIZE_K
 from .drinks import DRINKS, ART_NAMES, MILK_KINDS, FESTIVAL_DRINKS, base_of
 from .festivals import adjust_weights
 from .i18n import T
@@ -51,6 +52,21 @@ QUEUE_MAX = 4                  # 營業模式：排隊（含正在點的這位�
 WAIT_PENALTY = 15.0            # 等太久最多扣幾分
 
 ORDER_WEIGHT_DRINK = 0.65     # 最後分數：飲品本身的比重（其餘是符合訂單的程度）
+TO_GO_P = 0.4                  # 營業模式外帶的比例（只是外觀：價格與小費一樣）
+# 大中小杯：只有加奶／加水的飲品分；價格加減、出現的比例
+SIZE_DRINKS = ("americano", "iced_americano", "espresso_tonic", "latte", "cappuccino", "mocha",
+               "caramel_macchiato", "iced_latte") + FESTIVAL_DRINKS
+SIZE_PRICE = {"S": -10, "M": 0, "L": 20}
+# 一張單幾杯（營業模式）：(杯數, 比例)；多杯的客人耐心加長
+PARTY_SIZES = ((1, 0.75), (2, 0.2), (3, 0.05))
+PARTY_MEAN = sum(n * w for n, w in PARTY_SIZES)
+PARTY_PATIENCE = 0.35          # 每多一杯，耐心多 35%
+SIT_TIME = (480.0, 1200.0)       # 內用客人拿到飲品後坐多久（模擬秒數，一杯一位）
+PARTY_GAP = 1.55               # 營業模式來客間隔的倍率（客人平均點 PARTY_MEAN≈1.3 杯，加上交付要等；各 48 次模擬調出來的）
+SIZE_WEIGHTS = {"S": 0.25, "M": 0.5, "L": 0.25}
+SIZE_NAME = {"S": "小杯{name}", "L": "大杯{name}"}
+SIZE_ATTRS = ("milk_g", "capp_milk_g", "mocha_milk_g", "cm_milk_g", "iced_milk_g", "water_g", "iced_water_g",
+              "tonic_g", "choc_g", "vanilla_g")
 SHOW_DONE = 9.0                # 完成後訂單卡停留秒數（顯示分數與顧客反應）
 
 
@@ -71,6 +87,13 @@ class Order:
     tip: int = 0
     patience: float = 0.0        # 營業模式：最多願意等幾秒；0＝不限（一般點單）
     wait: float = 0.0            # 從進來到開始製作等了幾秒
+    to_go: bool = False          # 營業模式：外帶（紙杯）；內用（玻璃杯，交付時放上杯盤）
+    size: str = "M"              # 營業模式：大中小杯（SIZE_DRINKS 才有，其他一律 M）
+    party: list = field(default=None, compare=False, repr=False)   # 同一位客人點的幾杯（同一個 list）；一杯時 None
+    paid: bool = True            # 營業模式：接單時在 POS 付過錢了沒（new_order 設成 False，start_checkout 結帳）
+    revealed: bool = True        # 分數公布了沒：營業模式做好時先不公布，到櫃檯結帳完才公布（點單紙蓋章、狀態列、紀錄）
+    rec: dict = field(default=None, compare=False, repr=False)     # 營業模式：結帳後才寫進紀錄的這一杯（cup_record 的內容）
+    result: object = field(default=None, compare=False, repr=False)  # 營業模式：結帳後才顯示在狀態列的結果
 
     def has(self, kind):
         return next((v for k, v in self.mods if k == kind), None)
@@ -81,8 +104,12 @@ class Order:
         milk = self.has("milk")
         if milk in MILK_KINDS and MILK_KINDS[milk]["prefix"]:
             name = name.replace("熱", "")
-            return T("{prefix}{name}", prefix=T(MILK_KINDS[milk]["prefix"]), name=T(name))
-        return T(name)
+            text = T("{prefix}{name}", prefix=T(MILK_KINDS[milk]["prefix"]), name=T(name))
+        else:
+            text = T(name)
+        if self.size in SIZE_NAME:                       # 小杯／大杯寫在品名前面（中杯不寫）
+            text = T(SIZE_NAME[self.size], name=text)
+        return text
 
     @property
     def revenue(self):
@@ -197,7 +224,26 @@ def order_params(order, dp, rnd=random, skill=1.0):
     ice = order.has("ice")
     if ice:
         d.ice = 2.0 if ice == "less" else 8.0
+    d.size = order.size
+    if order.size != "M" and order.drink in SIZE_DRINKS:  # 小杯／大杯：牛奶、水、醬、冰塊跟著杯量
+        k = SIZE_K[order.size]
+        for attr in SIZE_ATTRS:
+            setattr(d, attr, getattr(d, attr) * k)
+        d.ice = max(2.0, round(d.ice * k))
     return d
+
+
+def party_size(rnd=random):
+    """營業模式：這位客人點幾杯"""
+    return rnd.choices([n for n, _ in PARTY_SIZES], weights=[w for _, w in PARTY_SIZES])[0]
+
+
+def pick_size(drink, rnd=random):
+    """營業模式：這杯點大中小杯"""
+    if drink not in SIZE_DRINKS:
+        return "M"
+    keys = list(SIZE_WEIGHTS)
+    return rnd.choices(keys, weights=[SIZE_WEIGHTS[k] for k in keys])[0]
 
 
 def evaluate(order, session):

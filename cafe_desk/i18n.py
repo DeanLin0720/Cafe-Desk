@@ -146,7 +146,7 @@ EN = {
     "依時間變化": "Follow the clock", "白天": "Day", "黃昏": "Dusk", "夜晚": "Night",
     "滑鼠停留顯示萃取曲線": "Show extraction chart on hover",
     "大小": "Size",
-    "視窗化顯示": "Windowed",
+    "視窗化顯示": "Windowed", "視窗化顯示（營業中固定）": "Windowed (always while open)",
     "視窗置頂": "Always on top",
     "語言": "Language",
     "縮到系統匣": "Hide to tray",
@@ -260,6 +260,120 @@ EN = {
     "甜感飽滿、平衡乾淨": "Sweet, balanced and clean",
     "淺焙": "Light roast", "中焙": "Medium roast", "深焙": "Dark roast",
 
+    # ───── 圖鑑的飲品說明與做法（drink_notes.py） ─────
+    "做法": "How it's made", "還沒做過：做過一次，這裡就會記下說明與做法":
+        "Not made yet: make it once and its description and recipe show up here",
+    "義式咖啡的基本：高壓熱水短時間穿過細粉，濃縮出一小杯帶著 crema 的咖啡。":
+        "The base of it all: hot water forced through fine grounds in a short burst makes a small, crema-topped shot.",
+    "磨 18 g 細粉、布粉、填壓": "Grind 18 g fine, distribute and tamp",
+    "93°C、9 bar 萃取約 25–30 秒": "Pull at 93°C and 9 bar for about 25–30 s",
+    "流出 36 g（粉液比 1:2）": "Stop at 36 g out (1:2 ratio)",
+    "「限制的」濃縮：水更少、研磨更細，只取最前段，更濃、更甜、酸苦較少。":
+        "A \"restricted\" shot: less water and a finer grind, only the first part of the pull — thicker, sweeter, less sour and bitter.",
+    "研磨比濃縮細一點": "Grind a little finer than for espresso",
+    "萃取到粉量的約 1.3 倍就停": "Stop at about 1.3× the dose",
+    "杯量很少，口感厚": "A tiny, syrupy cup",
+    "「長的」濃縮：讓更多水流過粉餅，量多、較淡，帶一點後段的苦。":
+        "A \"long\" shot: more water through the puck — bigger, lighter, with a touch of late bitterness.",
+    "研磨比濃縮粗一點": "Grind a little coarser than for espresso",
+    "萃取到粉量的約 3 倍": "Pull to about 3× the dose",
+    "萃取時間比濃縮長": "Runs longer than an espresso",
+    "雙份濃縮：用大濾杯裝更多粉，一次萃出兩份的量。": "A double shot: a bigger basket holds more coffee for twice the drink in one pull.",
+    "大濾杯裝 21 g 粉": "Fill the big basket with 21 g",
+    "研磨稍粗、粉液比 1:2": "Grind slightly coarser, 1:2 ratio",
+    "流出約 42 g": "About 42 g out",
+    "濃縮加熱水稀釋，喝起來接近滴濾咖啡、保留濃縮的香氣。":
+        "Espresso stretched with hot water: close to filter coffee, with the espresso aroma.",
+    "杯裡先倒 120 g 熱水": "Pour 120 g of hot water into the cup first",
+    "再把濃縮直接萃取到熱水上（crema 比較完整）": "Pull the shot straight onto the water (keeps the crema)",
+    "加冰的美式：清爽、好入口，夏天最常點。": "Americano over ice: light and easy, a summer favorite.",
+    "杯裡放冰塊": "Add ice to the glass",
+    "倒入冷水": "Pour in cold water",
+    "濃縮萃取在冰水上": "Pull the shot over the ice water",
+    "濃縮加通寧水：氣泡、微苦的奎寧與咖啡的果酸，分層很好看。":
+        "Espresso and tonic: bubbles, bitter quinine and fruity coffee acidity, in pretty layers.",
+    "倒入通寧水": "Pour in tonic water",
+    "濃縮輕輕萃取在上面，形成分層": "Pull the shot gently on top so it layers",
+    "濃縮加大量熱牛奶與一層薄奶泡，溫和順口，最常見的拉花飲品。":
+        "Espresso with lots of steamed milk and a thin layer of foam: mellow, smooth, the classic latte-art drink.",
+    "萃取一份濃縮到杯裡": "Pull a shot into the cup",
+    "牛奶 150 g 打到約 60°C，奶泡約三成": "Steam 150 g of milk to about 60°C with about 30% foam",
+    "先高處注入融合，再壓低拉花": "Pour from high to blend, then drop low to draw the art",
+    "濃縮、熱牛奶、厚奶泡各約三分之一，奶泡綿密，傳統上撒可可粉。":
+        "About a third each of espresso, milk and thick foam — velvety, traditionally dusted with cocoa.",
+    "萃取一份濃縮": "Pull a shot",
+    "牛奶 100 g 打出約七成的厚奶泡": "Steam 100 g of milk with about 70% thick foam",
+    "倒入拉花，撒上可可粉": "Pour with art and dust with cocoa",
+    "奶泡很薄、咖啡味比拿鐵重：用 ristretto 當基底、牛奶量也比較少。":
+        "Very thin foam and more coffee than a latte: a ristretto base with less milk.",
+    "萃取 ristretto（粉液比 1:1.5）": "Pull a ristretto (1:1.5 ratio)",
+    "牛奶 110 g 只打很薄的奶泡": "Steam 110 g of milk with only a thin foam",
+    "倒入，表面平滑、拉小圖案": "Pour for a glossy surface and a small pattern",
+    "西班牙的「切」：濃縮與熱牛奶約 1:1，咖啡味明顯又不嗆。":
+        "Spanish for \"cut\": espresso and steamed milk about 1:1 — coffee-forward but not harsh.",
+    "牛奶約 40 g，奶泡很少": "About 40 g of milk, very little foam",
+    "倒入小杯，奶咖約各半": "Pour into a small glass, about half and half",
+    "義大利文「做記號」：濃縮上面點一匙奶泡。": "Italian for \"marked\": a spoonful of foam on a shot.",
+    "萃取一份濃縮到小杯": "Pull a shot into a small cup",
+    "打一點綿密奶泡": "Steam a little velvety foam",
+    "在中央點上一匙奶泡": "Spoon a dot of foam in the middle",
+    "拿鐵加巧克力醬，可以再擠鮮奶油、撒可可粉，像熱可可遇上咖啡。":
+        "A latte with chocolate sauce, optionally topped with whipped cream and cocoa — hot chocolate meets coffee.",
+    "杯底擠 20 g 巧克力醬": "Squeeze 20 g of chocolate sauce into the cup",
+    "萃取濃縮，跟醬拌開": "Pull the shot and let it mix with the sauce",
+    "倒入熱牛奶 140 g": "Pour in 140 g of steamed milk",
+    "擠鮮奶油、撒可可粉（可省略）": "Whipped cream and cocoa (optional)",
+    "先牛奶、後濃縮的分層飲品：香草牛奶上面停著一層濃縮，再淋焦糖格紋。":
+        "Milk first, espresso last: a layer of espresso floats on vanilla milk under a caramel crosshatch.",
+    "杯底加 12 g 香草糖漿": "Add 12 g of vanilla syrup to the cup",
+    "倒入熱牛奶與奶泡（不拉花）": "Pour in steamed milk and foam (no art)",
+    "濃縮從奶泡上方注入，停在中間形成分層": "Pull the shot through the foam so it settles in the middle",
+    "表面淋焦糖醬格紋": "Drizzle a caramel crosshatch on top",
+    "加冰的拿鐵：濃縮慢慢在冰牛奶裡暈開。": "A latte over ice: the espresso slowly clouds into the cold milk.",
+    "倒入冰牛奶 150 g": "Pour in 150 g of cold milk",
+    "濃縮萃取在上面": "Pull the shot on top",
+    "義大利文「淹沒」：熱濃縮直接淋在冰淇淋上，邊喝邊融化。":
+        "Italian for \"drowned\": hot espresso poured over ice cream that melts as you eat.",
+    "杯裡放一球香草冰淇淋": "Put a scoop of vanilla ice cream in the cup",
+    "濃縮直接萃取在冰淇淋上": "Pull the shot straight onto the ice cream",
+    "手沖：熱水慢慢注過濾杯裡的中粗粉，乾淨、明亮，喝得出豆子的風味。":
+        "Pour-over: hot water poured slowly through medium-coarse grounds — clean and bright, the beans' flavor shows.",
+    "磨 15 g 中粗粉（約 650 µm）到濾杯": "Grind 15 g medium-coarse (about 650 µm) into the dripper",
+    "93°C 熱水先悶蒸約 35 秒": "Bloom with 93°C water for about 35 s",
+    "分 3 段注水到 1:16（240 g）": "Pour in 3 stages up to 1:16 (240 g)",
+    "滴完，把分享壺倒進杯子": "When it drains, pour the server into the cup",
+    "冰滴：冰水一滴一滴滴過咖啡粉，約一小時才滴完，低酸、厚實、帶甜。":
+        "Cold drip: ice water drips through the grounds drop by drop for about an hour — low acid, rich and sweet.",
+    "磨 50 g 粉放進冰滴塔": "Grind 50 g into the drip tower",
+    "上壺裝冰水（1:10），打開閥門": "Fill the top with ice water (1:10) and open the valve",
+    "慢慢滴約一小時（可以先做別的）": "Let it drip for about an hour (make other things meanwhile)",
+    "滴完，一壺可以加冰倒 4 杯": "One carafe makes 4 glasses over ice",
+    "摩卡壺：爐火加熱下壺，蒸氣壓力把熱水推過咖啡粉，濃郁、帶一點焦香。":
+        "Moka pot: the stove heats the base and steam pressure pushes water through the coffee — strong, a little toasty.",
+    "下壺裝水、粉槽裝平約 17 g 粉": "Fill the base with water and level about 17 g in the basket",
+    "鎖緊放上爐子，中火加熱": "Screw it shut and heat on medium",
+    "咖啡從中柱咕嚕冒出流進上壺": "Coffee gurgles up the column into the top chamber",
+    "倒進小杯": "Pour into a small cup",
+    "虹吸壺：下壺的水被蒸氣推上上壺浸泡咖啡粉，熄火後再被吸回下壺，香氣乾淨。":
+        "Siphon: vapor pushes the water up to steep the grounds, then it's drawn back down when the flame goes out — clean and aromatic.",
+    "下壺裝水、點酒精燈": "Fill the lower globe and light the burner",
+    "水被推上上壺後，倒入約 15 g 粉攪拌": "Once the water rises, add about 15 g and stir",
+    "浸泡約 50 秒後熄火": "Steep about 50 s, then remove the flame",
+    "咖啡被吸回下壺，倒進杯子": "The coffee draws down; pour it into the cup",
+    "萬聖節限定：拿鐵加南瓜香料醬，擠鮮奶油、撒肉桂粉。":
+        "Halloween special: a latte with pumpkin spice sauce, whipped cream and cinnamon.",
+    "杯底加南瓜香料醬": "Add pumpkin spice sauce to the cup",
+    "萃取濃縮": "Pull the shot",
+    "倒入熱牛奶": "Pour in steamed milk",
+    "擠鮮奶油、撒肉桂粉": "Whipped cream and a dusting of cinnamon",
+    "聖誕節限定：拿鐵加薑餅糖漿，擠鮮奶油、撒肉桂粉。":
+        "Christmas special: a latte with gingerbread syrup, whipped cream and cinnamon.",
+    "杯底加薑餅糖漿": "Add gingerbread syrup to the cup",
+    "情人節限定：加了玫瑰糖漿的拿鐵，淡淡粉色，最好拉一顆愛心。":
+        "Valentine's special: a softly pink latte with rose syrup — best with a heart on top.",
+    "杯底加玫瑰糖漿": "Add rose syrup to the cup",
+    "倒入熱牛奶，拉一顆愛心": "Pour in steamed milk and draw a heart",
+
     # ───── 咖啡機 ─────
     "DESK·01 雙錶不鏽鋼機": "DESK·01 twin-gauge steel",
     "復古拉桿機": "Retro lever",
@@ -272,6 +386,10 @@ EN = {
         "Single boiler: temperature swings, high OPV; waits for steam temperature",
     "內建磨豆機一台搞定；研磨均勻度稍差、熱塊水溫會飄、蒸氣稍弱":
         "Built-in grinder; less uniform grind, thermoblock drift, weaker steam",
+    "營業用雙頭機": "Two-group café machine",
+    "雙沖煮頭、自帶磨豆機：萃取時同時打奶，營業中兩位客人點同類飲品就一起做；大鍋爐水溫穩、蒸氣強":
+        "Two groups and a built-in grinder: steams while the shot pulls, and makes two similar orders at once "
+        "in business mode; big stable boiler, strong steam",
 
     # ───── 點單 ─────
     "小陳": "Chen", "阿哲": "Jay", "小美": "May", "王先生": "Mr. Wang", "林小姐": "Ms. Lin", "小雨": "Rain",
@@ -323,8 +441,8 @@ EN = {
     " · 以 {name} 標準評分": " · judged as {name}",
     "顧客點單模式 · 下一位客人約 {sec}s 後到 · ": "Orders · next customer in ~{sec}s · ",
     "訂單 #{no} · ": "Order #{no} · ",
-    "營業中 Lv.{lv} · 排隊 {n} · 今日 {rev} · ": "Open Lv.{lv} · queue {n} · today {rev} · ",
-    # 成長：店鋪等級、咖啡師熟練度、小費罐、打烊日報
+    "營業中 Lv.{lv} · 排隊 {n} · 座位 {s}/{seats} · 今日 {rev}": "Open Lv.{lv} · queue {n} · seats {s}/{seats} · today {rev}",
+    # 成長：店鋪等級、咖啡師熟練度、收銀台、打烊日報
     "路邊小攤": "Street Stall", "巷口咖啡": "Corner Cart", "街角小店": "Corner Shop", "社區咖啡館": "Neighborhood Café",
     "人氣小店": "Popular Spot", "城市咖啡館": "City Café", "咖啡名所": "Coffee Landmark",
     "傳說咖啡館": "Legendary Café", "夢想咖啡館": "Dream Café",
@@ -433,6 +551,9 @@ EN = {
     "店鋪等級：看累積營業額": "Shop level: based on total revenue",
     "等級越高，客人越多、越有耐心、出杯越快，排隊上限也變多；最高 Lv.{n}。":
         "Higher levels bring more, and more patient, customers, faster service and a longer queue; the top is Lv.{n}.",
+    "內用座位 Lv.1 {a} 位、Lv.{n} {b} 位：內用客人拿到飲品後會坐一陣子，坐滿了新客人只能外帶。":
+        "Dine-in seats: {a} at Lv.1, {b} at Lv.{n}. Dine-in customers stay a while after getting their drinks; "
+        "when every seat is taken, new customers have to take theirs to go.",
     "設備依店鋪等級解鎖：<br>{list}": "Equipment unlocks by shop level:<br>{list}",
     "咖啡師稱號：看做過的總杯數（三種模式都算）": "Barista title: based on total drinks made (all modes count)",
     "{name} {n} 杯": "{name} {n} cups",
@@ -475,7 +596,7 @@ EN = {
     "飲品依咖啡師稱號解鎖（沖煮台的飲品看店鋪等級）：<br>{list}":
         "Drinks unlock with the barista title (brew-station drinks follow the shop level):<br>{list}",
     # 設備圖鑑
-    "設備（{n}/{total}）": "Equipment ({n}/{total})", "還沒用過": "Not used yet", "Lv.1 就有": "Available from Lv.1",
+    "設備（{n}/{total}）": "Equipment ({n}/{total})", "還沒用過": "Not used yet", "營業用咖啡機": "Shop machine", "座位": "Seats", "客滿": "Full", "已付款 · 取餐中…": "Paid · picking up…", "等待取餐…": "Awaiting pickup…", "點單中…": "Ordering…", "隨機使用": "Random", "準備中…": "Preparing…", "近期紀錄": "History", "拉花收集（{n}/{total}）": "Latte art ({n}/{total})", "合計": "Total", "等待客人付款…": "Waiting for payment…", "　小費 {m}": "  tip {m}", "歡迎光臨": "Welcome", "MENU · {t}": "MENU · {t}", "今日熱賣": "Today's best", "熱賣": "Best sellers", "營業中一律視窗化，離開營業後才能切換": "The shop is always windowed while open; switch after closing", "翻頁鐘（營業模式限定）": "Flip clock (business mode only)", "顯示翻頁鐘": "Show flip clock", "顯示秒數": "Show seconds", "12 小時制": "12-hour clock", "顯示日期與星期": "Show date and weekday", "{m}/{d}（{w}）": "{m}/{d} ({w})", "{name} · 店鋪 Lv.{n} 解鎖": "{name} · unlocks at shop Lv.{n}", "{title}（已買 {n}/{total}）": "{title} ({n}/{total} bought)", "磨豆機升級": "Grinder upgrades", "已買 {n}/{total}": "{n}/{total} bought", "內用常客": "Dine-in Regulars", "為內用的客人做了 50 杯": "Make 50 drinks for dine-in customers", "大杯滿足": "Go Large", "為客人做了 20 杯大杯": "Make 20 large drinks for customers", "三五好友": "Round for Friends", "一張單三杯，一起做好、一起結帳": "Make a three-drink order and check it out together", "座無虛席": "Full House", "店裡的座位全部坐滿": "Fill every seat in the shop", "一心二用": "Two Things at Once", "職人的手藝：單頭咖啡機萃取的同時打奶，為客人做好一杯": "A master's touch: steam milk while the shot pulls on a single-group machine and serve the drink", "手藝": "Craft", "收集": "Collection", "日常": "Everyday", "營業級平刀盤": "Commercial flat burrs", "雙頭機內建磨豆機換成大平刀盤：研磨更均勻，通道效應更少": "Large flat burrs for the two-group machine's built-in grinder: a more even grind and less channeling", "自動打奶蒸氣管": "Auto-steam wand", "雙頭機蒸氣管換成大孔徑自動款：蒸氣更強（1.5 → 1.9），打奶更快、奶泡更細": "A wide-bore automatic steam wand for the two-group machine: stronger steam (1.5 → 1.9), faster steaming and finer foam", "壓力曲線（預浸）": "Pressure profiling (pre-infusion)", "萃取前先低壓預浸，粉餅吸飽水再加壓：甜感更好，通道效應再少一點": "A low-pressure pre-infusion soaks the puck before full pressure: more sweetness and a little less channeling", "雙鍋爐快速回溫": "Fast-recovery dual boilers", "加大加熱器：鍋爐回溫更快，兩杯一起萃取時水溫幾乎不掉": "Bigger heating elements: the boilers recover faster and the water barely cools when both groups pull at once", "新技能：萃取的同時打奶（單鍋爐機除外），熱牛奶飲品快約三成": "New skill: steaming milk while the shot pulls (not on single-boiler machines) — hot milk drinks about 30% faster", "萃取同時打奶": "Steam while brewing", "已解鎖（單鍋爐機除外）": "Unlocked (not on single-boiler machines)", "「{name}」解鎖": "Unlocks at \"{name}\"", "升到「{name}」解鎖萃取的同時打奶：熱牛奶飲品快約三成（單鍋爐機要先加熱到蒸氣溫度，不適用；雙頭機本來就會）。": "At \"{name}\" steaming milk while the shot pulls unlocks: hot milk drinks are about 30% faster (not on single-boiler machines, which must heat up for steam first; the two-group machine always does this).", "等待結帳…": "Awaiting checkout…", "{stars} {s:.0f} 分": "{stars} {s:.0f}", "內用座位": "Dine-in seats", "{n} 位（下一級 {m} 位）": "{n} (next level: {m})", "小 {s} · 中 {m} · 大 {l}": "S {s} · M {m} · L {l}", "奶泡細緻度 ×{t:.2f}": "Foam texture ×{t:.2f}", " · 精品": " · Premium", "風味：{flavor}": "Flavor: {flavor}", "Lv.1 就有": "Available from Lv.1",
     "跟著手沖解鎖": "Comes with pour-over",
     "DESK·01、復古拉桿、小型單鍋爐共用": "Shared by DESK·01, the lever and the compact single boiler",
     "手沖、冰滴、摩卡壺、虹吸壺共用": "Shared by pour-over, cold drip, moka pot and siphon",
@@ -501,7 +622,7 @@ EN = {
     "職人水準": "Master Level", "連續 60 張訂單 85 分以上": "Score 85+ on 60 orders in a row",
     "拉花圖鑑": "Art Collector", "為客人做出拉花收集的七種圖案": "Serve customers all seven latte art patterns",
     "節日巡禮": "Holiday Tour", "為客人做過每一款節日限定飲品": "Make every seasonal special for customers",
-    "人機合一": "One with the Machine", "四台咖啡機都為客人沖出 90 分": "Serve a 90+ drink from all four machines",
+    "人機合一": "One with the Machine", "每一台咖啡機都為客人沖出 90 分": "Serve a 90+ drink from every espresso machine",
     "人氣咖啡師": "Popular Barista", "300 張訂單拿到 84 分以上": "Score 84+ on 300 orders",
     "城裡最好喝": "Best in Town", "1000 張訂單拿到 84 分以上": "Score 84+ on 1,000 orders",
     "產地探索": "Origin Explorer", "用 4 個產地的豆子為客人做過咖啡": "Serve customers beans from 4 origins",
@@ -518,9 +639,14 @@ EN = {
     "服務周到": "Attentive Service", "一天服務 100 位客人，沒有人等到離開": "Serve 100 customers in a day with no walkouts",
     "零客訴": "Zero Complaints", "一天服務 50 位客人，沒有人等到離開": "Serve 50 customers in a day with no walkouts",
     "一日店長": "Shop Manager", "營業模式一天服務 30 位客人": "Serve 30 customers in business mode in one day",
-    "小費罐滿了": "Full Tip Jar", "一天收到 $500 小費": "Get $500 in tips in one day",
+    "小費滿滿": "Tips Galore", "一天收到 $500 小費": "Get $500 in tips in one day",
     "尖峰時刻": "Rush Hour", "排了 4 位客人時沒有人離開，一路做到隊伍清空":
         "Clear a full 4-person queue with no one leaving",
+    "外帶達人": "Takeaway Pro", "為客人做了 20 杯外帶": "Serve 20 takeaway orders",
+    "{name} · {n} 杯": "{name} · {n} drinks", "{name} · 1 杯": "{name} · 1 drink", "今日 {m}": "Today {m}", "已付款": "Paid", "請刷卡或感應": "Tap or insert card",
+    "{i}/{n} 杯": "{i}/{n}", "小杯{name}": "Small {name}", "大杯{name}": "Large {name}",
+    "外帶": "To go", "內用": "For here", "倒入濃縮…": "Pouring the shot…", "外帶紙杯": "Paper cup", "小費 {m}": "Tips {m}", "小費 +{m}": "Tip +{m}",
+    "雙杯齊發": "Double Up", "用營業用雙頭機一次為兩位客人做好飲品": "Make two customers' drinks at once on the two-group machine",
     # ───── 手沖與冰滴 ─────
     "沖煮方式": "Brew Method", "自動模式": "Auto Mode", "每 {t} 做一杯": "One cup every {t}", "義式咖啡機": "Espresso machine", "手沖": "Pour-over", "冰滴": "Cold drip",
     "現在沒有可以點的飲品": "Nothing to order right now",
@@ -664,9 +790,9 @@ EN = {
     "完美一杯": "Perfect Cup", "為客人做出 95 分以上的一杯": "Serve a customer a drink scoring 95+",
     "穩定發揮": "Consistent", "連續 10 張訂單 85 分以上": "Score 85+ on 10 orders in a row",
     "葉子拉成了": "Rosetta!", "為客人拉出一片漂亮的葉子": "Pour a clean rosetta for a customer",
-    "拉花三連": "Art Trio", "為客人拉出愛心、鬱金香、葉子": "Pour a heart, tulip and rosetta for customers",
+    "拉花三連": "Art Trio", "為客人拉出 3 種拉花圖案": "Pour 3 different latte art patterns for customers",
     "全品項": "Full Menu", "客人點的每一種常態飲品都做過": "Make every regular drink for customers",
-    "機器收藏家": "Machine Collector", "四台咖啡機都為客人沖過": "Serve customers from all four machines",
+    "機器收藏家": "Machine Collector", "每一台咖啡機都為客人沖過": "Serve customers from every espresso machine",
     "植物奶玩家": "Plant-Based", "為客人用過燕麥奶、豆奶、杏仁奶": "Use oat, soy and almond milk for customers",
     "熟客滿意": "Happy Regulars", "50 張訂單拿到 84 分以上": "Score 84+ on 50 orders",
     "搞定挑剔的客人": "Picky Customer", "兩個要求的訂單完全符合": "Nail an order with two requests",

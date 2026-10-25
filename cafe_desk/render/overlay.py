@@ -11,7 +11,7 @@ from ..layout import WIN_H, TOP_PAD
 from ..drinks import DRINKS, ART_NAMES, MILK_NAMES, milk_plan, is_milk, base_of
 from ..model import STYLES
 from ..i18n import T, money, retext
-from .. import maintenance, festivals, brew
+from .. import maintenance, festivals, brew, orders, i18n
 from ..util import clamp, lerp
 
 STATUS_H = 52               # 狀態列快取圖的高度（視窗底部往上；膠囊在 WIN_H-50 到 WIN_H-6）
@@ -100,6 +100,8 @@ class OverlayRenderer:
             return [(T("預熱中…  {t:.1f}°C", t=self.boiler.temp), "#efe6da")]
         r = self.result
         o = self.order
+        if self.business() and self.result_until and time.perf_counter() > self.result_until:
+            r = None                                   # 客人的評價顯示一陣子就收起來，回到「等待客人點單…」
         if self.order_mode and (r is None or (o is not None and o.state == "waiting")):
             if o is not None and o.state == "waiting":
                 if self.business():
@@ -115,15 +117,16 @@ class OverlayRenderer:
 
     def paint_status(self, p):
         """狀態列：內容沒變就直接貼上次畫好的圖（文字排版每幀重畫很花時間）"""
-        fade = 1 - self.toast_now()[1]          # 成就通知出現時，狀態列淡出讓位
-        if fade <= 0:
+        fade = (1 - self.toast_now()[1]) * self.status_alpha   # 成就通知出現時，狀態列淡出讓位；透明擺件平常不顯示
+        if fade <= 0.01:
             return
         content = self.status_content()
         ratio = self.devicePixelRatioF() * self.scale_f
-        key = (content, self._scene_w, self.ui, ratio)
+        x0, self._status_w = self.status_span()
+        key = (content, self._status_w, self.ui, ratio)
         cache = getattr(self, "_status_cache", None)
         if cache is None or cache[0] != key:
-            pm = QPixmap(int(self._scene_w * ratio), int(STATUS_H * ratio))
+            pm = QPixmap(int(self._status_w * ratio), int(STATUS_H * ratio))
             pm.setDevicePixelRatio(ratio)
             pm.fill(Qt.transparent)
             q = QPainter(pm)
@@ -133,7 +136,13 @@ class OverlayRenderer:
             q.end()
             cache = self._status_cache = (key, pm)
         p.setOpacity(fade)
-        p.drawPixmap(QPointF(0, WIN_H - STATUS_H), cache[1])
+        p.drawPixmap(QPointF(x0, WIN_H - STATUS_H), cache[1])
+
+    def status_span(self):
+        """狀態列（與通知）的 (左端, 寬度)：視窗化一律全寬；透明擺件跟咖啡機（沖煮台）同寬"""
+        if self.is_windowed():
+            return 0.0, self._scene_w
+        return self.scene_dx(), self.scene_extent()[0]
 
     def status_content(self):
         """狀態列要顯示的內容：(主要文字段落, 參數列, 參數列顏色, 節日圖示)；可以當快取的 key"""
@@ -201,8 +210,8 @@ class OverlayRenderer:
         if s and s.style in STYLES:
             info += T(" · 以 {name} 標準評分", name=STYLES[s.style]["name"])
         if self.business():
-            info = T("營業中 Lv.{lv} · 排隊 {n} · 今日 {rev} · ", lv=self.shop_level(), n=len(self.queue),
-                     rev=money(self.stats.day()["revenue"])) + info
+            if parts and parts[0][0] == T("等待客人點單…"):        # 營業中只寫咖啡參數；等客人時不寫
+                info = ""
         elif self.order_mode and not self.busy():
             if o is None:
                 remain = max(0, int(self.next_order_at - time.perf_counter()))
@@ -223,7 +232,7 @@ class OverlayRenderer:
 
     def draw_status(self, p, parts, info, info_col, fest):
         top = WIN_H - 50
-        WIN_W = self._scene_w
+        WIN_W = self._status_w                  # 狀態列的寬度（status_span；畫在從 0 開始的圖上）
         pill = rrect(20, top, WIN_W - 20, WIN_H - 6, 14)
         p.setBrush(QBrush(C("#120f0d", 180)))
         p.setPen(QPen(C("#ffffff", 28), 1))
@@ -250,18 +259,25 @@ class OverlayRenderer:
         small = QFont(self.ui, 7)
         p.setFont(small)
         p.setPen(C(info_col))
-        pad = 26 if fest else 0
-        info = QFontMetricsF(small).elidedText(info, Qt.ElideRight, WIN_W - 56 - pad * 2)
-        p.drawText(QRectF(20, top + 25, WIN_W - 40, 14), Qt.AlignCenter, info)
+        pad = 16 if fest else 0
+        sfm = QFontMetricsF(small)
+        info = sfm.elidedText(info, Qt.ElideRight, WIN_W - 56 - pad)
+        tw = sfm.horizontalAdvance(info)
+        x0 = WIN_W / 2 - (tw + pad) / 2                  # 節日圖示＋參數列一起置中，圖示在飲品名稱左邊
+        p.drawText(QRectF(x0 + pad, top + 25, tw + 2, 14), Qt.AlignLeft | Qt.AlignVCenter, info)
         if fest:
-            self.paint_festival_icon(p, festivals.FESTIVALS[fest][2], 38, top + 22)
+            p.save()
+            p.translate(x0 + 6, top + 32)
+            p.scale(0.62, 0.62)
+            self.paint_festival_icon(p, festivals.FESTIVALS[fest][2], 0, 0)
+            p.restore()
 
     def status_festival(self):
         """狀態列要顯示哪個節日的小圖示：只有正在製作節日限定飲品時才顯示（節日 key 或 None）"""
         return DRINKS[self.session.drink].get("festival") if self.session else None
 
     def paint_festival_icon(self, p, icon, x, y):
-        """狀態列左側的節日小圖示"""
+        """節日小圖示（狀態列畫在飲品名稱左邊）"""
         p.save()
         p.translate(x, y)
         p.setPen(Qt.NoPen)
@@ -310,8 +326,8 @@ class OverlayRenderer:
             f = QFont(self.ui, 9.5)
             f.setBold(True)
             fm = QFontMetricsF(f)
-            W = self._scene_w
-            r = QRectF(20, TOP_PAD + WIN_H - 50, W - 40, 44)
+            x0, W = self.status_span()                   # 跟狀態列同一個位置與寬度
+            r = QRectF(x0 + 20, TOP_PAD + WIN_H - 50, W - 40, 44)
             text = fm.elidedText(text, Qt.ElideRight, r.width() - 60)
             tw = fm.horizontalAdvance(text)
             p.save()
@@ -329,7 +345,7 @@ class OverlayRenderer:
             p.setBrush(C("#2a1f12", 240))
             p.drawRoundedRect(r, 14, 14)
             # 小獎盃（和文字一起置中）
-            cx, cy = W / 2 - (tw + 22) / 2 + 6, r.center().y()
+            cx, cy = x0 + W / 2 - (tw + 22) / 2 + 6, r.center().y()
             p.setPen(Qt.NoPen)
             p.setBrush(C("#ffc24a"))
             cup = QPainterPath()
@@ -348,7 +364,7 @@ class OverlayRenderer:
     # ───────────── 萃取曲線卡片（視窗座標） ─────────────
     def chart_rect(self):
         """咖啡機正上方的透明區（視窗座標）；拉花卡片也出現時兩張並排"""
-        cx = self.machine.card_cx
+        cx = self.machine.card_cx + self.scene_dx()
         lo = self.cards_left()
         if self.art_alpha > 0.05 and self.art_state() is not None:
             left = clamp(cx - 169, lo, self._scene_w - 4 - 344)
@@ -394,8 +410,8 @@ class OverlayRenderer:
     ORDER_W = 98
 
     def cards_left(self):
-        """訂單卡出現時，曲線卡片與拉花卡片往右讓位"""
-        return 4 + self.ORDER_W + 4 if (self.order_mode and self.order_alpha > 0.05) else 4
+        """訂單卡出現時，曲線卡片與拉花卡片往右讓位（點單紙右下角排隊人數的圓章與傾斜也要讓開）"""
+        return 4 + self.ORDER_W + 16 if (self.order_mode and self.order_alpha > 0.05) else 4
 
     def paint_order_card(self, p):
         o = self.order
@@ -435,8 +451,16 @@ class OverlayRenderer:
         small = QFont(self.ui, 6.5)
         p.setFont(small)
         p.setPen(C("#8a7a66"))
-        p.drawText(QRectF(x0, r.top() + 6, iw, 12), Qt.AlignLeft | Qt.AlignVCenter, f"#{o.no:03d}")
-        self.fit_text(p, QRectF(x0 + 26, r.top() + 6, iw - 26, 12), T(o.name), small, Qt.AlignRight | Qt.AlignVCenter)
+        p.drawText(QRectF(x0, r.top() + 6, iw, 12), Qt.AlignLeft | Qt.AlignVCenter, f"#{o.no}")   # 今天第幾杯
+        name_x = x0 + 26
+        if o.party:                              # 同一張單點了好幾杯：第幾杯
+            k = next((i for i, x in enumerate(o.party) if x is o), 0)
+            p.setPen(C("#b06a2a"))
+            p.drawText(QRectF(x0 + 24, r.top() + 6, 24, 12), Qt.AlignLeft | Qt.AlignVCenter,
+                       T("{i}/{n} 杯", i=k + 1, n=len(o.party)))
+            p.setPen(C("#8a7a66"))
+            name_x = x0 + 50
+        self.fit_text(p, QRectF(name_x, r.top() + 6, x0 + iw - name_x, 12), T(o.name), small, Qt.AlignRight | Qt.AlignVCenter)
         big = QFont(self.ui, 9)
         big.setBold(True)
         p.setFont(big)
@@ -451,6 +475,26 @@ class OverlayRenderer:
             p.setPen(C("#9a8a76"))
             p.drawText(QRectF(x0, y, iw, 12), Qt.AlignLeft | Qt.AlignVCenter, T("· 照一般做法"))
         foot = QRectF(x0, r.bottom() - 40, iw, 34)
+        if self.business():                      # 內用／外帶章：價格上面
+            tf = QFont(self.ui, 6)
+            tf.setBold(True)
+            label = T("外帶" if o.to_go else "內用")
+            tw = QFontMetricsF(tf).horizontalAdvance(label) + 6        # 章的寬度跟著字（英文 For here 比較長）
+            tag = QRectF(x0, r.bottom() - 30, max(27.0, min(tw, iw - 20)), 11)   # 左下：右邊是分數印章
+            col = "#3a7a5a" if o.to_go else "#8a5426"
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(C(col, 200), 1.0))
+            p.drawRoundedRect(tag, 2, 2)
+            self.fit_text(p, tag.adjusted(1, 0, -1, 0), label, tf, Qt.AlignCenter)
+            if o.drink in orders.SIZE_DRINKS:                  # 杯量章（中杯也標）：小／中／大
+                st = QRectF(tag.right() + 3, tag.top(), 15, 11)
+                p.setBrush(C("#5a4632"))
+                p.setPen(Qt.NoPen)
+                p.drawRoundedRect(st, 2, 2)
+                p.setPen(C("#fbf6ea"))
+                mark = o.size if i18n.lang() != "zh" else {"S": "小", "M": "中", "L": "大"}[o.size]
+                self.fit_text(p, st, mark, tf, Qt.AlignCenter)
+                p.setBrush(Qt.NoBrush)
         p.setFont(QFont(self.ui, 7))
         if self.business() and o.state in ("waiting", "making"):
             p.setPen(C("#5a4632"))
@@ -480,6 +524,9 @@ class OverlayRenderer:
         elif o.state == "making":
             p.setPen(C("#b06a2a"))
             p.drawText(foot, Qt.AlignLeft | Qt.AlignBottom, T("製作中…"))
+        elif not o.revealed:                                # 營業模式：做好了，客人到櫃檯取餐後才公布分數
+            p.setPen(C("#b06a2a"))
+            p.drawText(foot, Qt.AlignLeft | Qt.AlignBottom, T("等待取餐…"))
         else:
             # 分數印章與顧客的話
             k = clamp(o.t / 0.35, 0, 1) if o.state == "done" else 1.0
@@ -502,9 +549,6 @@ class OverlayRenderer:
             p.setFont(QFont(self.ui, 4.5))
             p.drawText(QRectF(-15, 4, 30, 7), Qt.AlignCenter, T("分"))
             p.restore()
-            p.setFont(QFont(self.ui, 6.5))
-            p.setPen(C("#3a2a1a"))
-            p.drawText(foot, Qt.AlignLeft | Qt.AlignBottom | Qt.TextWordWrap, f"「{o.reaction}」")
         p.restore()
         if self.business():
             self.paint_patience_row(p, a, TOP_PAD + 5)        # 疊起來的排隊紙下緣跟磨豆機豆倉之間
@@ -518,7 +562,7 @@ class OverlayRenderer:
         圈裡是客人名字的第一個字，外圈是剩下的耐心，越少越紅，最後四分之一會閃"""
         o = self.order
         waiting = ([o] if o is not None and o.state == "waiting" else []) + list(self.queue)
-        waiting = [w for w in waiting if w.patience > 0][:6]
+        waiting = [w for w in waiting if w.patience > 0 and w.state == "waiting"][:6]   # 雙頭機一起做的第二位不用等
         if not waiting:
             return
         p.save()

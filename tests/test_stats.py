@@ -155,7 +155,7 @@ def test_tier_groups_are_consistent():
     keys = [k for k, _, _ in stats.ACHIEVEMENTS]
     assert len(keys) == len(set(keys))
     for group, tiers in stats.TIER_GROUPS.items():
-        assert len(tiers) == 3
+        assert len(tiers) in (2, 3), "銅銀金三級，或銀金兩級"
         assert [n for _, n in tiers] == sorted(n for _, n in tiers), "門檻要由低到高"
         assert all(k in keys for k, _ in tiers)
 
@@ -191,9 +191,10 @@ def test_new_achievements(st, reload, monkeypatch):
     assert "early_bird" in st.record(_cup(), [])
     monkeypatch.setattr(stats, "clock_hour", lambda: 2)
     assert "night_owl" in st.record(_cup(), [])
-    for m in ("desk01", "lever", "compact"):
+    for m in ("desk01", "lever", "compact", "allinone"):
         st.record(_cup(92, machine=m), [])
-    assert "machines_90" in st.record(_cup(92, machine="allinone"), [])
+    assert "machines_90" not in st.data["achievements"], "五台都要（含雙頭機）"
+    assert "machines_90" in st.record(_cup(92, machine="duo"), [])
     s = reload()
     assert s.data["collection"]["bags"] == 10 and s.tampered == 0
     assert s.data["collection"]["machine_best"]["allinone"] == 92
@@ -223,3 +224,35 @@ def test_tips_and_serve_30(st):
     assert {"tips_500", "serve_30", "no_walkout", "no_walkout_30"} <= set(new)
     assert "no_walkout_50" not in new, "金牌要 100 位"
     assert st.day()["tips"] == 1000
+
+
+def test_achievement_sections_cover_everything():
+    """成就頁的分類：每個成就剛好出現一次（分級成就列組裡任一個 key）"""
+    keys = {k for k, _, _ in stats.ACHIEVEMENTS}
+    covered, groups = set(), set()
+    for _title, ks in stats.ACH_SECTIONS:
+        for k in ks:
+            if k in stats.TIER_OF:
+                g = stats.TIER_OF[k][0]
+                assert g not in groups, g
+                groups.add(g)
+                covered |= {x for x, _ in stats.TIER_GROUPS[g]}
+            else:
+                assert k not in covered, k
+                covered.add(k)
+    assert covered == keys and groups == set(stats.TIER_GROUPS)
+
+
+def test_merged_tiers_match_data():
+    from cafe_desk.drinks import FESTIVAL_DRINKS
+    assert stats.TIER_GROUPS["festival"][-1][1] == len(FESTIVAL_DRINKS)
+    assert stats.TIER_GROUPS["art"][-1][1] == len(stats.ART_BOOK)
+    assert stats.tier_rank("festival_all") == 2 and stats.tier_rank("ten_cups") == 0
+
+
+def test_dine_in_and_large_counters(st):
+    for _ in range(20):
+        st.record(_cup(80, order=True, price=100, tip=0, wait=10.0, size="L", to_go=False), [])
+    st.record(_cup(80, order=True, price=100, tip=0, wait=10.0, size="M", to_go=True), [])
+    assert st.data["order_large"] == 20 and st.data["order_dine"] == 20 and st.data["order_to_go"] == 1
+    assert "size_l_20" in st.data["achievements"]

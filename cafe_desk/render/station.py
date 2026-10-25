@@ -14,14 +14,20 @@ from PySide6.QtGui import QPen, QPainterPath
 
 from .. import brew, vessels
 from ..gfx import C, mix, vgrad, hgrad, rrect
-from ..layout import ROAST_LOOK, BEAN_COLORS, FLOOR
+from ..layout import ROAST_LOOK, BEAN_COLORS, FLOOR, WIN_H, TOP_PAD
 from ..util import clamp, lerp
 from ..workflow import ease
+from .shop import MAT_H
 
 GLASS = "#dfe8ec"
 WOOD = ("#8a5a34", "#b07a4a", "#5e3a1e")
 PAPER = "#f3ece0"
 WATER_C = "#cfe2ea"
+POUR_PAD = 60                    # 營業模式出杯台右邊留給倒入時拉花杯／奶泡壺的空間（不然會被視窗裁切）
+UNIFORM_W = (WIN_H + TOP_PAD) * 16 / 9    # 視窗一律 16:9（場景座標約 1031）；內容置中，多的空白由視窗化背景延伸
+# 右鍵「大小」：視窗的像素寬（16:9，Windows 顯示比例 100% 時）；縮放＝寬 ÷ UNIFORM_W
+WINDOW_SIZES = (1920, 1600, 1280, 960)
+STATION_W = 500                  # 手沖／冰滴畫面最寬（DESK·01 的寬度；雙頭機比較寬，沖煮台不跟著變寬）
 # 摩卡壺：放在爐架上（器具座標）；壺本身的座標以壺底中心為原點
 MOKA_BASE = FLOOR - 34
 MOKA_SPOUT = (-30, -71)          # 壺嘴（倒咖啡的原點）相對壺底中心
@@ -43,16 +49,41 @@ def brew_color(roast, tds, scale=1.0):
 
 class StationRenderer:
     # ───────────── 版面 ─────────────
+    def scene_extent(self):
+        """場景內容的 (寬度, 要置中的 x)：義式是咖啡機（營業模式再加右邊的出杯台 side_extra），以機身 hover_area 的中心置中；
+        手沖／冰滴等沖煮台跟目前的咖啡機一樣寬但最寬 STATION_W（雙頭機太寬，器具會擠在左邊），以中間置中"""
+        if self.method == "espresso":
+            h = self.machine.hover_area
+            return self.machine.scene_w + self.side_extra(), (h[0] + h[2]) / 2
+        w = self.station_w()
+        return w, w / 2
+
     def scene_width(self):
-        """視窗寬度：手沖／冰滴也跟目前的咖啡機一樣寬"""
-        return self.machine.scene_w
+        """視窗寬度：一律 UNIFORM_W（16:9；切換咖啡機、沖煮方式、營業模式都不跳大小）"""
+        return UNIFORM_W
+
+    def scene_dx(self):
+        """場景往右平移多少，讓咖啡機（或沖煮台）在視窗正中間：render_layer、paintEvent、滑鼠座標、卡片位置都要算進去。
+        營業模式出杯台右邊要留 POUR_PAD 給倒入的拉花杯／奶泡壺，放不下時咖啡機往左移（不硬置中）"""
+        ext, c = self.scene_extent()
+        W = self.scene_width()
+        dx = W / 2 - c
+        if self.side_on():
+            dx = min(dx, W - ext - POUR_PAD)
+        return max(0.0, dx)
+
+    def station_w(self):
+        return min(self.machine.scene_w, STATION_W)
 
     def cup_anchor(self):
         """杯子位置（機身座標，Cup 用）：義式在沖煮頭下，手沖／冰滴放在右邊桌上"""
         m = self.machine
         if self.method == "espresso":
+            if self.business():                  # 營業模式：杯子在咖啡機右邊的出杯台
+                x, floor = self.side_spot(getattr(m, "g", 0))
+                return x - m.mx, floor - MAT_H - m.my       # 杯底站在吧台墊上
             return m.cup_cx, m.cup_base
-        return m.scene_w - brew.CUP_RIGHT[self.method] - m.mx, FLOOR - 2 - m.my
+        return self.station_w() - brew.CUP_RIGHT[self.method] - m.mx, FLOOR - 2 - m.my
 
     # ───────────── 拉近／拉遠 ─────────────
     def brew_focus(self):
@@ -80,7 +111,7 @@ class StationRenderer:
         k0, k1 = brew.GEAR_K.get(self.method, 1.0), brew.GEAR_ZOOM.get(self.method, 1.0)
         gc = brew.FOCUS_X.get(self.method, 0.0)
         k = lerp(k0, k1, e)
-        return k, lerp(gc * k0, self.machine.scene_w / 2, e), gc
+        return k, lerp(gc * k0, self.station_w() / 2, e), gc
 
     def gear_k(self):
         return self.gear_view()[0]
@@ -939,12 +970,14 @@ class StationRenderer:
         m = self.machine
         p.save()
         p.translate(m.mx, m.my)
-        self.cup.paint_back(p)
+        if not self.cup_away:                          # 營業中這杯送去收銀台了
+            self.cup.paint_back(p)
         p.restore()
 
     def paint_brew_front(self, p):
         m = self.machine
         p.save()
         p.translate(m.mx, m.my)
-        self.cup.paint_front(p)
+        if not self.cup_away:
+            self.cup.paint_front(p)
         p.restore()

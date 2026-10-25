@@ -41,12 +41,12 @@ ACHIEVEMENTS = [
     ("streak_10", "手感正熱", "連續 30 張訂單 85 分以上"),
     ("streak_20", "職人水準", "連續 60 張訂單 85 分以上"),
     ("rosetta", "葉子拉成了", "為客人拉出一片漂亮的葉子"),
-    ("art_trio", "拉花三連", "為客人拉出愛心、鬱金香、葉子"),
+    ("art_trio", "拉花三連", "為客人拉出 3 種拉花圖案"),
     ("art_all", "拉花圖鑑", "為客人做出拉花收集的七種圖案"),
     ("all_drinks", "全品項", "客人點的每一種常態飲品都做過"),
     ("festival_all", "節日巡禮", "為客人做過每一款節日限定飲品"),
-    ("all_machines", "機器收藏家", "四台咖啡機都為客人沖過"),
-    ("machines_90", "人機合一", "四台咖啡機都為客人沖出 90 分"),
+    ("all_machines", "機器收藏家", "每一台咖啡機都為客人沖過"),
+    ("machines_90", "人機合一", "每一台咖啡機都為客人沖出 90 分"),
     ("plant_milk", "植物奶玩家", "為客人用過燕麥奶、豆奶、杏仁奶"),
     ("regulars", "熟客滿意", "50 張訂單拿到 84 分以上"),
     ("regulars_50", "人氣咖啡師", "300 張訂單拿到 84 分以上"),
@@ -75,8 +75,15 @@ ACHIEVEMENTS = [
     ("no_walkout_30", "服務周到", "一天服務 50 位客人，沒有人等到離開"),
     ("no_walkout_50", "零客訴", "一天服務 100 位客人，沒有人等到離開"),
     ("serve_30", "一日店長", "營業模式一天服務 30 位客人"),
-    ("tips_500", "小費罐滿了", "一天收到 $500 小費"),
+    ("tips_500", "小費滿滿", "一天收到 $500 小費"),
     ("rush", "尖峰時刻", "排了 4 位客人時沒有人離開，一路做到隊伍清空"),
+    ("duo_pair", "雙杯齊發", "用營業用雙頭機一次為兩位客人做好飲品"),
+    ("to_go_20", "外帶達人", "為客人做了 20 杯外帶"),
+    ("dine_in_50", "內用常客", "為內用的客人做了 50 杯"),
+    ("size_l_20", "大杯滿足", "為客人做了 20 杯大杯"),
+    ("party_3", "三五好友", "一張單三杯，一起做好、一起結帳"),
+    ("seats_full", "座無虛席", "店裡的座位全部坐滿"),
+    ("together", "一心二用", "職人的手藝：單頭咖啡機萃取的同時打奶，為客人做好一杯"),
     ("shop_3", "小有名氣", "店鋪升到 Lv.3"),
     ("shop_6", "遠近馳名", "店鋪升到 Lv.6"),
     ("shop_10", "夢想成真", "店鋪升到 Lv.10"),
@@ -93,9 +100,27 @@ TIER_GROUPS = {
     "revenue": (("good_business", 5000), ("biz_5000", 15000), ("biz_10000", 30000)),
     "no_walkout": (("no_walkout", 20), ("no_walkout_30", 50), ("no_walkout_50", 100)),
     "shop": (("shop_3", 3), ("shop_6", 6), ("shop_10", 10)),
+    # 兩級的（2026-10-23 整理：原本是兩個單項成就）
+    "festival": (("festival", 1), ("festival_all", 3)),                # 為客人做過幾款節日限定飲品（共 3 款）
+    "art": (("art_trio", 3), ("art_all", 7)),                           # 為客人拉出幾種拉花圖案（ART_BOOK 7 種）
 }
+# 成就頁的分類：(標題, key…)；分級成就用組裡任一個 key
+ACH_SECTIONS = (
+    ("營業", ("first_cup", "ten_cups", "busy_day", "good_business", "no_walkout", "serve_30", "tips_500", "rush",
+             "to_go_20", "dine_in_50", "size_l_20", "party_3", "seats_full", "duo_pair", "shop_3")),
+    ("手藝", ("perfect", "streak", "regulars", "picky", "fresh", "rosetta", "art_trio", "machines_90", "together")),
+    ("收集", ("all_drinks", "festival", "all_machines", "plant_milk", "world_3", "bags_10")),
+    ("沖煮方式", ("first_pourover", "pourover_90", "bloom", "cold_drip", "moka_85", "siphon_85", "all_methods")),
+    ("日常", ("daily_7", "clean", "early_bird", "night_owl")),
+)
 TIER_OF = {key: (group, level) for group, tiers in TIER_GROUPS.items() for level, (key, _) in enumerate(tiers)}
 TIER_ICONS = ("🥉", "🥈", "🥇")
+
+
+def tier_rank(key):
+    """分級成就這一級的獎牌（0 銅、1 銀、2 金）：兩級的組是銀、金"""
+    group, level = TIER_OF[key]
+    return level + 3 - len(TIER_GROUPS[group])
 ART_BOOK = ("heart", "tulip", "rosetta", "dot", "mark", "whip", "blob")
 
 
@@ -109,8 +134,10 @@ def stamp():
 
 CUP_FIELDS = ("ts", "day", "drink", "title", "score", "comment", "machine", "milk", "origin", "bean_age", "dose",
               "festival", "art", "art_q", "seed", "art_note", "is_order", "mods", "match",
-              "price", "tip", "wait")                                           # 1.2：營業模式
-CUP_FIELD_VERSIONS = (19, 22)
+              "price", "tip", "wait",                                           # 1.2：營業模式
+              "to_go",                                                          # 收銀台：外帶（"1"）／內用（""）
+              "size")                                                           # 大中小杯：S／M／L
+CUP_FIELD_VERSIONS = (19, 22, 23, 24)
 REAL_FIELDS = ("score", "bean_age", "dose", "art_q", "match", "price", "tip", "wait")
 
 
@@ -137,6 +164,8 @@ def _sign(prev, values):
 def _empty():
     return {"days": {}, "achievements": {}, "streak": 0, "total": 0, "orders_good": 0, "revenue_total": 0,
             "order_total": 0, "order_streak": 0,     # 成就只算為客人做的杯子（訂單）
+            "order_to_go": 0,                        # 外帶的訂單杯數
+            "order_dine": 0, "order_large": 0, "order_drinks": {},       # 內用、大杯的訂單杯數（有記大中小杯的新紀錄才算）
             "order_col": {"art": {}, "drinks": [], "machines": [], "milks": [], "origins": [], "machine_best": {}},
             "spent": 0, "owned": [],                 # 商店：花掉的錢、買過的一次性升級（store.py）
             "collection": {"art": {}, "drinks": {}, "machines": [], "milks": [], "origins": [], "cleaned": [],
@@ -258,9 +287,16 @@ class Stats:
     # ───────────── 查詢 ─────────────
     def day(self, date=None):
         key = date.isoformat() if isinstance(date, datetime.date) else (date or today().isoformat())
-        return self.data["days"].setdefault(key, {"cups": 0, "score_sum": 0.0, "best": None, "drinks": {},
+        return self.data["days"].setdefault(key, {"cups": 0, "score_sum": 0.0, "best": None, "drinks": {}, "order_drinks": {},
                                                    "orders": 0, "beans_g": 0.0, "revenue": 0, "walkouts": 0,
                                                    "wait_sum": 0.0, "waited": 0, "tips": 0})
+
+    def top_drinks(self, n=3):
+        """熱賣前 n 名（為客人做的杯數）：(標題, [(飲品, 杯數)…])；今天不到 n 種就看累積的"""
+        today_ = self.day().get("order_drinks", {})
+        pick = today_ if len(today_) >= n else self.data.get("order_drinks", {})
+        top = sorted(pick.items(), key=lambda kv: (-kv[1], kv[0]))[:n]
+        return ("今日熱賣" if pick is today_ else "熱賣"), top
 
     def day_streak(self, key="cups"):
         """連續幾天都有做咖啡（key="orders"：都有營業）；算到今天，今天還沒有就算到昨天"""
@@ -289,6 +325,9 @@ class Stats:
         d["beans_g"] += float(cup.get("dose") or 0)
         if cup.get("is_order"):
             d["orders"] += 1
+            d["order_drinks"][cup["drink"]] = d["order_drinks"].get(cup["drink"], 0) + 1      # 熱賣（櫃檯的 MENU 板）
+            od = self.data.setdefault("order_drinks", {})
+            od[cup["drink"]] = od.get(cup["drink"], 0) + 1
             self._apply_order(cup, score)
             if score >= 84:
                 self.data["orders_good"] += 1
@@ -326,6 +365,12 @@ class Stats:
         oc = self.data["order_col"]
         self.data["order_total"] += 1
         self.data["order_streak"] = self.data["order_streak"] + 1 if score >= 85 else 0
+        if cup.get("to_go"):
+            self.data["order_to_go"] += 1
+        elif cup.get("size"):                        # 內用（舊紀錄沒有大中小杯，分不出內用外帶）
+            self.data["order_dine"] += 1
+        if cup.get("size") == "L":
+            self.data["order_large"] += 1
         if cup.get("drink") and cup["drink"] not in oc["drinks"]:
             oc["drinks"].append(cup["drink"])
         art = cup.get("art")
@@ -345,6 +390,7 @@ class Stats:
         row["ts"] = stamp()
         row["day"] = today().isoformat()
         row["is_order"] = "1" if cup.get("order") else ""
+        row["to_go"] = "1" if cup.get("to_go") else ""
         row["score"] = round(float(cup["score"]), 2)
         for k in ("art_q", "match", "bean_age", "dose", "price", "tip", "wait"):   # REAL 欄位：簽章與讀回的值要一致
             if row[k] is not None:
@@ -424,19 +470,23 @@ class Stats:
 
     def tier_values(self):
         """分級成就各組目前的數值"""
+        from .drinks import FESTIVAL_DRINKS
         d, oc = self.day(), self.data["order_col"]          # 成就只算為客人做的杯子
         return {"cups": self.data["order_total"], "busy": d["orders"], "daily": self.day_streak("orders"),
                 "streak": self.data["order_streak"], "regulars": self.data["orders_good"], "world": len(oc["origins"]),
                 "revenue": d["revenue"], "no_walkout": d["waited"] if d["walkouts"] == 0 else 0,
-                "shop": level_of(self.data["revenue_total"])}
+                "shop": level_of(self.data["revenue_total"]),
+                "festival": sum(1 for k in oc["drinks"] if k in FESTIVAL_DRINKS),
+                "art": sum(1 for a in ART_BOOK if a in oc["art"])}
 
     def unlock(self, key):
         """不是由某一杯觸發的成就（例如冰滴滴完、尖峰時刻）；回傳新解鎖的 key 清單"""
         return self._grant([key])
 
     def check(self, cup, all_drinks):
-        from .drinks import FESTIVAL_DRINKS, method_of
+        from .drinks import method_of
         from .brew import METHODS
+        from .machines import MACHINES
         col, oc, d = self.data["collection"], self.data["order_col"], self.day()
         hour = clock_hour()
         best = oc["machine_best"]
@@ -445,15 +495,11 @@ class Stats:
             "first_cup": self.data["order_total"] >= 1,
             "perfect": bool(cup and cup["score"] >= 95),
             "rosetta": bool(cup and cup.get("art") == "rosetta" and not cup.get("art_note")),
-            "art_trio": all(a in oc["art"] for a in ("heart", "tulip", "rosetta")),
-            "art_all": all(a in oc["art"] for a in ART_BOOK),
             "all_drinks": bool(all_drinks) and all(k in oc["drinks"] for k in all_drinks),
-            "festival_all": all(k in oc["drinks"] for k in FESTIVAL_DRINKS),
-            "all_machines": len(oc["machines"]) >= 4,
-            "machines_90": len(best) >= 4 and all(v >= 90 for v in best.values()),
+            "all_machines": len(oc["machines"]) >= len(MACHINES),
+            "machines_90": len(best) >= len(MACHINES) and all(v >= 90 for v in best.values()),
             "plant_milk": all(m in oc["milks"] for m in ("oat", "soy", "almond")),
             "picky": bool(cup and cup.get("mods", 0) >= 2 and cup.get("match", 0) >= 99.9),
-            "festival": bool(cup and cup.get("festival")),
             "fresh": bool(cup and 7 <= cup.get("bean_age", 0) <= 21 and cup["score"] >= 90),
             "bags_10": col["bags"] >= 10,
             "clean": len(col["cleaned"]) >= 4,
@@ -467,6 +513,9 @@ class Stats:
             "all_methods": {method_of(k) for k in oc["drinks"]} >= set(METHODS),
             "serve_30": d["waited"] >= 30,
             "tips_500": d["tips"] >= 500,
+            "to_go_20": self.data["order_to_go"] >= 20,
+            "dine_in_50": self.data["order_dine"] >= 50,
+            "size_l_20": self.data["order_large"] >= 20,
         }
         values = self.tier_values()
         for group, tiers in TIER_GROUPS.items():

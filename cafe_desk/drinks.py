@@ -127,6 +127,7 @@ class DrinkParams:
     tonic_g: float = 150.0         # 濃縮通寧的通寧水
     scoop_g: float = 70.0          # 阿芙佳朵的冰淇淋
     art: str = "auto"              # 指定拉花圖案：auto／heart／tulip／rosetta
+    size: str = "M"                # 杯量（營業模式的訂單）：S／M／L；大杯多一份濃縮（orders.SIZE_DRINKS 才有）
     milk_kind: str = "dairy"       # 牛奶種類：dairy／oat／soy／almond
     po_dose: float = 15.0          # 手沖粉量
     po_ratio: float = 16.0         # 手沖粉水比 1:N
@@ -209,9 +210,9 @@ class DrinkResult:
     title: str = ""                # 點單模式：訂單上的品名（例如燕麥拿鐵）
 
 
-def steam_time(dp, traits, device, drink="latte"):
-    """打奶所需時間（秒）"""
-    grams = milk_plan(drink, dp)[0]
+def steam_time(dp, traits, device, drink="latte", extra_g=0.0):
+    """打奶所需時間（秒）；extra_g：同一壺多打的奶量（雙頭機成對做兩杯時打兩杯的量）"""
+    grams = milk_plan(drink, dp)[0] + extra_g
     amount = max(0.25, grams / 150.0)
     if device == "frother":
         return 30.0 * amount + 4.0
@@ -358,6 +359,22 @@ def score_drink(drink, shot, dp, milk=None, comment_fn=None):
     return DrinkResult(drink, w * base + (1 - w) * milk.score, f"{art_c} · {milk.comment}", milk)
 
 
+# ═══════════════════════════ 雙頭機成對做兩杯 ═══════════════════════════
+PAIR_BLACK = ("espresso", "ristretto", "lungo", "doppio", "americano")
+PAIR_MILK = ("latte", "cappuccino", "flat_white", "cortado", "macchiato")
+PAIR_PITCHER = 0.85            # 一壺打兩杯份的奶：拉花杯裡的液量（單杯是 0.7）
+
+
+def pair_kind(drink, dp=None):
+    """雙頭機能不能跟別杯一起做：black（濃縮類、美式）、milk（熱牛奶、不加醬也不加配料）或 None（冰飲、阿芙佳朵、
+    加醬或配料的、沖煮台的，照舊一次一杯）。同一類的兩杯才配對；有 dp 時卡布奇諾要撒可可粉就不配對"""
+    if drink in PAIR_BLACK:
+        return "black"
+    if drink in PAIR_MILK and not (drink == "cappuccino" and dp is not None and dp.cocoa):
+        return "milk"
+    return None
+
+
 # ═══════════════════════════ 階段 ═══════════════════════════
 
 class Stage:
@@ -394,13 +411,28 @@ class PrepStage(Stage):
 
 
 class BrewStage(Stage):
+    """萃取；jigger＝True（營業模式）時萃取到拿在沖煮頭下的量杯（s.jigger），之後由 PourStage("jigger") 倒進杯子"""
     name = "brew"
 
+    def __init__(self, jigger=False):
+        self.jigger = jigger
+
     def start(self, s):
-        s.app.start_brew(s.params, s.style, s.preset)
+        app = s.app
+        app.start_brew(s.params, s.style, s.preset)
+        if self.jigger:
+            m = app.machine
+            app.shot_frac = 0.0                          # 杯子裡還沒有濃縮
+            k = vessels.JIGGER_K                         # 量杯放在滴水盤上、正對沖煮頭
+            s.jigger = {"kind": "jigger", "x": m.mx + m.cup_cx - 24 * k, "y": m.my + m.cup_base - 52 * k, "tilt": 0.0,
+                        "alpha": 0.0, "fill": 1.0, "liquid": "espresso", "pour": 0.0, "content": 0.0}
 
     def update(self, s, dt):
         sh = s.app.shot
+        v = s.jigger if self.jigger else None
+        if v is not None and sh is not None:
+            v["alpha"] = min(1.0, v["alpha"] + dt * 4)
+            v["content"] = min(1.0, sh.weight / vessels.JIGGER_CAP)
         if sh is not None and sh.phase == "done":
             self.done = True
 
@@ -489,16 +521,22 @@ class PourStage(Stage):
     LABEL = {"water": "注入熱水…", "cold_water": "倒入冷水…", "cold_milk": "倒入冰牛奶…",
              "hot_milk": "注入牛奶融合…", "tonic": "倒入通寧水…", "choc": "擠入巧克力醬…",
              "vanilla": "加入香草糖漿…", "pumpkin": "加入南瓜香料醬…", "ginger": "加入薑餅糖漿…",
-             "rose": "加入玫瑰糖漿…", "brew": "倒進杯子…", "colddrip": "倒入冰滴咖啡…"}
+             "rose": "加入玫瑰糖漿…", "brew": "倒進杯子…", "colddrip": "倒入冰滴咖啡…", "espresso": "倒入濃縮…"}
 
     def __init__(self, vessel, liquid, grams, rate, start=None, home=None, art=False, foam_vol=0.0,
-                 label=None, art_label="拉花中…"):
+                 label=None, art_label="拉花中…", content=None, attr="vessel", quick=False):
         self.vessel, self.liquid, self.grams, self.rate = vessel, liquid, grams, rate
+        self.attr = attr                    # 容器存在 Session 的哪個屬性（量杯是 "jigger"：打奶的拉花杯同時在 s.vessel）
+        # 入場、傾斜、回正、離場的秒數；quick（量杯）就在杯子上方，動作短很多
+        self.dur = (0.55, 0.2, 0.15, 0.45) if quick else (0.8, 0.45, 0.4, 0.7)
         self.start_pos, self.home, self.art, self.foam_vol = start, home, art, foam_vol
         self.label, self.art_label = label, art_label
+        self.content_range = content        # (倒之前, 倒完之後) 的液量；None＝依容器（雙頭機一壺奶分兩杯倒時指定）
 
     def start(self, s):
         cup, m = s.app.cup, s.app.machine
+        if self.grams is None:                           # 量杯：倒出萃取到的全部濃縮
+            self.grams = s.app.shot.weight if s.app.shot else 0.0
         # 傾倒時容器嘴的位置：杯口右上方
         self.pour_pos = (m.mx + cup.TR - 6, m.my + cup.T - 34)
         self.squeeze = self.vessel == "squeeze"
@@ -515,7 +553,7 @@ class PourStage(Stage):
                   "alpha": 0.0 if self.start_pos is None else 1.0, "fill": 1.0, "liquid": self.liquid,
                   "pour": 0.0}
         self.enter_from = enter
-        s.vessel = self.v
+        setattr(s, self.attr, self.v)
         self.phase, self.t, self.poured = "enter", 0.0, 0.0
         # 會流的液體：傾斜角度由剩下的液量決定（液面碰到倒出口才流得出來，見 vessels.py）；醬料擠瓶照舊倒過來擠
         self.physics = self.vessel in vessels.SHAPES
@@ -568,8 +606,12 @@ class PourStage(Stage):
     def _contents(self, s):
         """(倒之前, 倒完之後) 容器內腔裡液體佔多少（0–1），要跟畫面上畫的液量一致"""
         app, k = s.app, self.vessel
+        if self.content_range is not None:
+            return self.content_range
         if k == "jug":
             return app.frother_fill, 0.0
+        if k == "jigger":
+            return min(1.0, self.grams / vessels.JIGGER_CAP), 0.0
         if k == "server":
             return clamp(self.grams / 300.0, 0.05, 1.0), 0.0
         if k == "carafe":
@@ -595,7 +637,7 @@ class PourStage(Stage):
             self.update_squeeze(s, dt)
             return
         if self.phase == "enter":
-            k = clamp(self.t / 0.8, 0, 1)
+            k = clamp(self.t / self.dur[0], 0, 1)
             if self.path:
                 v["x"], v["y"] = self._along(self.path, k)
             else:
@@ -604,7 +646,7 @@ class PourStage(Stage):
             if k >= 1:
                 self.phase, self.t = "tilt", 0.0
         elif self.phase == "tilt":
-            k = clamp(self.t / 0.45, 0, 1)
+            k = clamp(self.t / self.dur[1], 0, 1)
             start = self.pour_tilt(1.0) if self.physics else self.max_tilt * self.pre
             v["tilt"] = start * ease(k)
             v["y"] = self.lip_y(v["tilt"], v["x"], self.pour_pos[1])
@@ -640,7 +682,7 @@ class PourStage(Stage):
                 if self.art:
                     s.art_progress = 1.0
         elif self.phase == "untilt":
-            k = clamp(self.t / 0.4, 0, 1)
+            k = clamp(self.t / self.dur[2], 0, 1)
             v["tilt"] = self.untilt_from * (1 - ease(k))
             v["y"] = self.lip_y(v["tilt"], v["x"], v["y"])
             if k >= 1:
@@ -649,7 +691,7 @@ class PourStage(Stage):
                 self.exit_to = self.home or (self.exit_from[0] + 70, self.exit_from[1] - 60)
                 self.path = self._path(self.exit_from, self.exit_to)
         elif self.phase == "exit":
-            k = clamp(self.t / 0.7, 0, 1)
+            k = clamp(self.t / self.dur[3], 0, 1)
             if self.path:
                 v["x"], v["y"] = self._along(self.path, k)
             else:
@@ -657,7 +699,7 @@ class PourStage(Stage):
             if self.home is None:
                 v["alpha"] = 1 - k
             if k >= 1:
-                s.vessel = None
+                setattr(s, self.attr, None)
                 self.done = True
 
     def update_squeeze(self, s, dt):
@@ -705,7 +747,7 @@ class PourStage(Stage):
             if self.home is None:
                 v["alpha"] = 1 - k
             if k >= 1:
-                s.vessel = None
+                setattr(s, self.attr, None)
                 self.done = True
 
     def status(self, s):
@@ -716,13 +758,16 @@ class PourStage(Stage):
 
 
 class SteamStage(Stage):
-    """打奶：蒸氣管（拉花杯移到管口）或獨立奶泡機"""
+    """打奶：蒸氣管（拉花杯移到管口）或獨立奶泡機；extra_g＝同一壺多打的奶（雙頭機成對做兩杯）"""
     name = "steam"
+
+    def __init__(self, extra_g=0.0):
+        self.extra_g = extra_g
 
     def start(self, s):
         m, app = s.app.machine, s.app
         self.device = m.traits.milk
-        self.total = steam_time(s.dp, m.traits, self.device, s.drink)
+        self.total = steam_time(s.dp, m.traits, self.device, s.drink, self.extra_g)
         self.t = 0.0
         s.milk_temp = 6.0
         s.milk_foam = 0.0
@@ -783,6 +828,42 @@ class SteamStage(Stage):
                 return T("拉花杯移到蒸氣管…")
             return T("打奶泡…  {t:.0f}°C", t=s.milk_temp)
         return T("奶泡機運轉中…  {t:.0f}°C", t=s.milk_temp)
+
+
+class Together(Stage):
+    """幾個階段同時進行（雙頭機：萃取的同時打奶）；全部做完才算完成。
+    name／phase 給畫面與聲音用：打奶還沒完成時是打奶的，否則是第一個還沒完成的（萃取）"""
+
+    def __init__(self, *parts):
+        self.parts = list(parts)
+
+    def _lead(self):
+        for st in self.parts:
+            if isinstance(st, SteamStage) and not st.done:
+                return st
+        return next((st for st in self.parts if not st.done), self.parts[-1])
+
+    @property
+    def name(self):
+        return self._lead().name
+
+    @property
+    def phase(self):
+        return getattr(self._lead(), "phase", "")
+
+    def start(self, s):
+        for st in self.parts:
+            st.start(s)
+
+    def update(self, s, dt):
+        for st in self.parts:
+            if not st.done:
+                st.update(s, dt)
+        if all(st.done for st in self.parts):
+            self.done = True
+
+    def status(self, s):
+        return "  ·  ".join(t for t in (st.status(s) for st in self.parts if not st.done) if t)
 
 
 class ToolStage(Stage):
@@ -870,14 +951,24 @@ class ScoopStage(Stage):
 
 
 class Session:
-    """一杯飲品的完整流程"""
+    """一杯飲品的完整流程
 
-    def __init__(self, app, drink, full_flow, dp):
+    pair：雙頭機成對做兩杯時這杯的角色（desk.py 的 start_pair）。("a", 第二杯的奶量, 交接位置)＝第一杯，
+    打兩杯份的奶、倒完後拉花杯停在交接位置；("b", 交接位置, 第一杯的奶量)＝第二杯，不打奶，從交接位置接手倒。
+    成對時萃取前與萃取後各停一次（hold、waiting），由 desk 依序放行（release），start=False 時一開始就停著。"""
+
+    def __init__(self, app, drink, full_flow, dp, pair=None, start=True):
         self.app = app
         self.drink = drink
         self.dp = dp.copy()
+        self.pair_role = pair[0] if pair else None
+        self.tag = ""                    # 成對時狀態列前面標「①」「②」
+        self.hold = set()                # 走到這些階段時先停著（waiting），等 release()
+        self.waiting = False
+        self.brew_i = None               # 萃取階段的索引
         self.events = []
         self.vessel = None              # 正在用的容器（熱水壺、牛奶瓶、拉花杯、奶泡機壺、醬料瓶、冰淇淋勺）
+        self.jigger = None              # 營業模式：萃取用的量杯（拿在沖煮頭下，之後倒進杯子）
         self.tool = None                # 杯口上方的小道具（篩網、鮮奶油槍、焦糖醬瓶）
         self.art_progress = 0.0
         self.art_seed = random.randint(0, 99999)
@@ -889,6 +980,11 @@ class Session:
         self.boiler_mode = "brew"
         self.result = None
         self.params, self.style, self.preset = shot_params(drink, app.params)
+        if self.dp.size == "L":                          # 大杯：雙份濃縮的粉量（粉液比不變）
+            p = self.params
+            ratio = p.yield_g / max(1.0, p.dose)
+            p.basket, p.dose = 22.0, 21.0
+            p.yield_g = round(p.dose * ratio)
         self.order = None                # 點單模式：這杯是哪張訂單
         t = app.machine.traits
         family = base_of(drink)
@@ -926,12 +1022,20 @@ class Session:
             stages.append(PourStage("squeeze", spec["syrup"], g, 9.0))
         if drink == "caramel_macchiato":
             stages.append(PourStage("squeeze", "vanilla", self.dp.vanilla_g, 8.0))
+        jig = app.business()            # 營業模式：濃縮先萃取到量杯，照原本的順序倒進杯子
+        brew = [BrewStage(jig)] + ([PourStage("jigger", "espresso", None, 60.0, start="jigger", attr="jigger",
+                                             quick=True)]
+                                   if jig else [])
         milk_stages = []
+        steam = []                      # 打奶（雙頭機跟萃取同時進行）
         if family == "milk":
             self.milk = evaluate_milk(self.dp, t, t.milk, drink=drink, skill=app.skill())
             if t.steam_heatup:
-                milk_stages.append(HeatStage())
-            milk_stages.append(SteamStage())
+                steam.append(HeatStage())
+            if self.pair_role == "a":
+                steam.append(SteamStage(extra_g=pair[1]))
+            elif self.pair_role != "b":
+                steam.append(SteamStage())
             grams, foam, _, _ = milk_plan(drink, self.dp)
             foam_vol = grams * foam / 100 * FOAM_EXPANSION * MILK_KINDS.get(self.dp.milk_kind, MILK_KINDS["dairy"])["foam"]
             small = drink == "macchiato"
@@ -942,22 +1046,42 @@ class Session:
             elif not art:
                 kw.update(label="倒入熱牛奶…")
             rate = 8.0 if small else (10.0 if drink == "cortado" else 14.0)
-            if t.milk == "wand":
+            if self.pair_role == "a":                    # 一壺兩杯份：倒完這杯還剩下一杯的量，拉花杯移到第二杯上方
+                share = pair[1] / max(1.0, grams + pair[1])
+                milk_stages.append(PourStage("pitcher", "hot_milk", grams, rate, start="vessel", home=pair[2],
+                                             content=(PAIR_PITCHER, PAIR_PITCHER * share), **kw))
+            elif self.pair_role == "b":                  # 從第一杯倒完的位置接手，倒完剩下的
+                share = grams / max(1.0, grams + pair[2])
+                milk_stages.append(PourStage("pitcher", "hot_milk", grams, rate, start=pair[1],
+                                             content=(PAIR_PITCHER * share, 0.0), **kw))
+            elif t.milk == "wand":
                 milk_stages.append(PourStage("pitcher", "hot_milk", grams, rate, start="vessel", **kw))
             else:
                 fp = app.machine.frother_pos
                 home = (fp[0], fp[1])
                 milk_stages.append(PourStage("jug", "hot_milk", grams, rate, start=home, home=home, **kw))
-        if drink == "caramel_macchiato":
-            # 先牛奶、後濃縮：濃縮穿過奶泡停在中間，形成分層
-            stages += milk_stages
+        together = (t.groups > 1 or app.together_open()) and steam and not t.steam_heatup
+        if drink == "caramel_macchiato" and together and jig:
+            # 營業模式：濃縮萃取到量杯的同時打奶，先倒牛奶，最後把量杯的濃縮倒在上面（照樣分層）
+            self.brew_i = len(stages)
+            stages.append(Together(brew[0], *steam))
+            stages += milk_stages + brew[1:]
+            stages.append(ToolStage("caramel"))
+        elif drink == "caramel_macchiato":
+            # 先牛奶、後濃縮：濃縮穿過奶泡停在中間，形成分層（手動／自動模式濃縮直接進杯子，不能同時做）
+            stages += steam + milk_stages
             if t.steam_heatup:
                 stages.append(CoolStage())
-            stages.append(BrewStage())
+            self.brew_i = len(stages)
+            stages += brew
             stages.append(ToolStage("caramel"))
+        elif together:
+            self.brew_i = len(stages)                    # 雙頭機、職人咖啡師：萃取的同時打奶（單鍋爐要先加熱，不行）
+            stages.append(Together(brew[0], *steam))
+            stages += brew[1:] + milk_stages
         else:
-            stages.append(BrewStage())
-            stages += milk_stages
+            self.brew_i = len(stages)
+            stages += brew + steam + milk_stages
         if drink == "cappuccino" and self.dp.cocoa:
             stages.append(ToolStage("cocoa"))
         if whip_on(drink, self.dp):
@@ -969,7 +1093,18 @@ class Session:
         self.stages = stages
         self.i = 0
         self.done = False
-        self._start_current()
+        if self.pair_role:                               # 成對：萃取前、萃取後各停一次
+            self.hold = {self.brew_i, self.brew_i + 1}
+        if start:
+            self._start_current()
+        else:
+            self.waiting = True
+
+    def release(self):
+        """成對做兩杯：放行停著的階段"""
+        if self.waiting:
+            self.waiting = False
+            self._start_current()
 
     def _station_stages(self, app, drink):
         """手沖：手沖流程 → 分享壺倒進杯子；冰滴：滴好了就加冰倒一杯，還沒架就先架冰滴塔"""
@@ -1009,14 +1144,14 @@ class Session:
         st = self.stage
         if st is None:
             return
-        if isinstance(st, PourStage) and st.start_pos == "vessel":
-            v = self.vessel
+        if isinstance(st, PourStage) and st.start_pos in ("vessel", "jigger"):
+            v = getattr(self, st.start_pos)
             st.start_pos = (v["x"], v["y"]) if v else None
         st.start(self)
 
     def update(self, dt):
         st = self.stage
-        if st is None:
+        if st is None or self.waiting:
             return
         st.update(self, dt)
         sh = self.app.shot
@@ -1026,6 +1161,8 @@ class Session:
             self.i += 1
             if self.i >= len(self.stages):
                 self.finish()
+            elif self.i in self.hold:
+                self.waiting = True
             else:
                 self._start_current()
 
@@ -1049,6 +1186,10 @@ class Session:
 
     def add_liquid(self, liquid, grams, foam_vol=0.0):
         c = self.app.contents
+        if liquid == "espresso":                         # 量杯倒進杯子：杯中的濃縮比例
+            sh = self.app.shot
+            self.app.shot_frac = min(1.0, self.app.shot_frac + grams / max(0.1, sh.weight if sh else 1.0))
+            return
         if liquid in ("water", "cold_water", "tonic", "brew", "colddrip"):
             c["water"] += grams
         elif liquid in ("cold_milk", "hot_milk"):
@@ -1060,7 +1201,10 @@ class Session:
 
     def status(self):
         st = self.stage
-        return st.status(self) if st else ""
+        if st is None or self.waiting:
+            return ""
+        text = st.status(self)
+        return f"{self.tag} {text}" if (self.tag and text) else text
 
     @property
     def stage_name(self):

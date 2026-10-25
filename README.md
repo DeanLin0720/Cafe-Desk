@@ -5,15 +5,16 @@
 放在桌面上的咖啡機擺件。視窗裡站著咖啡機、磨豆機和各種器具（預設是一般視窗；右鍵取消「視窗化顯示」就變成透明無邊框、直接站在桌面上），點一下就用動畫和合成音效做一杯咖啡，最後給一個簡單的分數。
 
 - 五種沖煮方式，各有自己的畫面：義式咖啡機、手沖、冰滴、摩卡壺、虹吸壺（冰滴約 1 小時，依架好時記下的時間計算；關掉程式時不會執行，重開時依經過的時間算出進度）
-- 四台咖啡機（DESK·01 雙錶不鏽鋼機、復古拉桿機、小型單鍋爐機、內建磨豆的一體機），各有特性影響萃取
+- 五台咖啡機（DESK·01 雙錶不鏽鋼機、復古拉桿機、小型單鍋爐機、內建磨豆的一體機、兩個沖煮頭的營業用雙頭機），各有特性影響萃取
 - 濃縮、美式、拿鐵、卡布奇諾、馥列白、摩卡、焦糖瑪奇朵、濃縮通寧、阿芙佳朵等 16 種義式飲品，加上手沖、冰滴、摩卡壺、虹吸；節日期間另有 3 款季節限定
 - 完整備粉流程（取把手 → 敲渣 → 磨豆 → 布粉 → 填壓 → 扣回）、打奶與拉花、豆子與養豆天數、清潔保養（每台咖啡機分開計算）
-- 三種模式：手動、自動（照目前的設定重複沖煮）、營業（客人點單、排隊、有耐心，自動換咖啡機與沖煮方式）
-- 營業模式的成長：店鋪等級 Lv.1–10、咖啡師稱號、小費罐、打烊日報；用營業額在商店買設備升級與精品豆，設備與飲品依等級解鎖
+- 三種模式：手動、自動（照目前的設定重複沖煮）、營業（客人點單付錢、排隊、有耐心，做好後在櫃檯取餐才評分）
+- 營業模式：出杯台與櫃檯店面、POS 結帳、內用／外帶、大中小杯、一張單好幾杯、座位、翻頁鐘
+- 營業模式的成長：店鋪等級 Lv.1–10、咖啡師稱號（職人可以萃取的同時打奶）、打烊日報；用營業額在商店買設備升級與精品豆，設備與飲品依等級解鎖
 - 陪伴功能：環境音（下雨天的咖啡廳、森林雨聲與遠雷）、播放自己的音樂、休息提醒、每天自動檢查新版本
 - 簡化的物理：倒的時候液面保持水平、越倒越空傾斜得越多，容器從杯子上方繞過；手沖的水珠受重力加速、細水柱斷成水滴
-- 紀錄與收集冊：每日紀錄、54 個成就（9 組分成銅／銀／金三級，只算為客人做的杯子）、拉花收集、飲品與設備圖鑑、遊戲說明
-- 紙張風格的選單與視窗；繁體中文／English（金額跟著語言顯示新台幣或美金）
+- 紀錄與收集冊：每日紀錄、61 個成就（分級的有銅／銀／金，只算為客人做的杯子）、飲品與設備圖鑑（含拉花收集）、遊戲說明
+- 16:9 視窗（1920×1080、1600×900、1280×720、960×540）；紙張風格的選單與視窗；繁體中文／English（金額跟著語言顯示新台幣或美金）
 
 <p align="center">
   <img src="docs/images/desk01.png" alt="Café Desk：做完一杯拿鐵，上方是萃取曲線與拉花卡片" width="480">
@@ -70,16 +71,26 @@
 
 ### 營業模式
 
-<p align="center">
-  <img src="docs/images/business.png" alt="營業模式：點單紙後面疊著排隊的訂單" width="420">
-</p>
+<table width="100%">
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/business.png" alt="營業用雙頭機成對做兩杯" width="420"><br><b>出杯台</b><br>營業用雙頭機兩杯一起做：濃縮先萃取到量杯，再到出杯台倒進杯子</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/counter.png" alt="櫃檯取餐" width="420"><br><b>櫃檯</b><br>做好的杯子放上櫃檯，客人拿走後 POS 才顯示評分；小黑板是目前的座位</td>
+  </tr>
+</table>
 
-右鍵選單上方的模式選「營業」（另外兩個是「手動」「自動」，三選一）：客人隨時上門排隊（最多 4 位，店鋪升級後 5–6 位），點單紙後面疊著排隊的訂單，下面一排計時圈是每位客人剩下的耐心（綠 → 橘 → 紅，快走時會閃）；
-咖啡師自己接單，客人點什麼就自動換到那台咖啡機或沖煮方式。狀態列顯示店鋪等級、排隊人數與今日營業額。
+右鍵選單上方的模式選「營業」（另外兩個是「手動」「自動」，三選一）：客人隨時上門排隊（最多 4 位，店鋪升級後 5–6 位），點單紙後面疊著排隊的訂單，下面一排計時圈是每位客人剩下的耐心（綠 → 橘 → 紅，快走時會閃）。
+咖啡師接單時先到櫃檯讓客人在 POS 刷卡付錢（付了錢的客人不會走掉），再自動換到那台咖啡機或沖煮方式做；做好後到櫃檯交給客人，客人拿到飲品才評分、給小費。沒有客人時畫面停在櫃檯。
+
+- **店面**：百葉窗、吊掛菜單看板（今日熱賣前三）、後檯擺營業用的咖啡機、整排木質櫃檯與甜點玻璃櫃；POS 大螢幕顯示品項、合計、付款與評分。
+- **內用／外帶**：內用用玻璃杯（放杯盤），外帶熱飲用紙杯、冰飲用塑膠杯，一律蓋好蓋子。
+- **大中小杯**：加奶／加水的飲品分大中小，杯子跟著縮放，紙杯印 S／M／L；每種飲品約裝到九成滿。
+- **一張單好幾杯**：有些客人一次點 2–3 杯，先做好的放出餐架，全部好了才一起交付。
+- **座位**：依店鋪等級 4–16 位，坐滿了新客人只能外帶；櫃檯的小黑板寫目前坐著幾位。
+- **營業用雙頭機**（Lv.9）：兩個沖煮頭，萃取的同時打奶，排隊裡有同一類飲品就兩杯一起做；紀錄與收集冊「店鋪」頁可以指定營業用哪一台咖啡機。
+- **翻頁鐘**：營業時右上角的翻頁鐘與日期，右鍵可以調整或隱藏。
 
 - **店鋪等級 Lv.1–10**：依累積營業額升級（路邊小攤 → 夢想咖啡館），等級越高客人越多、越有耐心，出杯也更快。
-- **咖啡師稱號**：做越多杯越熟練（新手 → 大師），打奶、研磨、拉花的手感誤差越小；稱號越高，能做的飲品越多。
-- **小費罐**：營業時檯面上的玻璃罐，收到小費時硬幣叮一聲掉進去，裝滿 NT$500 後紙鈔從罐口露出來。
+- **咖啡師稱號**：做越多杯越熟練（新手 → 大師），打奶、研磨、拉花的手感誤差越小；稱號越高，能做的飲品越多，升到「職人」後萃取的同時打奶。
 - **打烊日報**：關掉營業模式或跨過午夜時，滑出一張收據：服務人數、營業額、最佳一杯、跟上一個營業日比較、升級進度。
 - **設備解鎖**：一開始只有 DESK·01 與義式，店鋪升級後陸續解鎖手沖、其他咖啡機、摩卡壺、冰滴與虹吸壺。
 - **商店**：用賺到的營業額買咖啡機與磨豆機升級（PID 溫控、精密刀盤、專業奶泡機、平刀盤、鬼齒刀盤…）和精品咖啡豆（藝妓、藍山、可娜），營業中也能買；花錢不會掉級。
@@ -107,7 +118,7 @@ Windows 用 `pythonw` 不會多開一個主控台視窗；要看錯誤訊息時�
 | 動作 | 說明 |
 |---|---|
 | 左鍵點咖啡機或磨豆機 | 開始沖煮（手沖、冰滴、摩卡壺、虹吸壺的畫面點任何地方） |
-| 滑鼠停在機身上 | 顯示萃取曲線卡片（拿鐵類會同時顯示拉花） |
+| 滑鼠停在機身上 | 顯示萃取曲線卡片（拿鐵類會同時顯示拉花）；透明擺件時狀態列也是這時才出現 |
 | 左鍵拖曳 | 移動位置（會記住） |
 | 右鍵 | 選單：沖煮方式、咖啡機、飲品、拉花圖案、參數設定、豆子、清潔保養、紀錄與收集冊、模式（手動／自動／營業）、自動間隔、休息提醒、聲音（音量、環境音）、音樂、視窗化顯示、大小、Language、更新、關於… |
 | 系統匣圖示 | 單擊叫回咖啡機；右鍵有沖煮、模式（手動／自動／營業）、音樂、結束 |
@@ -174,15 +185,16 @@ python -m pytest
 A coffee machine desktop toy. A window holds an espresso machine, a grinder and assorted gear (a normal window by default; untick "Windowed" in the right-click menu to make it a transparent, borderless toy standing on your desktop). Click once and it makes a coffee with animation and synthesized sound effects, then gives you a simple score.
 
 - Five brew methods, each with its own scene: espresso machine, pour-over, cold drip, moka pot and siphon (cold drip takes about an hour, measured from the time the tower was set up; nothing runs while the app is closed, and on the next launch the progress is worked out from the elapsed time)
-- Four machines (DESK·01 dual-gauge steel machine, vintage lever machine, compact single-boiler machine, all-in-one with built-in grinder), each with traits that affect extraction
+- Five machines (DESK·01 dual-gauge steel machine, vintage lever machine, compact single-boiler machine, all-in-one with built-in grinder, two-group café machine), each with traits that affect extraction
 - 16 espresso drinks including espresso, americano, latte, cappuccino, flat white, mocha, caramel macchiato, espresso tonic and affogato, plus pour-over, cold drip, moka pot and siphon, and 3 seasonal specials during festivals
 - Full prep workflow (take the portafilter → knock out → grind → distribute → tamp → lock in), milk steaming and latte art, beans and rest days, cleaning and maintenance (tracked per machine)
-- Three modes: manual, auto (keeps brewing your current drink with your current settings) and business (customers order, queue up and run out of patience; the barista switches machines and brew methods to match)
-- Business mode progression: shop level 1–10, barista titles, a tip jar and a closing report; spend your revenue in the store on equipment upgrades and specialty beans, and unlock gear and drinks as you level up
+- Three modes: manual, auto (keeps brewing your current drink with your current settings) and business (customers order and pay, queue up and run out of patience, and rate the drink once they pick it up at the counter)
+- Business mode: a pass counter and a shop counter, POS checkout, for here / to go, small / medium / large cups, multi-drink orders, seats and a flip clock
+- Business mode progression: shop level 1–10, barista titles (an Artisan steams milk while the shot pulls) and a closing report; spend your revenue in the store on equipment upgrades and specialty beans, and unlock gear and drinks as you level up
 - Extras: ambience (a rainy-day café, forest rain with distant thunder), your own music, break reminders, a daily update check
 - Simple physics: liquid stays level while pouring and the vessel tips further as it empties, vessels go over the cup instead of through it, pour-over drips accelerate and a thin stream breaks into drops
-- Records and collection: daily records, 54 achievements (9 sets with bronze / silver / gold tiers, counting only cups made for customers), latte art, a drink and equipment book, and a game guide
-- Paper-style menus and windows; 繁體中文 / English (prices show in NT$ or US$ to match the language)
+- Records and collection: daily records, 61 achievements (tiered sets in bronze / silver / gold, counting only cups made for customers), a drink and equipment book (with latte art), and a game guide
+- A 16:9 window (1920×1080, 1600×900, 1280×720, 960×540); paper-style menus and windows; 繁體中文 / English (prices show in NT$ or US$ to match the language)
 
 <p align="center">
   <img src="docs/images/desk01_en.png" alt="Café Desk: a finished latte with the extraction curve and latte art cards above" width="480">
@@ -239,16 +251,26 @@ Use "Brew Method" in the right-click menu to switch between the espresso machine
 
 ### Business mode
 
-<p align="center">
-  <img src="docs/images/business_en.png" alt="Business mode: queued orders stacked behind the order slip" width="420">
-</p>
+<table width="100%">
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/business_en.png" alt="The two-group machine making two drinks at once" width="420"><br><b>Pass counter</b><br>The two-group machine makes two drinks at once: the shot goes into a shot glass, then into the cup on the pass counter</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/counter_en.png" alt="Pickup at the counter" width="420"><br><b>Counter</b><br>Finished drinks go on the counter, and the POS shows the rating once the customer picks them up; the chalkboard shows the seats</td>
+  </tr>
+</table>
 
 Pick "Business" in the mode choice at the top of the right-click menu (the other two are "Manual" and "Auto"): customers keep arriving and queue up (up to 4, or 5–6 at higher shop levels), queued orders stack behind the slip, and a row of timer rings below it shows each customer's remaining patience (green → orange → red, blinking when they're about to leave).
-The barista takes the orders and switches to the machine or brew method each drink needs. The status bar shows the shop level, the queue and today's revenue.
+When the barista takes an order, the customer pays at the POS first (customers who have paid don't walk out), then the barista switches to the machine or brew method the drink needs. Finished drinks are handed over at the counter, and the customer rates the drink and tips once they pick it up. With no customers waiting, the view stays on the counter.
+
+- **The shop**: blinds, hanging menu boards (today's top three), the shop machine on the back counter, a long wooden counter and a pastry case; the POS screen shows items, the total, payment and the rating.
+- **For here / to go**: glass cups (on a saucer) for here; paper cups for hot drinks and plastic cups for iced drinks to go, always with a lid.
+- **Cup sizes**: drinks with milk or water come in small, medium and large, the cup scales to match and paper cups are marked S / M / L; every drink fills its cup to about 90%.
+- **Multi-drink orders**: some customers order 2–3 drinks; finished ones wait on the pass shelf and are handed over together.
+- **Seats**: 4–16 depending on shop level; when they're full, new customers can only take away. The chalkboard on the counter shows how many are seated.
+- **Two-group café machine** (Lv.9): steams milk while the shot pulls and makes two drinks at once when the queue has a matching order; the Shop tab of the records window lets you pick which machine to use for business.
+- **Flip clock**: a flip clock with the date in the top right during business; adjust or hide it from the right-click menu.
 
 - **Shop level 1–10**: grows with total revenue (Street Stall → Dream Café); higher levels bring more, and more patient, customers, and drinks come out faster.
-- **Barista titles**: the more cups made, the steadier the hands (Rookie → Master), with smaller errors in milk, grind and latte art; higher titles unlock more drinks.
-- **Tip jar**: a glass jar on the counter during business; coins clink in with each tip, and bills stick out once it passes NT$500.
+- **Barista titles**: the more cups made, the steadier the hands (Rookie → Master), with smaller errors in milk, grind and latte art; higher titles unlock more drinks, and an Artisan steams milk while the shot pulls.
 - **Closing report**: when business mode ends or the day rolls over, a receipt slides up with customers served, revenue, best cup, comparison with the last business day and level progress.
 - **Equipment unlocks**: you start with DESK·01 and espresso only; leveling up the shop unlocks pour-over, the other machines, moka pot, cold drip and siphon.
 - **Store**: spend your revenue on machine and grinder upgrades (PID kit, precision burrs, pro frother, flat burrs, ghost-tooth burrs…) and specialty beans (Geisha, Blue Mountain, Kona), even during business; spending never lowers your shop level.
@@ -276,7 +298,7 @@ On Windows, `pythonw` avoids opening an extra console window, use `python` when 
 | Action | What it does |
 |---|---|
 | Left-click the machine or grinder | Start brewing (anywhere in the pour-over, cold drip, moka pot and siphon scenes) |
-| Hover over the machine | Show the extraction curve card (with latte art for milk drinks) |
+| Hover over the machine | Show the extraction curve card (with latte art for milk drinks); in transparent mode the status bar also appears only then |
 | Left-drag | Move the window (position is remembered) |
 | Right-click | Menu: brew method, machine, drinks, latte art, settings, beans, cleaning, records and collection, mode (manual / auto / business), auto interval, break reminder, sound (volume, ambience), music, windowed, size, Language, updates, About… |
 | Tray icon | Click to bring the machine back, right-click for brew, mode (manual / auto / business), music, quit |

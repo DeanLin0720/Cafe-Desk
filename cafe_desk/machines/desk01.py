@@ -26,7 +26,6 @@ class Desk01(Machine):
                     temp_noise=0.15, boiler_draw=0.25, milk="frother")
 
     drip_area = (32, 268, 340)            # 滴水盤（x1, x2, 上緣；機身座標）
-    tip_x = 411                           # 小費罐中心（場景座標）
     scene_w = 500
     frother_pos = (439, 296)          # 奶泡機玻璃壺的倒出口（場景座標）
     mx, my = 120, 18
