@@ -35,7 +35,7 @@
 
 做完後狀態列給星等、分數與評語；滑鼠停在機身上會顯示萃取曲線與拉花卡片。
 
-### 四台咖啡機
+### 五台咖啡機
 
 <table width="100%">
   <tr>
@@ -45,6 +45,9 @@
   <tr>
     <td width="50%" align="center" valign="top"><img src="docs/images/compact.png" alt="小型單鍋爐機" width="420" height="487"><br><b>小型單鍋爐機</b></td>
     <td width="50%" align="center" valign="top"><img src="docs/images/allinone.png" alt="內建磨豆的一體機" width="420" height="487"><br><b>內建磨豆的一體機</b></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center" valign="top"><img src="docs/images/duo.png" alt="營業用雙頭機" width="560"><br><b>營業用雙頭機</b>：兩個沖煮頭、搭配獨立的營業用磨豆機，營業中能一起做兩杯</td>
   </tr>
 </table>
 
@@ -216,7 +219,7 @@ A coffee machine desktop toy. A window holds an espresso machine, a grinder and 
 
 When a drink is done, the status bar shows stars, a score and a comment. Hover over the machine to see the extraction curve and latte art cards.
 
-### Four machines
+### Five machines
 
 <table width="100%">
   <tr>
@@ -226,6 +229,9 @@ When a drink is done, the status bar shows stars, a score and a comment. Hover o
   <tr>
     <td width="50%" align="center" valign="top"><img src="docs/images/compact_en.png" alt="Compact single-boiler machine" width="420" height="487"><br><b>Compact single-boiler machine</b></td>
     <td width="50%" align="center" valign="top"><img src="docs/images/allinone_en.png" alt="All-in-one with built-in grinder" width="420" height="487"><br><b>All-in-one with built-in grinder</b></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center" valign="top"><img src="docs/images/duo_en.png" alt="Two-group café machine" width="560"><br><b>Two-group café machine</b>: two brew groups with a separate commercial grinder, and it can make two drinks at once in business mode</td>
   </tr>
 </table>
 
