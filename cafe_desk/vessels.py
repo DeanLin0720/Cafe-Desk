@@ -156,7 +156,7 @@ def moka_hull():
     return body
 
 
-JIGGER_K = 2.0                # 量杯的放大倍數（形狀以 1 倍寫，畫刻度、把手時也乘這個）
+JIGGER_K = 1.5                # 量杯的放大倍數（形狀以 1 倍寫，畫刻度、把手時也乘這個）；真實的濃縮量杯比咖啡杯小很多
 
 
 def jigger():
@@ -176,7 +176,7 @@ def jigger():
 
 SHAPES = {"pitcher": pitcher, "kettle": kettle, "bottle": bottle, "tonic": tonic, "jug": jug,
           "server": server, "carafe": carafe, "globe": globe, "moka": moka, "jigger": jigger}
-JIGGER_CAP = 160.0            # 量杯畫面上的「滿」是幾 g（量杯放大後，一份濃縮也看得到液面）
+JIGGER_CAP = 68.0             # 量杯畫面上的「滿」是幾 g：跟杯子同一個比例（2 倍時 160，容量依倍數的三次方），雙份濃縮約半杯
 # 外形比內腔大很多的容器：碰撞與超出視窗用外形（沒列的，內腔外框就是外形）
 HULLS = {"moka": moka_hull}
 # 拿去倒時「內腔裡液體佔多少」：裝滿到能倒的最高水位是 1（冰滴壺只裝到瓶頸下面）

@@ -9,9 +9,9 @@ from .layout import PF_BASKET_W
 from .util import clamp, lerp
 from .i18n import T
 
-HANDLE_FULL = 88.0          # 扣在沖煮頭時木柄長度
-HANDLE_OFF = 62.0           # 轉開後因透視縮短
-HANDLE_FORK = 44.0          # 放在磨豆機上時，把手朝向觀看者，縮得更短
+HANDLE_FULL = 0.0           # 扣在沖煮頭時握把朝前（握把往右轉開的橫向位移，0＝正對觀看者）
+HANDLE_OFF = 24.0           # 轉開時握把往右轉一點（約 24°）
+HANDLE_FORK = 0.0           # 放在磨豆機上時握把也朝前
 DROP = 7.0                  # 轉開時往下掉的距離
 
 STATUS = {

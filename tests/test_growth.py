@@ -95,7 +95,7 @@ def test_old_records_count_without_spam(qapp, cfg_path):
         assert w.shop_level() == 4 and w.growth_seen["level"] == 4
         w.toasts.clear()
         w.check_growth()
-        assert not w.toasts
+        assert not [t for t in w.toasts if "挑戰" not in t[0]]       # 挑戰用舊紀錄的營業額完成是真的，只確認沒有補發升級通知
     finally:
         w.timer.stop()
         w.stats.db.close()
@@ -345,10 +345,10 @@ def test_drink_icons_and_book(desk):
 
 
 def test_guide_tab(desk):
-    """紀錄視窗最後一頁是遊戲說明；解鎖表、稱號門檻從遊戲資料產生"""
+    """關於視窗的「說明」頁是遊戲說明；解鎖表、稱號門檻從遊戲資料產生"""
     from PySide6.QtWidgets import QLabel
-    from cafe_desk.records import RecordsDialog
-    dlg = RecordsDialog(desk)
+    from cafe_desk.about import AboutDialog
+    dlg = AboutDialog(desk)
     assert dlg.tabs.tabText(dlg.tabs.count() - 1) == "說明"
     page = dlg.tabs.widget(dlg.tabs.count() - 1)
     text = " ".join(lab.text() for lab in page.findChildren(QLabel))
@@ -380,7 +380,8 @@ def test_welcome_hint_only_for_new_players(desk, qapp, cfg_path):
     assert desk._welcome_due is not None
     desk._welcome_due = _t.perf_counter() - 1
     desk.step(0.05, 0.05)
-    assert any("營業" in t[0] for t in desk.toasts) and desk.cfg["welcomed"]
+    assert desk.intro_dlg is not None and desk.intro_dlg.isVisible() and desk.cfg["welcomed"]
+    desk.intro_dlg.close()
 
 
 def test_no_welcome_for_existing_players(qapp, cfg_path):
@@ -415,7 +416,7 @@ def test_drinks_unlock_by_barista_title(desk):
 
 
 def test_equipment_book(desk):
-    """圖鑑的設備區：5 台咖啡機、2 台磨豆機、4 種沖煮台；Lv.1 只有 DESK·01 與獨立磨豆機解鎖"""
+    """圖鑑的設備區：5 台咖啡機、3 台磨豆機（獨立、營業用、手沖用）、4 種沖煮台；Lv.1 只有 DESK·01 與獨立磨豆機解鎖"""
     from PySide6.QtWidgets import QLabel
     from cafe_desk.records import RecordsDialog
     from cafe_desk.render import gear_icons
@@ -423,10 +424,13 @@ def test_equipment_book(desk):
         assert not gear_icons.machine_icon(desk, m, 80, 60).isNull()
     for kind in ("grinder", "pourover", "colddrip", "moka", "siphon"):
         assert not gear_icons.station_icon(desk, kind, 80, 60, locked=True).isNull()
+    for style in ("standard", "commercial"):
+        assert not gear_icons.grinder_icon(desk, 80, 60, False, 1.0, style).isNull()
+    assert "_grinder_style_override" not in desk.__dict__, "畫圖鑑縮圖不能改到目前磨豆機的外觀"
     assert desk.method == "espresso", "畫沖煮台縮圖不能改到目前的沖煮方式"
     dlg = RecordsDialog(desk)
     texts = [lab.text() for lab in dlg.findChildren(QLabel)]
-    assert "設備（2/11）" in texts and "店鋪 Lv.7 解鎖" in texts and "店鋪 Lv.9 解鎖" in texts
+    assert "設備（2/12）" in texts and "店鋪 Lv.7 解鎖" in texts and "店鋪 Lv.9 解鎖" in texts
     dlg.close()
 
 
@@ -520,3 +524,99 @@ def test_window_is_16_9_with_size_choices(desk):
     assert window_scale(None) * UNIFORM_W == 1280
     assert round(window_scale(1.0) * UNIFORM_W) == 960, "舊版 100%（800 寬）→ 960×540"
     assert round(window_scale(1.5) * UNIFORM_W) == 1280, "舊版 150%（1200 寬）→ 1280×720"
+
+
+def _days(**kw):
+    class S:
+        data = {"days": kw}
+    return S
+
+
+def test_star_rating():
+    day = {"orders": 20, "walkouts": 0, "rate_sum": 20 * 95.0, "rate_n": 20, "wait_sum": 20 * 60.0, "waited": 20}
+    assert growth.star_rating(_days(**{"2026-08-01": day}), "2026-08-01", 9) is None          # 還沒到 Lv.10
+    assert growth.star_rating(_days(**{"2026-08-01": dict(day, orders=5)}), "2026-08-01", 10) is None   # 訂單不夠
+    assert growth.star_rating(_days(**{"2026-08-01": day}), "2026-08-01", 10) == pytest.approx(5.0)
+    bad = {"orders": 20, "walkouts": 10, "rate_sum": 20 * 60.0, "rate_n": 20, "wait_sum": 20 * 200.0, "waited": 20}
+    assert growth.star_rating(_days(**{"2026-08-01": bad}), "2026-08-01", 10) == pytest.approx(1.0)
+    # 近況變差會掉星：舊的好日子超過 7 天就不算
+    both = _days(**{"2026-07-20": day, "2026-08-01": bad})
+    assert growth.star_rating(both, "2026-08-01", 10) == pytest.approx(1.0)
+    assert growth.star_rating(both, "2026-07-25", 10) == pytest.approx(5.0)                   # 當時 7/20 還在近 7 天內
+
+
+def test_inspector_counts_double(desk):
+    cup = {"drink": "latte", "title": "拿鐵", "comment": "", "order": True, "price": 100, "tip": 0, "wait": 10.0}
+    desk.stats.record(dict(cup, score=60), [])
+    desk.stats.record(dict(cup, score=90, inspector=True), [])
+    d = desk.stats.day()
+    assert d["rate_n"] == 3 and d["rate_sum"] == pytest.approx(60 + 180)
+    desk.stats.load()                                          # 重讀資料庫：簽章驗證過、加權一樣
+    d = desk.stats.day()
+    assert d["rate_n"] == 3 and desk.stats.tampered == 0
+
+
+def test_inspector_arrives_only_at_max_level(desk, monkeypatch):
+    monkeypatch.setattr(growth, "INSPECTOR_P", 1.0)
+    monkeypatch.setattr(orders, "party_size", lambda rnd=random: 1)
+    desk.set_order_mode(True)
+    desk.new_order()
+    assert desk.order is not None and not desk.order.inspector          # Lv.1：不會來
+    desk.order, desk.queue = None, []
+    monkeypatch.setattr(desk, "shop_level", lambda: 10)
+    desk.new_order()
+    assert desk.order.inspector and desk.order.name == "評鑑員"
+
+
+def _view_biz(desk, lock):
+    desk.set_order_mode(True)
+    desk.arrive_in = 1e9
+    desk.set_view_lock(lock)
+    for _ in range(40):
+        desk.step(0.05, 0.05)
+
+
+def test_view_follows_barista_by_default(desk):
+    desk.set_order_mode(True)
+    desk.arrive_in = 1e9
+    for _ in range(40):
+        desk.step(0.05, 0.05)
+    assert desk.view_lock == "follow" and desk.counter_view, "沒客人：在櫃檯"
+    o = Order(1, "Amy", "espresso", [], price=70, patience=999)
+    desk.order = o
+    desk.start_order(o)
+    for _ in range(20):
+        desk.step(0.05, 0.05)
+    assert not desk.counter_view, "開始做：切到咖啡機"
+
+
+def test_view_locked_on_counter_or_machine(desk):
+    _view_biz(desk, "counter")
+    assert desk.counter_view
+    o = Order(1, "Amy", "espresso", [], price=70, patience=999)
+    desk.order = o
+    desk.start_order(o)
+    for _ in range(30):
+        desk.step(0.05, 0.05)
+    assert desk.making() and desk.counter_view, "鎖定櫃檯：咖啡師在做飲品畫面也不動"
+    desk.host.grab()
+    run_until_idle(desk)
+    assert desk.counter_view
+    desk.set_view_lock("machine")
+    assert not desk.counter_view, "換成鎖定咖啡機：馬上切過去"
+    o2 = Order(2, "Ken", "espresso", [], price=70, patience=999)
+    desk.order = o2
+    desk.start_order(o2)
+    run_until_idle(desk)
+    assert not desk.counter_view and o2.state in ("done", "leaving"), "鎖定咖啡機：結帳、交付照樣進行，畫面不去櫃檯"
+    desk.set_view_lock("follow")
+    for _ in range(40):
+        desk.step(0.05, 0.05)
+    assert desk.counter_view and desk.cfg["view_lock"] == "follow"
+
+
+def test_view_lock_saved_and_bad_value_ignored(desk):
+    desk.set_view_lock("machine")
+    assert desk.cfg["view_lock"] == "machine"
+    desk.set_view_lock("nonsense")
+    assert desk.view_lock == "machine"

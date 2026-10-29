@@ -2,20 +2,22 @@
 import datetime
 import html
 
-from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import QPainter, QPixmap, QPen, QFont, QColor, QPainterPath
-from PySide6.QtWidgets import (QDialog, QTabWidget, QVBoxLayout, QHBoxLayout, QLabel, QWidget, QGridLayout,
-                               QScrollArea, QPushButton, QFrame, QProgressBar, QComboBox)
+from PySide6.QtCore import Qt, QPointF, QRectF, QTimer
+from PySide6.QtGui import QPainter, QPixmap, QPen, QFont, QColor, QPainterPath, QIcon
+from PySide6.QtWidgets import (QCheckBox, QDialog, QTabWidget, QVBoxLayout, QHBoxLayout, QLabel, QWidget, QGridLayout,
+                               QScrollArea, QPushButton, QFrame, QProgressBar, QToolButton)
 
 from .drinks import DRINKS, DRINK_KEYS, FESTIVAL_DRINKS, ART_NAMES, MILK_KINDS
 from .beans import ORIGINS
 from .festivals import today, FESTIVALS
-from . import growth, theme, store, beans, brew, orders
+from . import growth, theme, store, beans, brew, orders, challenges, regulars, decor, ingredients
 from .i18n import T, money, money_text, retext
 from .machines import MACHINES
+from .render.shop import BACK_GEAR
+from . import stats as stats_mod
 from .stats import ACHIEVEMENTS, ART_BOOK, TIER_GROUPS, TIER_OF, ACH_SECTIONS
 from .render.milk import make_art
-from .render.icons import drink_icon, milk_icon, bean_icon, upgrade_icon
+from .render.icons import drink_icon, milk_icon, bean_icon, upgrade_icon, decor_icon, ingredient_icon, dessert_icon
 from .render import gear_icons
 from .drinks import method_of
 from .drink_notes import DRINK_NOTES
@@ -167,10 +169,13 @@ class DaysChart(QWidget):
 
 
 class RecordsDialog(QDialog):
+    KINDS = {"shop": "商店", "ingredients": "商店", "layout": "佈置"}      # tab → 獨立視窗；其他（None）是紀錄與收集冊
+
     def __init__(self, app, tab=None):
         super().__init__(None)
         self.app = app
-        self.setWindowTitle(T("紀錄與收集冊"))
+        self.kind = self.KINDS.get(tab, "紀錄與收集冊")                     # 商店、佈置、紀錄與收集冊是三個獨立視窗
+        self.setWindowTitle(T(self.kind))
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         self.resize(760, 560)                       # 英文分頁名稱較長（店鋪、商店、說明分頁）
         theme.apply_dialog(self)
@@ -183,22 +188,37 @@ class RecordsDialog(QDialog):
         tabs = self.tabs = QTabWidget()
         lay.addWidget(tabs)
         st = app.stats.data
-        tabs.addTab(self.today_tab(), T("今天"))
-        tabs.addTab(self.scroll(self.shop_tab()), T("店鋪"))
-        tabs.addTab(self.scroll(self.store_tab()), T("商店"))
-        tabs.addTab(self.history_tab(), T("近期紀錄"))
         n = len(st["achievements"])
-        tabs.addTab(self.scroll(self.achievements_tab()), T("成就 {n}/{total}", n=n, total=len(ACHIEVEMENTS)))
-        tabs.addTab(self.scroll(self.book_tab()), T("圖鑑"))
-        tabs.addTab(self.scroll(self.guide_tab()), T("說明"))
-        if tab == "shop":
-            tabs.setCurrentIndex(2)
+        if self.kind == "商店":
+            tabs.addTab(self.store_tab(), T("商店"))
+            if tab == "ingredients":
+                self.store_sub.setCurrentIndex(3)
+        elif self.kind == "佈置":
+            self.layout_page = self.layout_tab()
+            tabs.addTab(self.layout_page, T("佈置"))
+        else:
+            self.ops_sub = self.group([(self.today_tab(), T("今天")), (self.scroll(self.shop_tab()), T("店鋪")),
+                                       (self.scroll(self.customers_tab()), T("客人")), (self.history_tab(), T("近期紀錄"))])
+            tabs.addTab(self.ops_sub, T("營運紀錄"))                       # 今天／店鋪／客人／近期紀錄
+            self.achv_sub = self.group([(self.scroll(self.achievements_tab()), T("成就 {n}/{total}", n=n, total=len(ACHIEVEMENTS))),
+                                        (self.scroll(self.challenge_tab()), T("挑戰"))])
+            tabs.addTab(self.achv_sub, T("成就與挑戰"))
+            self.book_sub = self.book_tab()
+            tabs.addTab(self.book_sub, T("圖鑑"))
         row = QHBoxLayout()
         row.addStretch(1)
         b = QPushButton(T("關閉"))
         b.clicked.connect(self.close)
         row.addWidget(b)
         lay.addLayout(row)
+
+    @staticmethod
+    def group(pages):
+        """幾個頁面合成一個分頁（裡面再分小分頁）：pages＝[(頁面, 名稱)]"""
+        sub = QTabWidget()
+        for page, name in pages:
+            sub.addTab(page, name)
+        return sub
 
     @staticmethod
     def scroll(w):
@@ -249,6 +269,123 @@ class RecordsDialog(QDialog):
         g.setColumnStretch(1, 1)
         return w
 
+    def decor_cards(self, g, r, dpr):
+        """圖鑑的店面裝潢收集：每一款（不含預設款）一張小圖，買過的是彩色、沒買的是淡淡的剪影；滑鼠停著看名稱與說明"""
+        owned = self.app.stats.data["owned"]
+        have, total = decor.collection(owned)
+        g.addWidget(_title(T("店面裝潢收集（{n}/{total}）", n=have, total=total)), r, 0, 1, 4)
+        box = QGridLayout()
+        box.setSpacing(6)
+        keys = [k for k in decor.ITEMS if not decor.is_default(k)]
+        cols = 8
+        for i, k in enumerate(keys):
+            ok = f"decor_{k}" in owned
+            pic = QLabel()
+            pm = decor_icon(k, 56, dpr)
+            if not ok:
+                faded = QPixmap(pm.size())
+                faded.setDevicePixelRatio(pm.devicePixelRatio())
+                faded.fill(Qt.transparent)
+                q = QPainter(faded)
+                q.setOpacity(0.22)
+                q.drawPixmap(0, 0, pm)
+                q.end()
+                pm = faded
+            pic.setPixmap(pm)
+            pic.setAlignment(Qt.AlignCenter)
+            _slot, name, price, stamps, desc = decor.ITEMS[k]
+            how = T("{n} 個章兌換", n=stamps) if stamps else money(price)
+            pic.setToolTip(f"{T(decor.SLOT_NAME[decor.ITEMS[k][0]])} · {T(name)}\n{T(desc)}" if ok
+                           else f"{T(decor.SLOT_NAME[decor.ITEMS[k][0]])} · ？？？\n{T('商店買得到')}：{how}")
+            box.addWidget(pic, i // cols, i % cols)
+        g.addLayout(box, r + 1, 0, 1, 4)
+        return r + 2
+
+    def customers_tab(self):
+        """客人習慣紀錄：每位來過的客人（熟客等級高的在前）：杯數、平均分數、常點的飲品、杯型、內用或外帶、用的奶、最近一次"""
+        lay = QVBoxLayout(w := QWidget())
+        lay.setSpacing(2)
+        custs = self.app.stats.data["customers"]
+        lay.addWidget(_title(T("客人習慣紀錄（{n} 位）", n=len(custs))))
+        if not custs:
+            lay.addWidget(_muted(T("還沒有客人：營業模式的訂單會記下每位客人的習慣。")))
+        elif not regulars.roster(custs):
+            lay.addWidget(_muted(T("還沒有熟客：同一位客人來過 {n} 次、平均 {a:.0f} 分以上就會變熟面孔。",
+                                   n=regulars.LEVELS[0][0], a=regulars.LEVELS[0][1])))
+        lay.addWidget(_muted(T("熟客會常回來、點「老樣子」，每升一級小費多 {t:.0f}%、耐心多 {p:.0f}%（最高「{name}」）。",
+                               t=regulars.TIP_STEP * 100, p=regulars.PATIENCE_STEP * 100, name=T(regulars.LEVELS[-1][2]))))
+        usual = {name: fav for name, _lv, _n, _avg, fav in regulars.roster(custs)}        # 熟客的「老樣子」
+        order = sorted(custs, key=lambda n: (-regulars.level_of(custs[n]), -custs[n]["cups"], n))
+        for name in order:
+            rec = custs[name]
+            lv = regulars.level_of(rec)
+            h = regulars.habits(rec)
+            head = QLabel(f"{T(name)}" + (f" · {T(regulars.level_name(lv))}" if lv else "")
+                          + "　" + T("{n} 杯 · 平均 {a:.0f} 分", n=rec["cups"], a=rec["score_sum"] / rec["cups"]))
+            head.setStyleSheet(f"font-weight:bold; color:{ACCENT if lv else theme.INK}; padding-top:6px;")
+            lay.addWidget(head)
+            parts = [T("常點：{d}", d=T("、").join(T(DRINKS[k]["name"]) for k in h["drinks"] if k in DRINKS))]
+            if usual.get(name) in DRINKS:
+                parts.insert(0, T("老樣子：{d}", d=T(DRINKS[usual[name]]["name"])))
+            if h["size"]:
+                parts.append(T("杯型：{s}", s=T({"S": "小杯", "M": "中杯", "L": "大杯"}[h["size"]])))
+            if h["place"]:
+                parts.append(T("多半{p}", p=T("內用" if h["place"] == "dine" else "外帶")))
+            if h["milk"] in MILK_KINDS:
+                parts.append(T("奶：{m}", m=T(MILK_KINDS[h["milk"]]["name"])))
+            lay.addWidget(_muted(" · ".join(parts)))
+            lay.addWidget(_muted(T("最近一次：{day} · 最高 {s:.0f} 分", day=h["last"], s=h["best"])))
+        lay.addStretch(1)
+        return w
+
+    def challenge_tab(self):
+        """每日／每週挑戰的進度與集點卡（完成的蓋章、集滿章數換稱號）"""
+        app = self.app
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setSpacing(5)
+        day = today().isoformat()
+        cs = app.challenge_set()
+        done_ids = app.stats.data["challenges"]
+
+        def row(it):
+            value, goal, failed = challenges.progress(it, app.stats, day)
+            ok = it["id"] in done_ids
+            text = challenges.text_of(it, lambda k: DRINKS[k]["name"])
+            lab = QLabel(("✓ " if ok else "") + text)
+            lab.setWordWrap(True)
+            lab.setStyleSheet(f"font-weight:bold; color:{ACCENT if ok else theme.INK};")
+            lay.addWidget(lab)
+            if "revenue" in it["kind"]:
+                note = f"{money(value)} / {money(goal)}"
+            else:
+                note = f"{value} / {goal}"
+            if failed and not ok:
+                note = T("已經有客人離開了，今天做不成")
+            lay.addWidget(_bar(1.0 if ok else (0.0 if failed else value / goal)))
+            lay.addWidget(_muted(T("已完成") if ok else note))
+
+        lay.addWidget(_title(T("今日挑戰（完成各蓋 1 個章）")))
+        for it in cs["daily"]:
+            row(it)
+        lay.addWidget(_title(T("本週挑戰（完成各蓋 {n} 個章）", n=challenges.WEEKLY_STAMPS)))
+        for it in cs["weekly"]:
+            row(it)
+        stamps = challenges.stamps_of(done_ids)
+        fill, cards = challenges.card_fill(stamps)
+        lay.addWidget(_title(T("集點卡")))
+        dots = "".join("●" if i < fill else "○" for i in range(challenges.STAMPS_PER_CARD))
+        card = QLabel(f"<span style='font-size:20px; letter-spacing:4px; color:{ACCENT}'>{dots}</span>")
+        lay.addWidget(card)
+        lay.addWidget(_muted(T("共 {s} 個章，集滿 {c} 張卡", s=stamps, c=cards)))
+        idx = challenges.title_index(stamps)
+        lay.addWidget(QLabel(T("稱號：{name}", name=T(challenges.TITLES[idx][1])) if idx >= 0 else T("稱號：（還沒有）")))
+        nxt = challenges.next_title(stamps)
+        lay.addWidget(_muted(T("下一個稱號「{name}」：還差 {n} 個章", name=T(nxt[0]), n=nxt[1]) if nxt else T("已經是最高稱號")))
+        lay.addWidget(_muted(T("只有營業模式的訂單會累計；每天（週）的挑戰不會因為升級而改變，隔天（下週）換新的。")))
+        lay.addStretch(1)
+        return w
+
     def revenue_change(self, d):
         """今日營業額跟上一個有接單的日子比"""
         prev = growth.last_business_day(self.app.stats, today().isoformat())
@@ -274,6 +411,10 @@ class RecordsDialog(QDialog):
                 (T("排隊上限"), T("{n} 位", n=growth.queue_max(lv))),
                 (T("內用座位"), T("{n} 位（下一級 {m} 位）", n=growth.seats(lv), m=growth.seats(lv + 1))
                  if growth.seats(lv + 1) > growth.seats(lv) and lv < growth.MAX_LEVEL else T("{n} 位", n=growth.seats(lv)))]
+        if lv >= growth.MAX_LEVEL:                                    # 星級評鑑：Lv.10 之後
+            stars = self.app.star_rating()
+            rows.append((T("店鋪評鑑"), T("近 {d} 天：{r:.1f} 星", d=growth.STAR_DAYS, r=stars) if stars is not None
+                         else T("評鑑中（近 {d} 天要有 {n} 杯訂單）", d=growth.STAR_DAYS, n=growth.STAR_MIN_ORDERS)))
         r = 2
         for k, v in rows:
             g.addWidget(QLabel(k), r, 0)
@@ -282,17 +423,6 @@ class RecordsDialog(QDialog):
             g.addWidget(lab, r, 1)
             r += 1
         g.addWidget(_muted(T("店鋪等級依營業模式的累積營業額（含小費）計算，等級越高客人越多、越有耐心。")), r, 0, 1, 2)
-        r += 1
-        g.addWidget(QLabel(T("營業用咖啡機")), r, 0)                       # 做飲品和櫃檯後檯都用這台（只列解鎖的）
-        box = QComboBox()
-        box.addItem(T("隨機使用"), "auto")
-        for k, m in MACHINES.items():
-            if self.app.machine_open(k):
-                box.addItem(T(m.name), k)
-        i = box.findData(self.app.showcase)
-        box.setCurrentIndex(max(0, i))
-        box.currentIndexChanged.connect(lambda _i, b=box: self.app.set_showcase(b.currentData()))
-        g.addWidget(box, r, 1)
         r += 1
         rank = growth.rank_of(cups)
         g.addWidget(_title(T("咖啡師：{name}", name=T(growth.rank_name(rank)))), r, 0, 1, 2)
@@ -326,7 +456,7 @@ class RecordsDialog(QDialog):
         return w
 
     # 設備圖鑑：(種類, key, 名稱, 說明)；種類 machine／grinder（義式獨立磨豆機）／station（沖煮台，key 是沖煮方式或 grinder）
-    GEAR_TEXT = {"grinder": "DESK·01、復古拉桿、小型單鍋爐共用", "station_grinder": "手沖、冰滴、摩卡壺、虹吸壺共用",
+    GEAR_TEXT = {"grinder": "DESK·01、復古拉桿、小型單鍋爐共用", "commercial_grinder": "營業用雙頭機的磨豆機：不鏽鋼機身、大豆倉，兩個沖煮頭共用", "station_grinder": "手沖、冰滴、摩卡壺、虹吸壺共用",
                  "pourover": "濾杯加細口壺，悶蒸後分段注水", "colddrip": "冰水一滴一滴滴過咖啡粉，約一小時",
                  "moka": "爐火加熱下壺，蒸氣壓把咖啡推上來", "siphon": "酒精燈把水推上上壺，熄火後咖啡被吸回"}
     STATION_DRINK = {"pourover": "pour_over", "colddrip": "cold_drip", "moka": "moka_pot", "siphon": "siphon"}
@@ -349,6 +479,11 @@ class RecordsDialog(QDialog):
         items.append((gear_icons.grinder_icon(app, 150, 104, not ok, dpr), T("獨立磨豆機"), T("Lv.1 就有"),
                       T(self.GEAR_TEXT["grinder"]), [n for k, (t, n, *_r) in store.UPGRADES.items()
                                                       if t == store.EXTERNAL and k in owned], ok))
+        ok = app.machine_open("duo")                                   # 營業用磨豆機：跟雙頭機一起解鎖
+        items.append((gear_icons.grinder_icon(app, 150, 104, not ok, dpr, "commercial"), T("營業用磨豆機"),
+                      T("{name} · 店鋪 Lv.{n} 解鎖", name=T("營業用雙頭機"), n=growth.MACHINE_LEVEL["duo"]) if not ok else T("跟著雙頭機解鎖"),
+                      T(self.GEAR_TEXT["commercial_grinder"]), [n for k, (t, n, *_r) in store.UPGRADES.items()
+                                                                if t == store.COMMERCIAL and k in owned], ok))
         for kind in ("grinder", "pourover", "colddrip", "moka", "siphon"):
             method = "pourover" if kind == "grinder" else kind
             ok = app.method_open(method)
@@ -400,7 +535,8 @@ class RecordsDialog(QDialog):
         g.addLayout(box, r, 0, 1, 4)
         return r + 1
 
-    def guide_tab(self):
+    @staticmethod
+    def guide_tab():
         """遊戲說明：操作、三種模式的差別、營業怎麼玩、成長、商店、成就、小技巧（數字從遊戲資料算，改數值不用改這裡）"""
         outer = QWidget()
         ol = QVBoxLayout(outer)
@@ -435,9 +571,9 @@ class RecordsDialog(QDialog):
         bullet(T("點一下咖啡機（或沖煮台）做一杯；左鍵拖曳移動視窗；右鍵打開選單；滑鼠停在機身上看萃取曲線。"))
         bullet(T("右鍵「參數設定…」調研磨、粉量、水溫等參數，下方會預估這組參數拿幾分。"))
 
-        section(T("三種模式（右鍵選單上方三選一）"))
+        section(T("三種模式（右鍵選單上方：練習＝手動或自動，營業）"))
         bullet(T("<b>手動</b>：點一下做一杯。"))
-        bullet(T("<b>自動</b>：照目前的飲品與參數一直做同一杯，間隔在「自動間隔」選；適合當擺件。"))
+        bullet(T("<b>自動</b>：照目前的飲品與參數一直做同一杯，間隔在「自動做咖啡」選；適合當擺件。"))
         bullet(T("<b>營業</b>：客人排隊點單，咖啡師自己接單、賺營業額；這是遊戲的主體。"))
         grid = QGridLayout()
         grid.setHorizontalSpacing(18)
@@ -467,6 +603,8 @@ class RecordsDialog(QDialog):
         bullet(T("等級越高，客人越多、越有耐心、出杯越快，排隊上限也變多；最高 Lv.{n}。", n=growth.MAX_LEVEL))
         bullet(T("內用座位 Lv.1 {a} 位、Lv.{n} {b} 位：內用客人拿到飲品後會坐一陣子，坐滿了新客人只能外帶。",
                  a=growth.seats(1), n=growth.MAX_LEVEL, b=growth.seats(growth.MAX_LEVEL)))
+        bullet(T("店鋪到 Lv.{n} 之後有星級評鑑：看近 {d} 天的平均分數、客人離開的比例與平均等待，算出 1–5 星（成績變差會掉星），畫在櫃檯畫面的招牌上；偶爾會有評鑑員上門，那杯分數算兩倍。",
+                 n=growth.MAX_LEVEL, d=growth.STAR_DAYS))
         names = {**{k: T(m.name) for k, m in MACHINES.items()}, **{k: T(v) for k, v in brew.METHODS.items()}}
         by_level = {}
         for table in (growth.MACHINE_LEVEL, growth.METHOD_LEVEL):
@@ -489,11 +627,14 @@ class RecordsDialog(QDialog):
         bullet(T("升到「{name}」解鎖萃取的同時打奶：熱牛奶飲品快約三成（單鍋爐機要先加熱到蒸氣溫度，不適用；雙頭機本來就會）。",
                  name=T(growth.rank_name(growth.TOGETHER_RANK))))
         pct = "、".join(f"{T(name)} {k * 100:.0f}%" for (_c, name, _e), k in zip(growth.RANKS, growth.SCORE_K))
+        bullet(T("到「{name}」之後，每種飲品各有 1–5 星的專精：這種飲品做過的杯數與最高分都要到（{steps}），每顆星手感誤差再少 {p:.0f}%，圖鑑的飲品卡片會掛星。",
+                 name=T(growth.rank_name(growth.MASTERY_RANK)), p=growth.MASTERY_K * 100,
+                 steps="、".join(f"{n} 杯 {b:.0f} 分" for n, b in growth.MASTERY_STEPS)))
         bullet(T("越熟練手感越穩、奶泡越細；而且 {base:.0f} 分以上的部分依稱號打折：{pct}。",
                  base=growth.SCORE_FROM, pct=pct))
 
         section(T("錢包與商店（「商店」分頁）"))
-        bullet(T("錢包＝累積營業額 － 已花的錢；花錢不會掉級。"))
+        bullet(T("錢包＝初始資金 {s} ＋ 累積營業額 － 已花的錢；花錢不會掉級，店鋪等級只看營業額（不含初始資金）。", s=money(stats_mod.START_FUNDS)))
         bullet(T("咖啡機與磨豆機升級讓設備更穩、更好喝；精品豆比較甜，營業中用它做的飲品售價 ×{k:g}。", k=beans.PREMIUM_PRICE_K))
 
         section(T("成就"))
@@ -501,14 +642,15 @@ class RecordsDialog(QDialog):
         bullet(T("分級成就有銅、銀、金三級，「成就」分頁會顯示下一級還差多少。"))
 
         section(T("小技巧"))
-        bullet(T("豆子烘焙後 7–21 天最好喝；豆子用完要開新包（自動、營業時咖啡師會自己開）。"))
+        bullet(T("豆子烘焙後 7–21 天最好喝；每一包都要先在商店買，用完從庫存開新包（自動、營業時咖啡師會從庫存自己開，庫存沒有就沒豆子可用）。"))
         bullet(T("狀態列出現 ⚠ 就是該清潔保養了，太久沒清會扣分。"))
         bullet(T("冰滴要先架冰滴塔，之後在背景滴約 1 小時（關掉程式也照算）。"))
         bullet(T("右鍵「聲音」可以開環境音，「音樂」可以播放自己的音檔。"))
         return outer
 
-    def store_tab(self):
-        """商店：錢包餘額、咖啡機升級（每台一組）、磨豆機升級（共用的）、精品咖啡豆（一包一包買）"""
+    def store_tab(self, sub=0):
+        """商店：上面是錢包餘額，下面分三個分頁（各自捲動）：設備升級（咖啡機升級每台一組、磨豆機升級共用的）、店面裝潢、咖啡豆（一包一包買）；
+        sub＝開哪一個分頁（重畫時留在原本那頁）"""
         app = self.app
         st = app.stats.data
         w = QWidget()
@@ -519,13 +661,13 @@ class RecordsDialog(QDialog):
         purse = QLabel(T("錢包 {m}", m=money(bal)))
         purse.setStyleSheet(f"font-size:20px; font-weight:bold; color:{ACCENT};")
         lay.addWidget(purse)
-        lay.addWidget(_muted(T("累積營業額 {a} － 已花 {b}。店鋪等級照累積營業額計算，花錢不會掉級。",
-                               a=money(st["revenue_total"]), b=money(st["spent"]))))
+        lay.addWidget(_muted(T("初始資金 {s} ＋ 累積營業額 {a} － 已花 {b}。店鋪等級照累積營業額計算（不含初始資金），花錢不會掉級。",
+                               s=money(stats_mod.START_FUNDS), a=money(st["revenue_total"]), b=money(st["spent"]))))
 
         dpr = self.devicePixelRatioF()
         COLS = 3
 
-        def card(pix, name, sub, desc, label, enabled, tip, fn, have=False):
+        def card(pix, name, sub, desc, label, enabled, tip, fn, have=False, auto=None):
             """一張商品卡片：圖示、名稱、小字、說明、按鈕（並排顯示，一列 COLS 張）"""
             box = QFrame()
             box.setObjectName("shopcard")
@@ -547,12 +689,19 @@ class RecordsDialog(QDialog):
             d.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
             d.setStyleSheet(f"color:{theme.MUTED}; font-size:11px;")
             v.addWidget(d, 1)
+            if auto is not None:                                 # (勾選?, 切換函式)：自動購買
+                cb = QCheckBox(T(auto[3] if len(auto) > 3 else "自動購買（庫存隨時留一包）"))
+                cb.setChecked(auto[0])
+                cb.setToolTip(auto[2] if len(auto) > 2 else "")
+                cb.toggled.connect(lambda on: (auto[1](on), QTimer.singleShot(0, self.refresh_store)))
+                v.addWidget(cb)
             b = QPushButton(label)
             b.setEnabled(enabled)
             if tip:
                 b.setToolTip(tip)
                 box.setToolTip(tip)
-            b.clicked.connect(fn)
+            if fn is not None:
+                b.clicked.connect(fn)
             v.addWidget(b)
             return box
 
@@ -584,7 +733,7 @@ class RecordsDialog(QDialog):
         def need_level(key):
             targets = store.UPGRADES[key][0]
             return growth.METHOD_LEVEL["pourover"] if targets == store.STATION else \
-                min(growth.MACHINE_LEVEL[k] for k in targets)
+                min(growth.MACHINE_LEVEL[k] for k in targets if k in growth.MACHINE_LEVEL)
 
         def section(title, keys):
             """一段升級：標題寫已買幾項，卡片全部並排（照咖啡機的順序，卡片上寫是哪台的）"""
@@ -593,40 +742,303 @@ class RecordsDialog(QDialog):
             lay.addWidget(_title(T("{title}（已買 {n}/{total}）", title=title, n=got, total=len(keys))))
             grid([upgrade(k) for k in keys])
 
-        section(T("咖啡機升級"), [k for mk in MACHINES for k, v in store.UPGRADES.items() if v[0] == (mk,)])
-        section(T("磨豆機升級"), [k for t in (store.EXTERNAL, store.STATION) for k, v in store.UPGRADES.items() if v[0] == t])
-        lay.addWidget(_dash())
-        lay.addWidget(_title(T("精品咖啡豆")))
-        lay.addWidget(_muted(T("一包 {g:.0f} g，取代目前這包：咖啡師沒在忙就馬上開封，正在做飲品就這杯做完換上（營業中也能買）。"
-                               "甜感比一般豆高，營業中用這包做的飲品售價 ×{k:g}。", g=beans.BAG_G, k=beans.PREMIUM_PRICE_K)))
-        waiting = app.pending_bag if beans.is_premium(app.pending_bag or "") else None
+        header = lay
+        subtabs = self.store_sub = QTabWidget()
+        header.addWidget(subtabs, 1)
+
+        def page(build, name):
+            nonlocal lay
+            pw = QWidget()
+            lay = QVBoxLayout(pw)                                # grid／section 用的 lay 換成這一頁的
+            lay.setSpacing(6)
+            build()
+            lay.addStretch(1)
+            subtabs.addTab(self.scroll(pw), name)
+
+        def upgrades_page():
+            section(T("咖啡機升級"), [k for mk in MACHINES for k, v in store.UPGRADES.items() if v[0] == (mk,)])
+            section(T("磨豆機升級"), [k for t in (store.EXTERNAL, store.COMMERCIAL, store.STATION) for k, v in store.UPGRADES.items() if v[0] == t])
+
+        def beans_page():
+            self.beans_section(lay, grid, card, bal)
+
+        def decor_page():
+            self.decor_section(lay, grid, card, bal)
+
+        page(upgrades_page, T("設備升級"))
+        page(decor_page, T("店面裝潢"))
+        page(beans_page, T("咖啡豆"))
+        page(lambda: self.ingredients_section(lay, grid, card, bal), T("食材"))
+        page(lambda: self.desserts_section(lay, grid, card, bal), T("甜點"))
+        subtabs.setCurrentIndex(sub)
+        w.setObjectName("page")
+        return w
+
+    def beans_section(self, lay, grid, card, bal):
+        """商店的「咖啡豆」分頁內容：庫存、每種豆子一張卡片（買一包）"""
+        app, dpr = self.app, self.devicePixelRatioF()
+        lay.addWidget(_title(T("咖啡豆（庫存 {n} 包）", n=app.bean_stock())))
+        lay.addWidget(_muted(T("每一包都要買，一包 {g:.0f} g（約 14 杯），放進庫存；右鍵「豆子」開一包，自動模式與營業中的咖啡師用完會從庫存自己開。"
+                               "庫存沒有就沒豆子可用（卡片上勾選「自動購買（庫存隨時留一包）」就會在庫存沒有時自動買）。精品豆甜感比一般豆高，營業中用它做的飲品售價 ×{k:g}，也有客人專門指定精品豆。",
+                               g=beans.BAG_G, k=beans.PREMIUM_PRICE_K)))
         bean_cards = []
-        for key, (name, roast, flavor, sweet, price) in beans.PREMIUM.items():
+        for key, (name, roast, flavor, sweet) in ((k, v) for k, v in beans.ORIGINS.items()):
+            price = beans.price_of(key)
             short = max(0, price - bal)
             now = app.bag["origin"] == key
-            if waiting:
-                tip = T("已經有一包精品豆等著換上")
-            else:
-                tip = T("還差 {m}", m=money(short)) if short else (T("咖啡師正在做飲品：這杯做完換上") if app.busy() else "")
             note = T("（正在用這包，剩 {g:.0f} g）", g=app.bag["left"]) if now else ""
-            if waiting == key:
-                note = T("（已買，這杯做完換上）")
             bean_cards.append(card(bean_icon(key, roast, True, 64, True, dpr), T(name),
-                                   T("{roast} · 甜感 +{s:g}", roast=T(roast), s=sweet), T(flavor) + note,
-                                   T("待換上") if waiting == key else T("買一包 {m}", m=money(price)),
-                                   short == 0 and not waiting, tip, lambda _=False, k=key: self.buy(app.buy_beans, k),
-                                   now or waiting == key))
+                                   T("{roast} · 甜感 +{s:g} · 庫存 {n}", roast=T(roast), s=sweet, n=app.bean_stock(key))
+                                   + (T(" · 自動購買") if key in app.auto_buy else ""),
+                                   T(flavor) + note, T("買一包 {m}", m=money(price)), short == 0,
+                                   T("還差 {m}", m=money(short)) if short else "",
+                                   lambda _=False, k=key: self.buy(app.buy_beans, k), app.bean_stock(key) > 0 or now,
+                                   auto=(key in app.auto_buy, lambda on, k=key: app.set_auto_buy(k, on),
+                                         T("庫存沒有時自動買一包（勾多種就隨機買其中一種，錢包買得起的才買）"))))
         grid(bean_cards)
+
+    def ingredients_section(self, lay, grid, card, bal):
+        """商店的「食材」分頁內容：每種食材一張卡片（買一包），庫存不夠的飲品營業中客人不會點"""
+        app, dpr = self.app, self.devicePixelRatioF()
+        lay.addWidget(_title(T("食材")))
+        lay.addWidget(_muted(T("營業中每杯飲品要用掉食材（一杯一份），一包有固定份數。庫存沒有時客人不會點需要它的飲品（例如沒有鮮奶就沒有拿鐵），"
+                               "客人要求換植物奶時也要有那種奶。卡片上勾選「自動購買（庫存隨時留一份）」就會在沒庫存時自動買。手動與自動模式不消耗食材。")))
+        cards = []
+        for key, (name, per, price, desc) in ingredients.ITEMS.items():
+            short = max(0, price - bal)
+            n = app.ing_stock(key)
+            cards.append(card(ingredient_icon(key, 64, dpr), T(name),
+                              T("庫存 {n} 份 · 一包 {p} 份", n=n, p=per) + (T(" · 自動補貨") if key in app.auto_ing else ""),
+                              T(desc) + (T("（用完了）") if n == 0 else ""), T("買一包 {m}", m=money(price)), short == 0,
+                              T("還差 {m}", m=money(short)) if short else "",
+                              lambda _=False, k=key: self.buy(app.buy_ingredient, k), n > 0,
+                              auto=(key in app.auto_ing, lambda on, k=key: app.set_auto_ing(k, on),
+                                    T("營業中這項食材沒有庫存時自動買一包（錢包買得起才買）"), "自動購買（庫存隨時留一份）")))
+        grid(cards)
+
+    def desserts_section(self, lay, grid, card, bal):
+        """商店的「甜點」分頁內容：每種甜點一盤一盤進貨，擺在櫃檯右上的玻璃櫥窗；加購折價、有貨會多一些內用客人"""
+        app, dpr = self.app, self.devicePixelRatioF()
+        lay.addWidget(_title(T("甜點（庫存 {n} 個）", n=sum(app.ing_stock(k) for k in ingredients.DESSERTS))))
+        lay.addWidget(_muted(T("甜點一盤一盤進貨，有庫存的擺在櫃檯右上的玻璃櫥窗。營業中客人點飲品時會有 {p:.0%} 的機會加購一個甜點，"
+                               "加購折價 {off:g}%（POS 會另列一行）；櫥窗有貨的話外帶的客人變少、內用的客人變多（座位要有空位）。"
+                               "賣完了客人就不會加購。手動與自動模式不消耗甜點。",
+                               p=ingredients.DESSERT_P, off=round((1 - ingredients.DESSERT_COMBO_K) * 100))))
+        cards = []
+        for key, (name, per, price, desc) in ingredients.DESSERTS.items():
+            short = max(0, price - bal)
+            n = app.ing_stock(key)
+            sell = ingredients.DESSERT_PRICE[key]
+            cards.append(card(dessert_icon(key, 64, dpr), T(name),
+                              T("庫存 {n} 個 · 一盤 {p} 個", n=n, p=per) + (T(" · 自動補貨") if key in app.auto_ing else ""),
+                              T(desc) + T("；售價 {a}，加購 {b}", a=money(sell), b=money(ingredients.dessert_price(key)))
+                              + (T("（賣完了）") if n == 0 else ""),
+                              T("進一盤 {m}", m=money(price)), short == 0,
+                              T("還差 {m}", m=money(short)) if short else "",
+                              lambda _=False, k=key: self.buy(app.buy_ingredient, k), n > 0,
+                              auto=(key in app.auto_ing, lambda on, k=key: app.set_auto_ing(k, on),
+                                    T("營業中這種甜點賣完時自動進一盤（錢包買得起才買）"), "自動購買（庫存隨時留一盤）")))
+        grid(cards)
+        # 購買紀錄：累計進貨、賣出，以及最近幾筆進貨
+        st = app.stats.data
+        lay.addWidget(_dash())
+        lay.addWidget(_title(T("購買紀錄")))
+        trays, spent = sum(st["dessert_bought"].values()), st["dessert_spent"]
+        sold = sum(st["dessert_sold"].values())
+        lay.addWidget(_muted(T("累計進貨 {n} 盤，花了 {m}；營業中賣出 {s} 個。", n=trays, m=money(spent), s=sold)))
+        for key, (name, per, price, desc) in ingredients.DESSERTS.items():
+            b, s_ = st["dessert_bought"].get(key, 0), st["dessert_sold"].get(key, 0)
+            if b or s_:
+                lay.addWidget(QLabel(T("{name}：進貨 {b} 盤 · 賣出 {s} 個 · 庫存 {n} 個",
+                                       name=T(name), b=b, s=s_, n=app.ing_stock(key))))
+        log = app.stats.dessert_log()
+        log = app.stats.dessert_log()
+        if not log:
+            lay.addWidget(_muted(T("還沒有進貨紀錄")))
+        for day, key, price in log:
+            lay.addWidget(QLabel(T("{day}　進貨一盤{name}　{m}", day=day, name=T(ingredients.DESSERTS[key][0]), m=money(price))))
+
+    def decor_section(self, lay, grid, card, bal):
+        """商店的「店面裝潢」分頁內容：每個欄位一排卡片，只能買（買過的標「已購買」）；要換上、拿下來到「佈置」分頁"""
+        app, dpr = self.app, self.devicePixelRatioF()
+        st = app.stats.data
+        lay.addWidget(_title(T("店面裝潢（{n}/{total}）", n=decor.collection(st["owned"])[0], total=decor.collection(st["owned"])[1])))
+        free = app.stamps_free()
+        lay.addWidget(_muted(T("只改外觀、不影響平衡，改的是櫃檯畫面。一般款花錢包，標「章」的限定款用挑戰章數兌換（現有 {s} 個章）。這裡只能購買，要更換或拿下來到「佈置」分頁。", s=free)))
+        for slot in decor.SLOTS:
+            keys = [k for k, v in decor.ITEMS.items() if v[0] == slot]
+            note = T("可以同時擺 {n} 個", n=decor.MAX_PAINTINGS if slot == "paintings" else decor.MAX_PLANTS) if slot in decor.MULTI else ""
+            lay.addWidget(QLabel(f"<b>{T(decor.SLOT_NAME[slot])}</b>" + (f" <span style='color:{theme.MUTED}'>{note}</span>" if note else "")))
+            cards = []
+            for k in keys:
+                _s, name, price, stamps, desc = decor.ITEMS[k]
+                have = k in decor.owned_keys(st["owned"])
+                if have:
+                    label, ok, tip = T("已購買"), False, T("到「佈置」分頁更換")
+                    fn = None
+                elif stamps:
+                    label, ok = T("{n} 個章兌換", n=stamps), free >= stamps
+                    tip = "" if ok else T("還差 {n} 個章", n=stamps - free)
+                    fn = (lambda _=False, key=k: self.buy(app.buy_decor, key))
+                else:
+                    short = max(0, price - bal)
+                    label, ok = money(price), short == 0
+                    tip = "" if ok else T("還差 {m}", m=money(short))
+                    fn = (lambda _=False, key=k: self.buy(app.buy_decor, key))
+                cards.append(card(decor_icon(k, 64, dpr), T(name), "", T(desc), label, ok, tip, fn, have))
+            grid(cards)
+
+    def layout_tab(self):
+        """佈置：上面是櫃檯畫面的預覽，下面調整後檯的咖啡機與沖煮設備、每個裝潢欄位（只能換買過的款式；沒買的到「商店」）"""
+        app = self.app
+        st = app.stats.data
+        top = QWidget()
+        top.setObjectName("page")
+        outer = QVBoxLayout(top)
+        outer.setSpacing(6)
+        outer.addWidget(_title(T("佈置")))
+        outer.addWidget(_muted(T("調整櫃檯畫面的後檯與裝潢，上面的預覽會跟著變。只能換已經買到的款式，還沒買的到「商店」分頁買。")))
+        dpr = self.devicePixelRatioF()
+        pic = QLabel()                                          # 預覽固定在上面，下面的選項才捲動
+        pic.setPixmap(QPixmap.fromImage(app.layout_preview(560, dpr)))
+        pic.setAlignment(Qt.AlignCenter)
+        outer.addWidget(pic)
+        fest = QCheckBox(T("節日裝飾（情人節、萬聖節、聖誕節）"))
+        fest.setChecked(app.cfg.get("festival_decor", True))
+        fest.toggled.connect(lambda on: (app.cfg.__setitem__("festival_decor", bool(on)), app.save_config(), app.update(),
+                                         QTimer.singleShot(0, self.refresh_layout)))
+        outer.addWidget(fest)
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setSpacing(6)
+        self.layout_scroll = self.scroll(w)
+        outer.addWidget(self.layout_scroll, 1)
+
+        def later():
+            QTimer.singleShot(0, self.refresh_layout)          # 在訊號處理完才重建（不要刪掉正在送訊號的元件）
+
+        COLS = 5
+
+        def tile(pix, text, on, fn, enabled=True, tip=""):
+            """一個圖片選項：圖在上、名稱在下；選中的框起來（點一下選用，掛畫與植物是開關）"""
+            b = QToolButton()
+            b.setIcon(QIcon(pix))
+            b.setIconSize(pix.size() / pix.devicePixelRatio())
+            b.setText(text)
+            b.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            b.setCheckable(True)
+            b.setChecked(on)
+            b.setEnabled(enabled)
+            b.setToolTip(tip or text)
+            b.setFixedWidth(124)
+            b.setStyleSheet(f"QToolButton {{ border:1px solid {theme.FAINT}; border-radius:6px; padding:4px; font-size:11px; }}"
+                            f"QToolButton:checked {{ border:2px solid {ACCENT}; background:#f3ead8; font-weight:bold; }}"
+                            f"QToolButton:hover:!checked {{ background:#f8f1e2; }}")
+            b.clicked.connect(lambda _=False: (fn(), later()))
+            return b
+
+        def grid(tiles):
+            g = QGridLayout()
+            g.setSpacing(6)
+            for n, t in enumerate(tiles):
+                g.addWidget(t, n // COLS, n % COLS)
+            g.setColumnStretch(COLS, 1)                          # 圖片選項靠左排
+            lay.addLayout(g)
+
+        lay.addWidget(_dash())
+        lay.addWidget(_title(T("後檯")))
+        lay.addWidget(QLabel(f"<b>{T('後檯的咖啡機（做義式的營業用咖啡機）')}</b>"))
+        rnd = QPixmap(int(96 * dpr), int(72 * dpr))
+        rnd.setDevicePixelRatio(dpr)
+        rnd.fill(Qt.transparent)
+        q = QPainter(rnd)
+        f = QFont()
+        f.setPointSize(26)
+        f.setBold(True)
+        q.setFont(f)
+        q.setPen(QColor("#b8a890"))
+        q.drawText(QRectF(0, 0, 96, 72), Qt.AlignCenter, "?")
+        q.end()
+        tiles = [tile(rnd, T("隨機使用"), app.showcase == "auto", lambda: app.set_showcase("auto"))]
+        for k, m in MACHINES.items():
+            ok = app.machine_open(k)
+            tiles.append(tile(gear_icons.machine_icon(app, m, 96, 72, not ok, dpr), T(m.name), ok and app.showcase == k,
+                              lambda key=k: app.set_showcase(key), ok,
+                              "" if ok else T("店鋪 Lv.{n} 解鎖", n=growth.MACHINE_LEVEL[k])))
+        grid(tiles)
+        lay.addWidget(QLabel(f"<b>{T('後檯擺出來的沖煮設備（店鋪等級解鎖了才有）')}</b>"))
+        tiles = []
+        for key in BACK_GEAR:
+            ok = app.method_open(key)
+            tiles.append(tile(gear_icons.station_icon(app, key, 96, 72, not ok, dpr), T(brew.METHODS[key]),
+                              ok and key not in app.cfg.get("back_gear_off", []),
+                              lambda k=key: app.set_back_gear(k, k in app.cfg.get("back_gear_off", [])), ok,
+                              "" if ok else T("店鋪 Lv.{n} 解鎖", n=growth.METHOD_LEVEL[key])))
+        grid(tiles)
+
+        sel = app.decor_sel()
+        have = decor.owned_keys(st["owned"])
+        lay.addWidget(_dash())
+        lay.addWidget(_title(T("裝潢（已有 {n}／{total} 款）", n=sum(1 for k in decor.ITEMS if k in have), total=len(decor.ITEMS))))
+        for slot in decor.SLOTS:
+            mine = [k for k, v in decor.ITEMS.items() if v[0] == slot and k in have]
+            note = ""
+            if slot in decor.MULTI:
+                note = T("可以同時擺 {n} 個", n=decor.MAX_PAINTINGS if slot == "paintings" else decor.MAX_PLANTS)
+            lay.addWidget(QLabel(f"<b>{T(decor.SLOT_NAME[slot])}</b>" + (f" <span style='color:{theme.MUTED}'>{note}</span>" if note else "")))
+            if not mine:
+                lay.addWidget(_muted(T("還沒有，到「商店」買")))
+                continue
+            grid([tile(decor_icon(k, 64, dpr), T(decor.ITEMS[k][1]),
+                       (k in sel[slot]) if slot in decor.MULTI else sel[slot] == k,
+                       lambda key=k: app.use_decor(key)) for k in mine])
         lay.addStretch(1)
-        return w
+        return top
+
+    def refresh_layout(self):
+        """重畫「佈置」分頁（預覽與選項會變），捲動位置留在原處"""
+        i = self.tabs.indexOf(self.layout_page)
+        if i < 0:
+            return
+        here = self.tabs.currentIndex() == i
+        pos = self.layout_scroll.verticalScrollBar().value()
+        self.tabs.blockSignals(True)                         # 換分頁會觸發 currentChanged，不要又重畫一次
+        try:
+            self.tabs.removeTab(i)
+            self.layout_page.deleteLater()
+            self.layout_page = self.layout_tab()
+            self.tabs.insertTab(i, self.layout_page, T("佈置"))
+            if here:
+                self.tabs.setCurrentIndex(i)
+        finally:
+            self.tabs.blockSignals(False)
+        bar = self.layout_scroll.verticalScrollBar()
+        bar.setValue(pos)
+        QTimer.singleShot(0, lambda: bar.setValue(pos))
+
+    def refresh_store(self):
+        """重畫商店分頁（餘額、按鈕狀態會變），捲動位置留在原處（不然每買一樣就跳回最上面）"""
+        i = self.tabs.currentIndex()
+        old = self.tabs.widget(i)
+        sub = self.store_sub.currentIndex()
+        cur = self.store_sub.currentWidget()
+        pos = cur.verticalScrollBar().value() if isinstance(cur, QScrollArea) else 0
+        self.tabs.removeTab(i)
+        old.deleteLater()
+        page = self.store_tab(sub)
+        self.tabs.insertTab(i, page, T("商店"))
+        self.tabs.setCurrentIndex(i)
+        bar = self.store_sub.currentWidget().verticalScrollBar()
+        bar.setValue(pos)                                    # 版面還沒算好時範圍是 0：等事件迴圈排完版再設一次
+        QTimer.singleShot(0, lambda: bar.setValue(pos))
 
     def buy(self, fn, key):
         """按下購買：成功後重畫商店分頁（餘額、按鈕狀態會變）"""
         if fn(key):
-            i = self.tabs.currentIndex()
-            self.tabs.removeTab(i)
-            self.tabs.insertTab(i, self.scroll(self.store_tab()), T("商店"))
-            self.tabs.setCurrentIndex(i)
+            self.refresh_store()
+            lay = getattr(self.app, "layout_dlg", None)          # 開著的佈置視窗：新買的款式也要出現
+            if lay is not None and lay.isVisible():
+                lay.refresh_layout()
 
     def days_tab(self):
         w = QWidget()
@@ -888,9 +1300,62 @@ class RecordsDialog(QDialog):
                         r + i // 4, i % 4)
         return r + (len(ORIGINS) + 3) // 4
 
+    def ingredient_cards(self, g, r, dpr):
+        """圖鑑的食材：每種一張（營業中用掉過才解鎖，灰色剪影＝還沒用過），只寫用掉幾份；滑鼠停著看用在哪些飲品"""
+        used = self.app.stats.data["ing_used_by"]
+        items = list(ingredients.ITEMS)
+        g.addWidget(_title(T("{title}（{n}/{total}）", title=T("食材"), n=sum(1 for k in items if used.get(k)),
+                             total=len(items))), r, 0, 1, 4)
+        r += 1
+        for i, k in enumerate(items):
+            ok = bool(used.get(k))
+            name, per, _price, desc = ingredients.ITEMS[k]
+            drinks = "、".join(T(DRINKS[d]["name"]) for d in ingredients.drinks_using(k))
+            tip = T(desc) + ("\n" + T("用在：{drinks}", drinks=drinks) if drinks else "") if ok else T("營業中用掉一份就解鎖")
+            sub = T("用掉 {n} 份", n=used[k]) if ok else T("還沒用過")
+            g.addWidget(self.pic_card(ingredient_icon(k, 72, dpr, ok), T(name) if ok else "？？？", sub, ok, tip),
+                        r + i // 4, i % 4)
+        return r + (len(items) + 3) // 4
+
+    def dessert_cards(self, g, r, dpr):
+        """圖鑑的甜點：每種一張（營業中賣出過才解鎖，灰色剪影＝還沒賣過），只寫賣出幾個"""
+        st = self.app.stats.data
+        sold, bought = st["dessert_sold"], st["dessert_bought"]
+        items = list(ingredients.DESSERTS)
+        g.addWidget(_title(T("{title}（{n}/{total}）", title=T("甜點"), n=sum(1 for k in items if sold.get(k)),
+                             total=len(items))), r, 0, 1, 4)
+        r += 1
+        for i, k in enumerate(items):
+            ok = bool(sold.get(k))
+            name, per, _price, desc = ingredients.DESSERTS[k]
+            tip = (T(desc) + "\n" + T("售價 {a}，加購 {b}", a=money(ingredients.DESSERT_PRICE[k]), b=money(ingredients.dessert_price(k)))
+                   if ok else T("營業中賣出一個就解鎖"))
+            sub = T("賣出 {n} 個", n=sold[k]) if ok else T("還沒賣過")
+            g.addWidget(self.pic_card(dessert_icon(k, 72, dpr, ok), T(name) if ok else "？？？", sub, ok, tip), r + i // 4, i % 4)
+        return r + (len(items) + 3) // 4
+
     def book_tab(self):
-        w = QWidget()
-        g = QGridLayout(w)
+        """圖鑑：分成幾個小分頁——飲品（含拉花收集）、設備、牛奶、豆子產地、食材、甜點、店面裝潢"""
+        col = self.app.stats.data["collection"]
+        dpr = self.devicePixelRatioF()
+
+        def page(build):
+            w = QWidget()
+            g = QGridLayout(w)
+            r = build(g)
+            for c in range(4):
+                g.setColumnStretch(c, 1)
+            g.setRowStretch(r, 1)
+            return self.scroll(w)
+        return self.group([(page(self.drink_book), T("飲品")),
+                           (page(lambda g: self.gear_cards(g, 0)), T("設備")),
+                           (page(lambda g: self.milk_cards(g, 0, col["milks"], dpr)), T("牛奶")),
+                           (page(lambda g: self.origin_cards(g, 0, col["origins"], dpr)), T("豆子")),
+                           (page(lambda g: self.ingredient_cards(g, 0, dpr)), T("食材")),
+                           (page(lambda g: self.dessert_cards(g, 0, dpr)), T("甜點")),
+                           (page(lambda g: self.decor_cards(g, 0, dpr)), T("店面裝潢"))])
+
+    def drink_book(self, g):
         col = self.app.stats.data["collection"]
         keys = list(DRINK_KEYS) + list(FESTIVAL_DRINKS)
         g.addWidget(_title(T("飲品（{n}/{total}）", n=sum(1 for k in keys if k in col["drinks"]), total=len(keys))),
@@ -928,6 +1393,13 @@ class RecordsDialog(QDialog):
             note.setAlignment(Qt.AlignCenter)
             note.setStyleSheet(f"color:{theme.MUTED if info else theme.FAINT}; font-size:11px;")
             card.addWidget(note)
+            if info and growth.mastery_open(self.app.stats.data["total"]):      # 專精星級（大師之後）
+                n = growth.mastery_stars(info)
+                badge = QLabel("★" * n + "☆" * (5 - n))
+                badge.setAlignment(Qt.AlignCenter)
+                badge.setToolTip(T("專精星級：做過的杯數與最高分都要到。每顆星這種飲品的手感誤差再少 {p:.0f}%。", p=growth.MASTERY_K * 100))
+                badge.setStyleSheet("color:#d29a1e;" if n else f"color:{theme.FAINT};")
+                card.addWidget(badge)
             price = QLabel(self.drink_price(k))                   # 營業模式的價格（分大中小的列三個）
             price.setAlignment(Qt.AlignCenter)
             price.setWordWrap(True)
@@ -940,11 +1412,4 @@ class RecordsDialog(QDialog):
         g.addWidget(_title(T("拉花收集（{n}/{total}）", n=sum(1 for a in ART_BOOK if a in art), total=len(ART_BOOK))),
                     r, 0, 1, 4)
         g.addWidget(self.art_tab(), r + 1, 0, 1, 4)
-        r += 2
-        r = self.gear_cards(g, r)
-        r = self.milk_cards(g, r, col["milks"], dpr)
-        r = self.origin_cards(g, r, col["origins"], dpr)
-        for c in range(4):
-            g.setColumnStretch(c, 1)
-        g.setRowStretch(r, 1)
-        return w
+        return r + 2

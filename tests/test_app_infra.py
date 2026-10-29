@@ -123,3 +123,14 @@ def test_saved_frameless_choice_is_kept(qapp, cfg_path):
         w.timer.stop()
         w.stats.db.close()
         w.deleteLater()
+
+
+def test_intro_dialog_pages(desk, qapp):
+    desk.open_intro()
+    dlg = desk.intro_dlg
+    assert dlg.isVisible() and not dlg.prev.isEnabled()
+    for _ in range(len(dlg.data) - 1):
+        dlg.next.click()
+    assert dlg.page == len(dlg.data) - 1 and dlg.isVisible()
+    dlg.next.click()                                    # 最後一頁的按鈕是「開始遊玩」：關閉
+    assert not dlg.isVisible()

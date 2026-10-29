@@ -22,7 +22,7 @@ class Compact(Machine):
 
     drip_area = (44, 226, 338)            # 滴水盤（x1, x2, 上緣；機身座標）
     scene_w = 470
-    mx, my = 160, 18
+    mx, my = 160, 0                   # 底座的底剛好在桌面 FLOOR（364）
     group_pf = (99, 128)
     cup_cx, cup_base = 135, 314
     vent = (214, 26)
@@ -38,8 +38,8 @@ class Compact(Machine):
     wand_steam = (260, 226)
     knob = (238, 92)
 
-    machine_hit = (160 + 40, 18 + 10, 160 + 230, 18 + 140)
-    hover_area = (160 + 40, 18 + 10, 160 + 240, 18 + 364)
+    machine_hit = (160 + 40, 10, 160 + 230, 140)
+    hover_area = (160 + 40, 10, 160 + 240, 364)
 
     def gauges(self, a):
         return [(self.gauge_c, self.gauge_r, a.gauge, PRESSURE_RANGE),
@@ -105,9 +105,6 @@ class Compact(Machine):
         p.drawEllipse(QPointF(135, 132), 28, 2.4)
         p.setBrush(C("#7d848b", 150))
         p.drawEllipse(QPointF(135, 131.6), 23, 1.3)
-        # 蒸氣閥座
-        p.fillPath(rrect(228, 84, 236, 120, 3), hgrad(228, 236, [(0, C("#5d646b")), (0.5, C("#dfe3e6")),
-                                                                 (1, C("#5d646b"))]))
         self.paint_drip_tray(p, 44, 226, top=338)
         self.paint_scale(p)
 
@@ -132,6 +129,8 @@ class Compact(Machine):
         self.paint_lamp(a, p, self.lamps[1], ready, "#ffb050")
         self.paint_lamp(a, p, self.lamps[2], steam_mode, "#ff7a40")
         self.paint_wand(a, p)
+        p.fillPath(rrect(228, 84, 236, 120, 3), hgrad(228, 236, [(0, C("#5d646b")), (0.5, C("#dfe3e6")),   # 蒸氣閥座與旋鈕蓋在管子轉軸上面
+                                                                 (1, C("#5d646b"))]))
         self.paint_steam_knob(a, p, self.knob, 7)
 
     def paint_collar(self, a, p, pf):

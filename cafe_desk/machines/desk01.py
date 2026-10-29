@@ -28,7 +28,7 @@ class Desk01(Machine):
     drip_area = (32, 268, 340)            # 滴水盤（x1, x2, 上緣；機身座標）
     scene_w = 500
     frother_pos = (439, 296)          # 奶泡機玻璃壺的倒出口（場景座標）
-    mx, my = 120, 18
+    mx, my = 120, 0                   # 機身底座的底（機身座標 364）剛好在桌面 FLOOR（364），跟出杯台的杯子、奶泡機、磨豆機同一個平面
     group_pf = (114, 128)
     cup_cx, cup_base = 150, 314
     vent = (262, 18)
@@ -38,8 +38,8 @@ class Desk01(Machine):
     btn = (240, 62)
     rail_y = 9
 
-    machine_hit = (148, 18, 392, 188)
-    hover_area = (148, 18, 392, 382)
+    machine_hit = (148, 0, 392, 170)
+    hover_area = (148, 0, 392, 364)
 
     def gauges(self, a):
         return [(self.gauge_c, self.gauge_r, a.gauge, PRESSURE_RANGE),

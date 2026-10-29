@@ -77,7 +77,9 @@ def _qt_handler(mode, context, message):
     if level is None:
         return
     where = f" ({context.file}:{context.line})" if context.file else ""
-    write(f"{level}: {message}{where}")
+    # 附上 Python 這一側的呼叫堆疊：Qt 的警告本身看不出是哪一行程式觸發的
+    stack = "".join(traceback.format_stack(limit=8)[:-1])
+    write(f"{level}: {message}{where}\n{stack}")
 
 
 def install():

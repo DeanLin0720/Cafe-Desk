@@ -35,6 +35,7 @@ class Traits:
     steam_heatup: bool = False     # 單鍋爐：打奶前要先把鍋爐加熱到蒸氣溫度
     steam_temp: float = 125.0
     grinder: str = "external"      # external＝獨立磨豆機；integrated＝內建磨豆機
+    dual_wand: bool = False        # 雙蒸氣管（營業用雙頭機的「雙打奶泡」升級）：兩杯熱牛奶飲品各用一支蒸氣管、同時打奶
     groups: int = 1                # 沖煮頭數量：2＝營業用雙頭機（萃取時同時打奶，營業中可以成對做兩杯）
 
 
@@ -43,6 +44,12 @@ class Machine:
     name = ""
     traits = Traits()
 
+    side_trim = 0                  # 營業模式：出杯台右端收窄多少（杯位與配料架往右挪、視窗總寬不變時用）
+    rack_gap = 6                   # 營業模式：配料架的左緣離機身右端多遠
+    side_gap = 66                  # 營業模式：出杯台第一個杯位的中心離機身右端多遠（場景座標）
+    grinder_style = "standard"     # 獨立磨豆機的外觀：standard＝霧黑的那台、commercial＝營業用（不鏽鋼、大豆倉；render/grinder.py）
+    paint_kind = "steel"           # 烤漆換色（decor.make_remap）要換哪些顏色：steel 是中性的銀灰色、copper 是銅色
+    paint_extra = ()               # 另外要換的顏色（深色烤漆這種不是銀灰色的底色）
     scene_w = 430                  # 場景寬度
     drip_area = None               # 滴水盤（x1, x2, 上緣；機身座標）
     mx, my = 120, 18               # 機身原點（場景座標）
@@ -264,46 +271,40 @@ class Machine:
         p.setBrush(C("#ffffff", 90))
         p.drawEllipse(QPointF(bx - r * 0.32, by - r * 0.4), r * 0.32, r * 0.2)
 
-    def paint_wand(self, a, p, knob_color="#1c1d20"):
-        """蒸氣管（機身座標）：轉軸 → 彎管 → 管口；a.wand_angle 0＝待機，1＝打奶"""
+    def paint_wand(self, a, p, knob_color="#1c1d20", angle=None):
+        """蒸氣管（機身座標），照蒸氣機的實機：轉軸處一小段鉻色接頭 → 往下 → S 形彎（斜著挪到管口那一側）→ 垂直往下 → 鉻色管口；
+        管身是亮面黑色套管（左邊一條高光）。a.wand_angle（或 angle）0＝待機，1＝打奶（管口位置在 wand_rest → wand_steam 之間）"""
         if not self.wand_pivot:
             return
         from ..util import lerp
-        k = a.wand_angle
+        k = a.wand_angle if angle is None else angle
         px, py = self.wand_pivot
         tx = lerp(self.wand_rest[0], self.wand_steam[0], k)
         ty = lerp(self.wand_rest[1], self.wand_steam[1], k)
-        ex, ey = px + 10, py + 5
-        tube = QPainterPath(QPointF(px, py))
-        tube.lineTo(ex, ey)
-        tube.quadTo(QPointF(tx, ey + 8), QPointF(tx, ty))
+        chrome_h = [(0, C("#6b7177")), (0.35, C("#f2f4f5")), (0.65, C("#b4bbc1")), (1, C("#4e545a"))]
+        y1 = py + 20
+        dx = tx - px
+        h = min(max(24.0, abs(dx) * 2.2), max(10.0, (ty - 9) - y1 - 8))
+        tube = QPainterPath(QPointF(px, py + 6))
+        tube.lineTo(px, y1)
+        tube.cubicTo(QPointF(px, y1 + h * 0.62), QPointF(tx, y1 + h * 0.38), QPointF(tx, y1 + h))
+        tube.lineTo(tx, ty - 8)
         p.setBrush(Qt.NoBrush)
-        p.setPen(QPen(C("#3e4348"), 5.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setPen(QPen(C("#3e4348"), 6.4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))                # 外緣
         p.drawPath(tube)
-        p.setPen(QPen(C("#eef1f3"), 1.8, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setPen(QPen(C("#14151a"), 5.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))                # 黑色套管
         p.drawPath(tube)
-        # 防燙套：套在彎管上的一段（沿著彎管同一條曲線取 0–0.5，不然會跟管子錯開）
-        cx_, cy_ = tx, ey + 8
-        grip = QPainterPath(QPointF(ex, ey))
-        for i in range(1, 13):
-            t = 0.5 * i / 12
-            grip.lineTo(QPointF((1 - t) ** 2 * ex + 2 * (1 - t) * t * cx_ + t * t * tx,
-                                (1 - t) ** 2 * ey + 2 * (1 - t) * t * cy_ + t * t * ty))
-        p.setPen(QPen(C(knob_color), 6.2, Qt.SolidLine, Qt.RoundCap))
-        p.drawPath(grip)
-        p.setPen(QPen(C("#ffffff", 50), 1.2, Qt.SolidLine, Qt.RoundCap))
-        p.drawPath(grip)
-        # 管口
+        p.save()
+        p.translate(-1.2, 0)
+        p.setPen(QPen(C("#ffffff", 95), 1.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))            # 高光
+        p.drawPath(tube)
+        p.restore()
+        # 管口：鉻色短管
         p.setPen(Qt.NoPen)
-        p.fillPath(rrect(tx - 3, ty - 4, tx + 3, ty + 1.5, 1.2), hgrad(tx - 3, tx + 3, [(0, C("#4e545a")),
-                                                                                    (0.4, C("#e3e7ea")),
-                                                                                    (1, C("#4e545a"))]))
-        # 轉軸座
-        rg = QRadialGradient(px - 2, py - 2, 7)
-        rg.setColorAt(0, C("#f2f4f5"))
-        rg.setColorAt(1, C("#5d646b"))
-        p.setBrush(rg)
-        p.drawEllipse(QPointF(px, py), 5, 5)
+        p.fillPath(rrect(tx - 2.8, ty - 10, tx + 2.8, ty, 2.2), hgrad(tx - 2.8, tx + 2.8, chrome_h))
+        # 轉軸處的鉻色接頭
+        p.fillPath(rrect(px - 3.6, py - 3, px + 3.6, py + 9, 2), hgrad(px - 3.6, px + 3.6, chrome_h))
+        p.fillRect(QRectF(px - 4.4, py + 7, 8.8, 2.2), C("#2c3135", 160))
 
     def paint_steam_knob(self, a, p, center, r=8, color="#1c1d20"):
         """蒸氣旋鈕：打奶時轉開"""

@@ -11,81 +11,83 @@ from PySide6.QtGui import QPainter, QPixmap, QPen, QPainterPath, QRadialGradient
 from ..gfx import mix, C, vgrad, hgrad, rrect
 from ..layout import BEAN_COLORS
 from ..util import clamp
-from .base import Machine, Traits
+from .base import Machine, Traits, SPECKLE_BODY
 
 PRESSURE_RANGE = (0.0, 12.0)
-MX, MY = 80, 18
+RT = 360                                  # 機身右端（機身座標）：比原本（320）寬 40
+MX, MY = 80, -2                           # 底座的底（機身座標 366）剛好在桌面 FLOOR（364）
 
 
 class AllInOne(Machine):
     key = "allinone"
+    paint_extra = tuple(c for _, c in SPECKLE_BODY)      # 深色顆粒烤漆的底色
     name = "一體機（內建磨豆）"
     traits = Traits(summary="內建磨豆機一台搞定；研磨均勻度稍差、熱塊水溫會飄、蒸氣稍弱",
                     channel_add=0.05, temp_noise=0.5, boiler_heat=0.9, boiler_draw=0.35,
                     milk="wand", steam_power=0.85, grinder="integrated")
 
-    drip_area = (52, 288, 338)            # 滴水盤（x1, x2, 上緣；機身座標）
-    scene_w = 478
+    drip_area = (52, RT - 32, 338)            # 滴水盤（x1, x2, 上緣；機身座標）
+    scene_w = 518
     mx, my = MX, MY
     group_pf = (160, 128)
     cup_cx, cup_base = 196, 314
-    vent = (300, 56)
+    vent = (330, 56)
     card_cx = MX + 196
-    gauge_c, gauge_r = (170, 76), 17
+    gauge_c, gauge_r = (190, 76), 17
     buttons_l = ((66, 76), (94, 76), (122, 76))
-    buttons_r = ((218, 76), (246, 76), (274, 76))
+    buttons_r = ((258, 76), (286, 76), (314, 76))
     hopper = (34, -14, 124, 40)            # 豆倉玻璃（機身座標）；上緣避開上方的曲線卡片
 
     # 內建磨豆區（場景座標）
     fork = (MX + 48, MY + 176)
     chute = (MX + 84, MY + 152)
-    tamper_rest = (MX + 236, MY + 44)
+    tamper_rest = (MX + 256, MY + 44)
     knock_box = (14, 312, 60, 366)
     knock = (1, 290)
 
-    wand_pivot = (322, 120)
-    wand_rest = (342, 232)
-    wand_steam = (348, 240)
-    knob = (332, 100)
+    wand_pivot = (292, 112)               # 蒸氣管在機身內側、從上機身的底面掛下來（轉軸藏在上機身後面，見 paint_front）
+    wand_rest = (304, 214)
+    wand_steam = (310, 226)
+    knob = (342, 78)                      # 蒸氣旋鈕：上機身右邊
 
-    machine_hit = (MX + 20, MY + 40, MX + 320, MY + 140)
+    machine_hit = (MX + 20, MY + 40, MX + RT, MY + 140)
     grinder_hit = (MX + 30, MY - 24, MX + 128, MY + 50)
-    hover_area = (MX + 16, MY - 20, MX + 324, MY + 364)
+    hover_area = (MX + 16, MY - 20, MX + RT + 4, MY + 364)
 
     def gauges(self, a):
         return [(self.gauge_c, self.gauge_r, a.gauge, PRESSURE_RANGE)]
 
     def silhouette(self):
         path = QPainterPath()
-        path.addPath(rrect(20, 44, 320, 112, 14))
-        path.addRect(QRectF(20, 100, 300, 240))
-        path.addPath(rrect(16, 326, 324, 366, 10))
+        path.addPath(rrect(20, 44, RT, 112, 14))
+        path.addRect(QRectF(20, 100, RT - 20, 240))
+        path.addPath(rrect(16, 326, RT + 4, 366, 10))
         path.addPath(rrect(30, -24, 128, 50, 6))
         return path
 
     def paint_static(self, a, p):
-        self.paint_soft_shadow(p, self.silhouette(), 360, 426)
-        self.paint_shadow(a, p, 170, 370, 170, 360)
+        self.paint_soft_shadow(p, self.silhouette(), RT + 40, 426)
+        self.paint_shadow(a, p, RT / 2, 370, RT / 2, RT - 10)
         # 不鏽鋼背板
-        p.fillRect(QRectF(44, 106, 252, 232), hgrad(44, 296, [(0, C("#4a5056")), (0.25, C("#c3c9ce")),
+        p.fillRect(QRectF(44, 106, RT - 68, 232), hgrad(44, RT - 24, [(0, C("#4a5056")), (0.25, C("#c3c9ce")),
                                                               (0.5, C("#8d949b")), (0.8, C("#b9bfc5")),
                                                               (1, C("#4a5056"))]))
         p.save()
-        p.setClipRect(QRectF(44, 106, 252, 232))
-        for i in range(60):
+        p.setClipRect(QRectF(44, 106, RT - 68, 232))
+        for i in range(int((RT - 68) / 4.2) + 1):
             x = 44 + i * 4.2
             p.setPen(QPen(C("#ffffff" if i % 2 else "#2a2e32", 18), 0.6))
             p.drawLine(QPointF(x, 106), QPointF(x, 338))
         p.restore()
-        p.fillRect(QRectF(44, 106, 252, 30), vgrad(106, 136, [(0, C("#000000", 160)), (1, C("#000000", 0))]))
+        p.fillRect(QRectF(44, 106, RT - 68, 30), vgrad(106, 136, [(0, C("#000000", 160)), (1, C("#000000", 0))]))
         # 側柱與上方機身（深色顆粒烤漆）
-        for x1, x2 in ((20, 44), (296, 320)):
+        for x1, x2 in ((20, 44), (RT - 24, RT)):
             self.paint_speckled(p, rrect(x1, 100, x2, 340, 4), x1, 100, x2, 340, int(x1))
-        body = rrect(20, 44, 320, 112, 14)
-        self.paint_speckled(p, body, 20, 44, 320, 112, 3)
+        body = rrect(20, 44, RT, 112, 14)
+        self.paint_speckled(p, body, 20, 44, RT, 112, 3)
         # 底座
-        base = rrect(16, 326, 324, 366, 10)
-        self.paint_speckled(p, base, 16, 326, 324, 366, 9)
+        base = rrect(16, 326, RT + 4, 366, 10)
+        self.paint_speckled(p, base, 16, 326, RT + 4, 366, 9)
 
         # 頂部：豆倉底座、木質填壓墊
         p.fillPath(rrect(28, 38, 130, 50, 4), vgrad(38, 50, [(0, C("#2a2b2e")), (1, C("#111213"))]))
@@ -93,7 +95,7 @@ class AllInOne(Machine):
         for i in range(16):                        # 研磨刻度環
             x = 36 + i * 5.6
             p.drawLine(QPointF(x, 42), QPointF(x, 44 if i % 4 else 46))
-        p.fillPath(rrect(150, 40, 272, 47, 3), vgrad(40, 47, [(0, C("#a07a58")), (1, C("#5a3e28"))]))
+        p.fillPath(rrect(150, 40, 292, 47, 3), vgrad(40, 47, [(0, C("#a07a58")), (1, C("#5a3e28"))]))
         # 面板：按鍵與方形壓力錶
         for (x, y) in self.buttons_l + self.buttons_r:
             rg = QRadialGradient(x - 3, y - 3, 13)
@@ -119,12 +121,13 @@ class AllInOne(Machine):
         cx, cy = icons[5]                                                 # 蒸氣
         for dx in (-2, 0, 2):
             p.drawLine(QPointF(cx + dx, cy - 4), QPointF(cx + dx, cy + 3))
-        g = rrect(145, 51, 195, 101, 9)
+        gx = self.gauge_c[0]
+        g = rrect(gx - 25, 51, gx + 25, 101, 9)
         p.fillPath(g, vgrad(51, 101, [(0, C("#e9ebec")), (1, C("#9aa1a8"))]))
-        p.fillPath(rrect(148, 54, 192, 98, 7), vgrad(54, 98, [(0, C("#fbfbf9")), (1, C("#e4e2dc"))]))
+        p.fillPath(rrect(gx - 22, 54, gx + 22, 98, 7), vgrad(54, 98, [(0, C("#fbfbf9")), (1, C("#e4e2dc"))]))
         self.paint_square_dial(a, p)
         # 小指示孔
-        for x in (122, 218):
+        for x in (122, self.buttons_r[0][0]):
             p.setPen(Qt.NoPen)
             p.setBrush(C("#0a0a0b"))
             p.drawEllipse(QPointF(x, 98), 2.4, 2.4)
@@ -147,12 +150,16 @@ class AllInOne(Machine):
         p.drawEllipse(QPointF(196, 132), 28, 2.4)
         p.setBrush(C("#7d848b", 150))
         p.drawEllipse(QPointF(196, 131.6), 23, 1.3)
-        # 蒸氣閥座
-        p.fillPath(rrect(316, 92, 326, 128, 3), hgrad(316, 326, [(0, C("#2a2b2e")), (1, C("#0a0a0b"))]))
-        self.paint_drip_tray(p, 52, 288, top=338)
+        self.paint_drip_tray(p, 52, RT - 32, top=338)
         self.paint_scale(p)
 
     def paint_front(self, a, p):
+        # 蒸氣管的轉軸：上機身蓋在蒸氣管上面（同一個顆粒烤漆、同樣的種子，只重畫轉軸附近一小塊），管子從上機身底面後面掛下來
+        px = self.wand_pivot[0]
+        p.save()
+        p.setClipRect(QRectF(px - 9, 102, 18, 10))
+        self.paint_speckled(p, rrect(20, 44, RT, 112, 14), 20, 44, RT, 112, 3)
+        p.restore()
         # 豆倉玻璃的反光
         x1, y1, x2, y2 = self.hopper
         p.fillPath(rrect(x1 + 6, y1 + 6, x1 + 11, y2 - 6, 2), C("#ffffff", 60))
@@ -206,7 +213,7 @@ class AllInOne(Machine):
             self.paint_lamp(a, p, (122, 98), True, "#ffb050", 2.0)
         ss = a.session
         if ss and ss.stage_name == "steam":
-            self.paint_lamp(a, p, (218, 98), True, "#ff7a40", 2.0)
+            self.paint_lamp(a, p, (self.buttons_r[0][0], 98), True, "#ff7a40", 2.0)
         self.paint_wand(a, p)
         self.paint_steam_knob(a, p, self.knob, 7)
 

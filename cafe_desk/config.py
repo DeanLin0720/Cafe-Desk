@@ -9,6 +9,7 @@
 比目前程式還新的設定檔（用舊版程式開新版設定）不降級，未知欄位照原樣保留。
 """
 import json
+import time
 import os
 
 from . import errlog, paths
@@ -76,14 +77,32 @@ def load():
             pass
     return migrate({})
 
+_last_fail = -1e9                           # 上次記下「設定檔寫入失敗」的時間（time.monotonic）
+
 
 def save(cfg):
     """先寫暫存檔再取代，寫到一半當掉也不會留下半個設定檔"""
     path = paths.CONFIG_PATH
     tmp = path + ".tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=1)
-        os.replace(tmp, path)
+    text = json.dumps(cfg, ensure_ascii=False, indent=1)
+    err = None
+    for attempt in range(3):                # Windows：檔案剛好被防毒、同步軟體或別的程式開著時 replace 會被拒，等一下再試
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(text)
+            os.replace(tmp, path)
+            return
+        except Exception as e:
+            err = e
+            time.sleep(0.03 * (attempt + 1))
+    try:                                    # 還是不行：直接寫（不如放棄存檔）
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        return
     except Exception as e:
-        errlog.write(f"設定檔寫入失敗：{path}：{e!r}")
+        err = e
+    global _last_fail
+    now = time.monotonic()
+    if now - _last_fail > 60.0:             # 失敗的訊息一分鐘最多一則（不要洗版）
+        _last_fail = now
+        errlog.write(f"設定檔寫入失敗：{path}：{err!r}")

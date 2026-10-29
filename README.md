@@ -10,10 +10,11 @@
 - 完整備粉流程（取把手 → 敲渣 → 磨豆 → 布粉 → 填壓 → 扣回）、打奶與拉花、豆子與養豆天數、清潔保養（每台咖啡機分開計算）
 - 三種模式：手動、自動（照目前的設定重複沖煮）、營業（客人點單付錢、排隊、有耐心，做好後在櫃檯取餐才評分）
 - 營業模式：出杯台與櫃檯店面、POS 結帳、內用／外帶、大中小杯、一張單好幾杯、座位、翻頁鐘
-- 營業模式的成長：店鋪等級 Lv.1–10、咖啡師稱號（職人可以萃取的同時打奶）、打烊日報；用營業額在商店買設備升級與精品豆，設備與飲品依等級解鎖
+- 營業模式的成長：店鋪等級 Lv.1–10、咖啡師稱號（職人可以萃取的同時打奶）、打烊日報；用營業額在商店買設備升級、咖啡豆、食材與甜點，設備與飲品依等級解鎖
+- 食材與甜點：牛奶、鮮奶油、醬料等食材要用錢買；甜點（可頌、蛋糕、馬芬、餅乾）擺在櫃檯右上的玻璃櫥窗，客人加購打折、有貨時內用客人變多；都可以勾自動補貨，庫存隨時留一份
 - 陪伴功能：環境音（下雨天的咖啡廳、森林雨聲與遠雷）、播放自己的音樂、休息提醒、每天自動檢查新版本
 - 簡化的物理：倒的時候液面保持水平、越倒越空傾斜得越多，容器從杯子上方繞過；手沖的水珠受重力加速、細水柱斷成水滴
-- 紀錄與收集冊：每日紀錄、61 個成就（分級的有銅／銀／金，只算為客人做的杯子）、飲品與設備圖鑑（含拉花收集）、遊戲說明
+- 紀錄與收集冊：每日紀錄、72 個成就（分級的有銅／銀／金，只算為客人做的杯子）、飲品、設備、食材與甜點圖鑑（含拉花收集）、遊戲說明
 - 16:9 視窗（1920×1080、1600×900、1280×720、960×540）；紙張風格的選單與視窗；繁體中文／English（金額跟著語言顯示新台幣或美金）
 
 <p align="center">
@@ -86,7 +87,7 @@
 - **大中小杯**：加奶／加水的飲品分大中小，杯子跟著縮放，紙杯印 S／M／L；每種飲品約裝到九成滿。
 - **一張單好幾杯**：有些客人一次點 2–3 杯，先做好的放出餐架，全部好了才一起交付。
 - **座位**：依店鋪等級 4–16 位，坐滿了新客人只能外帶；櫃檯的小黑板寫目前坐著幾位。
-- **營業用雙頭機**（Lv.9）：兩個沖煮頭，萃取的同時打奶，排隊裡有同一類飲品就兩杯一起做；紀錄與收集冊「店鋪」頁可以指定營業用哪一台咖啡機。
+- **營業用雙頭機**（Lv.9）：兩個沖煮頭，萃取的同時打奶，排隊裡有能一起做的義式飲品（不同類也行）就兩杯一起做；紀錄與收集冊「店鋪」頁可以指定營業用哪一台咖啡機。
 - **翻頁鐘**：營業時右上角的翻頁鐘與日期，右鍵可以調整或隱藏。
 
 - **店鋪等級 Lv.1–10**：依累積營業額升級（路邊小攤 → 夢想咖啡館），等級越高客人越多、越有耐心，出杯也更快。
@@ -190,10 +191,11 @@ A coffee machine desktop toy. A window holds an espresso machine, a grinder and 
 - Full prep workflow (take the portafilter → knock out → grind → distribute → tamp → lock in), milk steaming and latte art, beans and rest days, cleaning and maintenance (tracked per machine)
 - Three modes: manual, auto (keeps brewing your current drink with your current settings) and business (customers order and pay, queue up and run out of patience, and rate the drink once they pick it up at the counter)
 - Business mode: a pass counter and a shop counter, POS checkout, for here / to go, small / medium / large cups, multi-drink orders, seats and a flip clock
-- Business mode progression: shop level 1–10, barista titles (an Artisan steams milk while the shot pulls) and a closing report; spend your revenue in the store on equipment upgrades and specialty beans, and unlock gear and drinks as you level up
+- Business mode progression: shop level 1–10, barista titles (an Artisan steams milk while the shot pulls) and a closing report; spend your revenue in the store on equipment upgrades, beans, ingredients and desserts, and unlock gear and drinks as you level up
+- Ingredients and desserts: milk, whipped cream, syrups and the like cost money; desserts (croissant, cake, muffin, cookie) sit in the glass case at the top right of the counter, customers add them at a discount and more of them dine in when the case is stocked; all can be set to auto-restock, always keeping one in stock
 - Extras: ambience (a rainy-day café, forest rain with distant thunder), your own music, break reminders, a daily update check
 - Simple physics: liquid stays level while pouring and the vessel tips further as it empties, vessels go over the cup instead of through it, pour-over drips accelerate and a thin stream breaks into drops
-- Records and collection: daily records, 61 achievements (tiered sets in bronze / silver / gold, counting only cups made for customers), a drink and equipment book (with latte art), and a game guide
+- Records and collection: daily records, 72 achievements (tiered sets in bronze / silver / gold, counting only cups made for customers), a book of drinks, equipment, ingredients and desserts (with latte art), and a game guide
 - A 16:9 window (1920×1080, 1600×900, 1280×720, 960×540); paper-style menus and windows; 繁體中文 / English (prices show in NT$ or US$ to match the language)
 
 <p align="center">
@@ -266,7 +268,7 @@ When the barista takes an order, the customer pays at the POS first (customers w
 - **Cup sizes**: drinks with milk or water come in small, medium and large, the cup scales to match and paper cups are marked S / M / L; every drink fills its cup to about 90%.
 - **Multi-drink orders**: some customers order 2–3 drinks; finished ones wait on the pass shelf and are handed over together.
 - **Seats**: 4–16 depending on shop level; when they're full, new customers can only take away. The chalkboard on the counter shows how many are seated.
-- **Two-group café machine** (Lv.9): steams milk while the shot pulls and makes two drinks at once when the queue has a matching order; the Shop tab of the records window lets you pick which machine to use for business.
+- **Two-group café machine** (Lv.9): steams milk while the shot pulls and makes two drinks at once when the queue has another espresso-based order (different kinds are fine); the Shop tab of the records window lets you pick which machine to use for business.
 - **Flip clock**: a flip clock with the date in the top right during business; adjust or hide it from the right-click menu.
 
 - **Shop level 1–10**: grows with total revenue (Street Stall → Dream Café); higher levels bring more, and more patient, customers, and drinks come out faster.

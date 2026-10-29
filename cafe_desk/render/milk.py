@@ -1357,6 +1357,13 @@ class MilkRenderer:
         w, h = 124, 120
         cx = self.machine.card_cx + self.scene_dx()
         lo = self.cards_left()
+        if self.cards_compact():                 # 兩杯各一組（見 chart_rect）：拉花卡片也窄一點
+            w = 100
+            cx += -43 if self.machine.g == 0 else 43
+            if with_chart:
+                left = clamp(cx - 134, lo, self._scene_w - 4 - 268)
+                return QRectF(left + 168, TOP_PAD - 132, w, h)
+            return QRectF(max(lo, cx - w / 2), TOP_PAD - 132, w, h)
         if with_chart:
             left = clamp(cx - 169, lo, self._scene_w - 4 - 344)
             return QRectF(left + 220, TOP_PAD - 132, w, h)

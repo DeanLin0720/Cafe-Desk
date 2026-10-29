@@ -10,6 +10,10 @@ from PySide6.QtGui import QPen, QPainterPath
 
 from ..gfx import mix, C, vgrad, hgrad, rrect
 from ..layout import PF_BASKET_W, PF_BASKET_H, PF_TIPS, PF_TIP_Y
+from ..util import clamp, lerp
+
+PF_HANDLE_LEN = 88.0         # 握把全長（轉到側面時的長度）
+PF_HANDLE_REACH = 60.0       # 握把往右轉開到 90° 的橫向位移
 
 
 class MachineRenderer:
@@ -23,15 +27,31 @@ class MachineRenderer:
             self.paint_grinder_shadow(p)
         p.save()
         p.translate(m.mx, m.my)
-        m.paint_static(self, p)
+        with self.machine_tint(m):
+            m.paint_static(self, p)
         if not self.cupless():
             self.cup.paint_back(p)
-            if self.twin_live():                       # 雙頭機第二個沖煮頭下的杯子
-                self.twin["cup"].paint_back(p)
+        if self.twin_live() and not self.backflushing():   # 雙頭機第二杯：第一杯先送走（cup_away）時照樣畫
+            self.twin["cup"].paint_back(p)
         p.restore()
         if external:
             self.paint_grinder_static(p)
-        m.paint_static_scene(self, p)
+        with self.machine_tint(m):
+            m.paint_static_scene(self, p)
+
+    def machine_tint(self, m=None):
+        """畫這台咖啡機時套用的烤漆換色（裝潢的「咖啡機配色」，沒買或預設銀色就什麼都不換）"""
+        from .. import decor
+        from ..gfx import recolor
+        spec = decor.machine_tint(self.decor_look()[0])
+        if spec is None:
+            return recolor(None)
+        m = m or self.machine
+        key = (m.key, spec)
+        cache = self.__dict__.setdefault("_remap_cache", {})
+        if key not in cache:
+            cache[key] = decor.make_remap(m, spec)
+        return recolor(cache[key])
 
     def paint_front(self, p):
         m = self.machine
@@ -39,9 +59,10 @@ class MachineRenderer:
         p.translate(m.mx, m.my)
         if not self.cupless():
             self.cup.paint_front(p)
-            if self.twin_live():
-                self.twin["cup"].paint_front(p)
-        m.paint_front(self, p)
+        if self.twin_live() and not self.backflushing():
+            self.twin["cup"].paint_front(p)
+        with self.machine_tint(m):
+            m.paint_front(self, p)
         p.restore()
 
     # ───────────── 把手（視窗座標） ─────────────
@@ -73,37 +94,6 @@ class MachineRenderer:
             p.setBrush(C("#1c1e21"))
             p.drawEllipse(QPointF(tx, tip_y - 0.6), 2.0, 1.0)
 
-        # 握把：鍍鉻頸部 → 接環 → 霧黑握把（往尾端漸粗）→ 金屬尾蓋；長度隨轉動透視縮短
-        p.fillPath(rrect(bw - 3, 8, bw + 9, 14.5, 2), vgrad(8, 14.5, chrome_v))
-        p.fillPath(rrect(bw + 7, 6, bw + 14, 16.5, 2), vgrad(6, 16.5, chrome_v))
-        g0 = bw + 13
-        g1 = g0 + L * 0.78
-        g2 = g1 + L * 0.22
-        grip = QPainterPath()
-        grip.moveTo(g0, 7.4)
-        grip.cubicTo(QPointF(g0 + (g1 - g0) * 0.4, 7.0), QPointF(g0 + (g1 - g0) * 0.7, 5.0), QPointF(g1, 4.6))
-        grip.lineTo(g1, 18.2)
-        grip.cubicTo(QPointF(g0 + (g1 - g0) * 0.7, 17.8), QPointF(g0 + (g1 - g0) * 0.4, 15.6), QPointF(g0, 15.2))
-        grip.closeSubpath()
-        p.fillPath(grip, vgrad(4.6, 18.2, [(0, C("#4a4c50")), (0.18, C("#2a2b2e")), (0.55, C("#141516")),
-                                           (1, C("#060607"))]))
-        p.setPen(QPen(C("#ffffff", 46), 0.9))
-        hl = QPainterPath(QPointF(g0 + 2, 8.6))
-        hl.cubicTo(QPointF(g0 + (g1 - g0) * 0.45, 8.2), QPointF(g0 + (g1 - g0) * 0.75, 6.4), QPointF(g1 - 1, 6.1))
-        p.drawPath(hl)
-        p.setPen(Qt.NoPen)
-        cap = QPainterPath()
-        cap.moveTo(g1, 4.9)
-        cap.lineTo(g2 - 3, 6.2)
-        cap.quadTo(QPointF(g2, 6.4), QPointF(g2, 9.2))
-        cap.lineTo(g2, 13.6)
-        cap.quadTo(QPointF(g2, 16.4), QPointF(g2 - 3, 16.6))
-        cap.lineTo(g1, 17.9)
-        cap.closeSubpath()
-        p.fillPath(cap, vgrad(4.9, 17.9, [(0, C("#e6e9ec")), (0.3, C("#b9bfc5")), (0.65, C("#7b828a")),
-                                          (1, C("#3f444a"))]))
-        p.fillRect(QRectF(g1 - 0.6, 4.8, 1.6, 13.2), C("#eef1f3", 180))      # 尾蓋接縫的亮環
-
         # 卡耳
         for ex in (-3.5, bw - 0.5):
             p.fillPath(rrect(ex, 1.2, ex + 4, 4.6, 1.2), vgrad(1.2, 4.6, chrome_v))
@@ -128,7 +118,44 @@ class MachineRenderer:
         p.fillRect(QRectF(1.5, 6.4, bw - 3, 0.7), C("#ffffff", 90))
         if contents:
             self.paint_grounds(p, contents)
+        self.paint_pf_handle(p, bw, bh, L)
         p.restore()
+
+    def paint_pf_handle(self, p, bw, bh, L):
+        """握把：一般朝前（從沖煮頭往觀看者伸出來，畫面上是從濾杯前面往下探出的一小段、尾端比較大）；
+        L 是握把往右轉開的橫向位移（0＝正對前面，沖煮頭上與放在磨豆機上都是 0；轉開時最多約 24）。
+        轉開的角度 φ：sinφ＝L／PF_HANDLE_REACH，握把全長 PF_HANDLE_LEN，朝前的分量讓尖端往下掉（俯視的透視）"""
+        chrome_v = [(0, C("#6b7177")), (0.35, C("#f2f4f5")), (0.6, C("#b4bbc1")), (1, C("#4e545a"))]
+        s = clamp(L / PF_HANDLE_REACH, 0.0, 1.0)
+        c = math.sqrt(1 - s * s)
+        cx = bw / 2
+        ox, oy = lerp(cx, bw + 13, s), lerp(bh - 5, 12.0, s)                 # 握把根部（頸部接環）
+        tx, ty = ox + PF_HANDLE_LEN * s * 0.8, oy + PF_HANDLE_LEN * c * 0.3   # 尖端
+        w0, w1 = 9.0, lerp(15.0, 13.0, s)                                    # 根部與尖端的粗細（尖端離觀看者比較近）
+        # 頸部：鍍鉻短管與接環
+        p.fillPath(rrect(ox - 7, oy - 4, ox + 7, oy + 4, 2), vgrad(oy - 4, oy + 4, chrome_v))
+        dx, dy = tx - ox, ty - oy
+        n = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / n, dx / n
+        grip = QPainterPath()
+        grip.moveTo(ox + nx * w0 / 2, oy + ny * w0 / 2)
+        grip.lineTo(tx + nx * w1 / 2, ty + ny * w1 / 2)
+        grip.lineTo(tx - nx * w1 / 2, ty - ny * w1 / 2)
+        grip.lineTo(ox - nx * w0 / 2, oy - ny * w0 / 2)
+        grip.closeSubpath()
+        grip.addEllipse(QPointF(tx, ty), w1 / 2, w1 / 2 * (0.9 if s < 0.5 else 0.8))
+        top = min(oy, ty) - w1 / 2
+        bot = max(oy, ty) + w1 / 2
+        p.setPen(Qt.NoPen)
+        p.fillPath(grip, vgrad(top, bot, [(0, C("#4a4c50")), (0.25, C("#2a2b2e")), (0.6, C("#141516")), (1, C("#060607"))]))
+        p.setPen(QPen(C("#ffffff", 46), 0.9))                                  # 握把上的高光
+        p.drawLine(QPointF(ox + nx * 2 - dx * 0.02, oy + ny * 2), QPointF(tx + nx * 2 - dx * 0.06, ty + ny * 2 - dy * 0.06))
+        # 尾端的金屬蓋：朝前時是一個圓盤（正對觀看者）
+        p.setPen(QPen(C("#b9bfc5"), 1.1))
+        p.setBrush(vgrad(ty - w1 / 2, ty + w1 / 2, [(0, C("#e6e9ec")), (1, C("#5a6168"))]))
+        r2 = w1 / 2 - 2.2
+        p.drawEllipse(QPointF(tx, ty), r2, r2 * (0.9 if s < 0.5 else 0.8))
+
 
     def paint_grounds(self, p, c):
         """濾杯上緣的咖啡粉：尖堆 →（布粉）平面 →（填壓）薄而平滑；或用過的濕粉餅"""

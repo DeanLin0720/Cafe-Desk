@@ -1,7 +1,7 @@
 """豆子管理：產地、烘焙度、風味，一包豆子的烘焙日與剩餘克數
 
 養豆天數＝今天（真實日期）－烘焙日，每天自動增加；豆倉存量＝這包剩下的克數。
-豆子用完要「開新包」（右鍵「豆子」），自動模式的咖啡師會自己開。
+豆子用完要「開新包」（右鍵「豆子」）：每一包都要先在商店買（庫存記在紀錄資料庫），自動模式與營業中的咖啡師會從庫存自己開。
 """
 import datetime
 import random
@@ -26,9 +26,18 @@ PREMIUM = {
     "bluemountain": ("牙買加 藍山", "中焙", "堅果、柔順、低酸", 0.55, 700),
     "kona": ("夏威夷 可娜", "中焙", "奶油、熱帶水果、紅糖", 0.6, 800),
 }
+# 一般豆一包（BAG_G）的價格：全部都要買（商店），一包約 14 杯，成本約營業額的一成；淺焙、水洗的比較貴
+REGULAR_PRICE = {"yirgacheffe": 260, "kenya": 240, "colombia": 180, "guatemala": 170, "house": 120, "brazil": 150,
+                 "sumatra": 160}
 PREMIUM_PRICE_K = 1.4                        # 一包約 14 杯：藍山大約打平、藝妓小虧，享受為主
 ORIGINS.update({k: v[:4] for k, v in PREMIUM.items()})
 BAG_G = 250.0
+MIN_LEFT = 21.0                              # 開過的豆子剩下不到這麼多（不夠做一杯）就不留
+
+
+def price_of(origin):
+    """一包豆子的價格（一般豆 REGULAR_PRICE、精品豆 PREMIUM）"""
+    return PREMIUM[origin][4] if origin in PREMIUM else REGULAR_PRICE[origin]
 
 
 def new_bag(origin=None, rnd=random):

@@ -128,7 +128,8 @@ def test_empty_bag_refuses_to_brew(desk):
     desk.auto = False
     desk.bag["left"] = 3
     assert desk.start_session("espresso", False) is False
-    desk.open_bag("kenya")
+    assert desk.open_bag("kenya") is False, "庫存沒有：不會有免費的豆子"
+    assert desk.buy_beans("kenya") and desk.open_bag("kenya")
     assert desk.start_session("espresso", False)
     run_until_idle(desk)
 

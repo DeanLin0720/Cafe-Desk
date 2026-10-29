@@ -1,62 +1,74 @@
-"""營業用雙頭機：跟一體機同一套外觀（深色顆粒烤漆、拉絲不鏽鋼背板、圓形黑按鍵、方形壓力錶），
-寬機身、兩個沖煮頭、左側蒸氣管；右側自帶磨豆機（豆倉、出粉口與把手托架，敲渣盒在機器右邊）。
+"""營業用雙頭機：參考營業用雙頭機的照片——霧黑機身（深色顆粒烤漆）、鏡面不鏽鋼背板、頂上的溫杯盤、
+中間藍底的液晶顯示、每個沖煮頭上面一塊鉻色按鍵面板（五顆藍光圈圓鍵）、兩側的蒸氣桿座與小壓力錶；
+寬機身、兩個沖煮頭、左側蒸氣管；磨豆機是獨立的一台「營業用磨豆機」（不鏽鋼、大豆倉，畫在機器左邊，兩個沖煮頭共用；
+外觀在 render/grinder.py 的 commercial 款，備粉流程跟其他獨立磨豆機的機型一樣）。
 
-特性：大鍋爐水溫穩、萃取降溫少、蒸氣強；萃取的同時就能打奶；營業級的內建磨豆機研磨均勻（不像一體機有額外的通道效應）。
-營業中排隊有兩位點了同類飲品時，兩個沖煮頭一起萃取，一次做兩杯（desk.py 的 start_pair）。
+特性：大鍋爐水溫穩、萃取降溫少、蒸氣強；萃取的同時就能打奶；營業級的磨豆機研磨均勻。
+營業中排隊裡有能一起做的客人時，兩個沖煮頭一起萃取，一次做兩杯（desk.py 的 start_pair）。
 
 兩個沖煮頭共用一個 Machine 實例：g＝目前在算哪一個（0＝左、1＝右），group_pf、cup_cx 跟著換；
 CafeDesk.on_twin() 換到第二杯時把 g 設成 1，結束時設回 0。
-豆倉、出粉的粉、敲渣盒沿用一體機（AllInOne）的繪圖。
 """
+import math
+
 from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import QPen, QPainterPath, QFont, QRadialGradient
 
 from ..gfx import C, vgrad, hgrad, rrect
 from ..util import clamp
-from .allinone import AllInOne
-from .base import Traits
+from .base import Machine, Traits
 
 PRESSURE_RANGE = (0.0, 12.0)
-GROUPS = (114, 300)                       # 兩個沖煮頭的濾杯左上角 x（機身座標）；間隔要比把手長（約 173）
-OUTLET = 486                              # 內建磨豆機出粉口左緣（機身座標）；第二支把手的尾端在 473
-MX, MY = 20, 18
-W, H = 600, 426
+GROUPS = (140, 330)                       # 兩個沖煮頭的濾杯左上角 x（機身座標）；間隔要比把手長（約 173）
+R = 520                                   # 機身右端（機身座標）：第二支把手的尾端在 473；右邊不再有磨豆區
+MX, MY = 140, -2                          # 機身原點（場景座標）：左邊留給獨立磨豆機與敲渣盒（底座左緣 16+MX 在敲渣盒右邊，不重疊）
+W, H = R + 30, 426
+BODY = ("#3a3d43", "#25272b", "#101113")                # 上機身、下機身、側柱的烤漆漸層（上→下）
+BODY_HI = "#4a4d54"
 
 
-class Duo(AllInOne):
+class Duo(Machine):
     key = "duo"
     name = "營業用雙頭機"
-    traits = Traits(summary="雙沖煮頭、自帶磨豆機：萃取時同時打奶，營業中兩位客人點同類飲品就一起做；大鍋爐水溫穩、蒸氣強",
+    grinder_style = "commercial"
+    paint_extra = BODY + (BODY_HI,)                      # 霧黑亮面烤漆的顏色（咖啡機配色整組換）
+    traits = Traits(summary="雙沖煮頭、搭配營業用獨立磨豆機（兩頭共用）：萃取時同時打奶，營業中排隊裡有能一起做的客人就兩杯一起做；大鍋爐水溫穩、蒸氣強",
                     temp_noise=0.12, boiler_heat=0.7, boiler_draw=0.1, milk="wand", steam_power=1.5,
-                    grinder="integrated", groups=2)
+                    grinder="external", groups=2)
 
-    drip_area = (52, 448, 338)            # 滴水盤（x1, x2, 上緣；機身座標）
-    scene_w = 660
+    drip_area = (52, 488, 338)            # 滴水盤（x1, x2, 上緣；機身座標）
+    scene_w = MX + R + 6
+    side_gap = 92                         # 玻璃杯離機身遠一點
+    side_trim = 44                        # 杯位、配料架往右挪了 22，右端收掉同樣的寬度，視窗總寬不變
+    rack_gap = 30                         # 配料架離機身也遠一點
     mx, my = MX, MY
     cup_base = 314
-    vent = (440, 98)
-    card_cx = MX + 150
-    gauge_r = 17
-    knob = (26, 100)
-    heat_lamp = (540, 98)
-    grind_lamp = (500, 98)
-    hopper = (474, -14, 564, 40)           # 豆倉玻璃（機身座標）：跟一體機一樣大（豆子圖快取共用）
-    pad = (330, 452)                       # 頂部木質填壓墊
+    vent = (110, 50)
+    gauge_r = 13
+    knob = (32, 78)                       # 左邊蒸氣桿座的中心
+    heat_lamp = (R - 14, 108)
 
-    # 內建磨豆區（場景座標）：出粉口在機器右側，敲渣盒在機器右邊
-    fork = (MX + OUTLET, MY + 176)
-    chute = (MX + OUTLET + 36, MY + 152)
-    tamper_rest = (MX + 416, MY + 44)
-    knock_box = (606, 312, 652, 366)
-    knock = (593, 290)
+    # 蒸氣管（機身座標）：左邊一支；有「雙打奶泡」升級時右邊再一支（鏡射），第二個沖煮頭（g＝1）的杯子用右邊那支
+    _WAND = ((78, 118), (90, 210), (96, 222))                # 轉軸藏在遮檐後面                # 蒸氣管在機身內側（離側柱一段距離）
 
-    wand_pivot = (40, 112)
-    wand_rest = (56, 210)
-    wand_steam = (62, 222)
+    def _wand(self, i):
+        x, y = self._WAND[i]
+        return (20 + R - x, y) if self.g == 1 and self.traits.dual_wand else (x, y)
 
-    machine_hit = (MX + 20, MY + 40, MX + 580, MY + 140)
-    grinder_hit = (MX + 470, MY - 24, MX + 568, MY + 50)
-    hover_area = (MX + 16, MY - 20, MX + 584, MY + 364)
+    @property
+    def wand_pivot(self):
+        return self._wand(0)
+
+    @property
+    def wand_rest(self):
+        return self._wand(1)
+
+    @property
+    def wand_steam(self):
+        return self._wand(2)
+
+    machine_hit = (MX + 20, MY + 40, MX + R, MY + 140)
+    hover_area = (MX + 16, MY - 20, MX + R + 4, MY + 364)
 
     g = 0                                 # 目前的沖煮頭（0＝左、1＝右）
 
@@ -68,13 +80,30 @@ class Duo(AllInOne):
     def cup_cx(self):
         return GROUPS[self.g] + 36
 
+    def lcd_rects(self):
+        """電子秤的重量與時間：顯示在每個沖煮頭面板下面（上機身），不放在杯子下面的秤上"""
+        cx = GROUPS[self.g] + 36
+        return QRectF(cx - 58, 86, 56, 13), QRectF(cx + 2, 86, 56, 13)
+
+    def paint_scale(self, p):
+        """杯子下面的電子秤（只有承盤；數字改顯示在上機身）"""
+        cx, b = self.cup_cx, self.cup_base
+        p.fillPath(rrect(cx - 74, b + 2, cx + 74, b + 29, 6), vgrad(b + 2, b + 29, [(0, C("#2a2c2f")), (1, C("#111214"))]))
+        p.fillRect(QRectF(cx - 70, b + 2.5, 140, 1), C("#ffffff", 40))
+
+    @property
+    def card_cx(self):
+        """曲線卡片與拉花卡片的中心（場景 x）：在正在做的那個沖煮頭的杯子上方（做第二杯時往右移）"""
+        return MX + GROUPS[self.g] + 36
+
     def gauge_c(self, g):
-        return GROUPS[g] + 36, 76
+        """背板上的小圓壓力錶：左邊的沖煮頭在背板左側、右邊的在右側"""
+        return (60, 178) if g == 0 else (R - 40, 178)
 
     def buttons(self, g):
-        """每個沖煮頭左右各兩顆：單份、雙份｜沖煮（燈）、熱水"""
+        """每個沖煮頭面板上的五顆鍵：單份、雙份、連續（中間，沖煮中亮暖色燈）、半連續、熱水"""
         cx = GROUPS[g] + 36
-        return (cx - 68, 76), (cx - 42, 76), (cx + 42, 76), (cx + 68, 76)
+        return tuple((cx + 17.5 * k, 70) for k in (-2, -1, 0, 1, 2))
 
     def gauges(self, a):
         return [(self.gauge_c(0), self.gauge_r, a.gauge, PRESSURE_RANGE),
@@ -82,112 +111,94 @@ class Duo(AllInOne):
 
     def silhouette(self):
         path = QPainterPath()
-        path.addPath(rrect(20, 44, 580, 112, 14))
-        path.addRect(QRectF(20, 100, 560, 240))
-        path.addPath(rrect(16, 326, 584, 366, 10))
-        path.addPath(rrect(470, -24, 568, 50, 6))
+        path.addPath(rrect(20, 44, R, 112, 22))
+        path.addRect(QRectF(20, 100, R - 20, 240))
+        path.addPath(rrect(16, 326, R + 4, 368, 18))
         return path
 
     def paint_static(self, a, p):
         self.paint_soft_shadow(p, self.silhouette(), W, H)
-        self.paint_shadow(a, p, 300, 370, 300, 600)
-        # 不鏽鋼背板（直向拉絲）
-        p.fillRect(QRectF(44, 106, 512, 232), hgrad(44, 556, [(0, C("#4a5056")), (0.12, C("#c3c9ce")),
-                                                              (0.5, C("#8d949b")), (0.88, C("#b9bfc5")),
-                                                              (1, C("#4a5056"))]))
+        self.paint_shadow(a, p, (20 + R) / 2, 370, (20 + R) / 2, R)
+        # 鏡面不鏽鋼背板：亮面加斜的反光條
+        px1, px2 = 38, R - 18
+        p.fillRect(QRectF(px1, 106, px2 - px1, 232), hgrad(px1, px2, [(0, C("#6a7077")), (0.06, C("#d3d9de")),
+                                                                      (0.5, C("#b4bcc3")), (0.94, C("#c4cbd1")),
+                                                                      (1, C("#6a7077"))]))
+        p.fillRect(QRectF(px1, 150, px2 - px1, 188), vgrad(150, 338, [(0, C("#10141a", 0)), (1, C("#10141a", 110))]))   # 下半部壓暗：玻璃杯才看得清楚
         p.save()
-        p.setClipRect(QRectF(44, 106, 512, 232))
-        for i in range(123):
-            x = 44 + i * 4.2
-            p.setPen(QPen(C("#ffffff" if i % 2 else "#2a2e32", 18), 0.6))
-            p.drawLine(QPointF(x, 106), QPointF(x, 338))
+        p.setClipRect(QRectF(px1, 106, px2 - px1, 232))
+        for x0, wd in ((96, 26), (190, 10), (330, 34), (414, 10)):
+            path = QPainterPath()
+            path.moveTo(x0, 106)
+            path.lineTo(x0 + wd, 106)
+            path.lineTo(x0 + wd - 60, 338)
+            path.lineTo(x0 - 60, 338)
+            path.closeSubpath()
+            p.fillPath(path, C("#ffffff", 80))
         p.restore()
-        p.fillRect(QRectF(44, 106, 512, 30), vgrad(106, 136, [(0, C("#000000", 160)), (1, C("#000000", 0))]))
-        # 側柱、中柱（兩個沖煮頭之間、沖煮區與磨豆區之間）與上方機身（深色顆粒烤漆）
-        for x1, x2 in ((20, 44), (243, 257), (474, 484), (556, 580)):
-            self.paint_speckled(p, rrect(x1, 100, x2, 340, 4), x1, 100, x2, 340, int(x1))
-        body = rrect(20, 44, 580, 112, 14)
-        self.paint_speckled(p, body, 20, 44, 580, 112, 3)
-        base = rrect(16, 326, 584, 366, 10)
-        self.paint_speckled(p, base, 16, 326, 584, 366, 9)
-
-        # 頂部：不鏽鋼溫杯盤、木質填壓墊、豆倉底座與研磨刻度環
-        p.fillPath(rrect(34, 38, 310, 46, 3), vgrad(38, 46, [(0, C("#e3e7ea")), (0.5, C("#9aa1a8")),
-                                                            (1, C("#4e545a"))]))
-        p.setPen(QPen(C("#2c3135", 140), 0.8))
-        for x in range(46, 302, 8):
-            p.drawLine(QPointF(x, 40), QPointF(x, 44))
-        x1, x2 = self.pad
-        p.fillPath(rrect(x1, 40, x2, 47, 3), vgrad(40, 47, [(0, C("#a07a58")), (1, C("#5a3e28"))]))
-        hx1, _hy1, hx2, _hy2 = self.hopper
-        p.fillPath(rrect(hx1 - 6, 38, hx2 + 6, 50, 4), vgrad(38, 50, [(0, C("#2a2b2e")), (1, C("#111213"))]))
-        p.setPen(QPen(C("#c9ced3"), 0.7))
-        for i in range(16):
-            x = hx1 + 2 + i * 5.6
-            p.drawLine(QPointF(x, 42), QPointF(x, 44 if i % 4 else 46))
-
-        # 面板：每個沖煮頭一組按鍵與方形壓力錶
+        # 側柱（霧黑烤漆加鉻色內緣）與中柱（細鉻柱，兩個沖煮頭之間）
+        for x1, x2, edge in ((22, 38, 36), (R - 18, R - 2, R - 18)):
+            p.fillPath(rrect(x1, 100, x2, 340, 5), hgrad(x1, x2, [(0, C(BODY_HI)), (0.5, C(BODY[1])), (1, C(BODY[2]))]))
+            p.fillRect(QRectF(edge, 108, 2, 224), C("#eef1f3", 200))
+        p.fillRect(QRectF((20 + R) / 2 - 3, 130, 6, 208), hgrad((20 + R) / 2 - 3, (20 + R) / 2 + 3, [(0, C("#7d848b")), (0.4, C("#f2f4f6")), (1, C("#8a9198"))]))
+        # 頂部：寬而扁的上機身（兩端圓肩，亮面烤漆）、頂上的鉻色溫杯盤
+        body = rrect(20, 46, R, 112, 24)
+        p.fillPath(body, vgrad(46, 112, [(0, C(BODY[0])), (0.45, C(BODY[1])), (1, C(BODY[2]))]))
+        p.fillRect(QRectF(48, 49, R - 96, 1.6), C("#ffffff", 80))                        # 肩上的亮線
+        p.fillPath(rrect(40, 38, R - 20, 47, 3), vgrad(38, 47, [(0, C("#f2f4f6")), (0.5, C("#b8bfc5")),
+                                                              (1, C("#6a7077"))]))
+        # 面板：最左邊一塊三顆鍵（熱水、蒸氣），每個沖煮頭上面一塊五顆鍵（中間是沖煮鍵，亮燈畫在 paint_dynamic）
+        self.paint_key_panel(p, 70, (-11, 0, 11), 7.2)
         for g in (0, 1):
-            btns = self.buttons(g)
-            for (x, y) in btns:
-                rg = QRadialGradient(x - 3, y - 3, 13)
-                rg.setColorAt(0, C("#4a4c50"))
-                rg.setColorAt(1, C("#18191b"))
-                p.setPen(QPen(C("#0a0a0b"), 1))
-                p.setBrush(rg)
-                p.drawEllipse(QPointF(x, y), 10, 10)
-            p.setPen(QPen(C("#c9ced3"), 0.9))
-            p.setBrush(Qt.NoBrush)
-            cx, cy = btns[0]                                              # 單份
-            p.drawRect(QRectF(cx - 3.5, cy - 2, 6, 5))
-            cx, cy = btns[1]                                              # 雙份
-            for dx in (-1.8, 1.8):
-                p.drawEllipse(QPointF(cx + dx, cy), 2.2, 3.2)
-            cx, cy = btns[3]                                              # 熱水
-            p.drawLine(QPointF(cx, cy - 4), QPointF(cx, cy + 1))
-            p.drawEllipse(QPointF(cx, cy + 2.5), 1.6, 1.6)
-            gx, gy = self.gauge_c(g)
-            frame = rrect(gx - 25, gy - 25, gx + 25, gy + 25, 9)
-            p.fillPath(frame, vgrad(gy - 25, gy + 25, [(0, C("#e9ebec")), (1, C("#9aa1a8"))]))
-            p.fillPath(rrect(gx - 22, gy - 22, gx + 22, gy + 22, 7), vgrad(gy - 22, gy + 22, [(0, C("#fbfbf9")),
-                                                                                          (1, C("#e4e2dc"))]))
-            self.paint_square_dial(a, p, (gx, gy), self.gauge_r, PRESSURE_RANGE)
-        # 磨豆區的按鍵（研磨量）、銘牌、指示孔
-        bx, by = 518, 76
-        rg = QRadialGradient(bx - 3, by - 3, 13)
-        rg.setColorAt(0, C("#4a4c50"))
-        rg.setColorAt(1, C("#18191b"))
-        p.setPen(QPen(C("#0a0a0b"), 1))
-        p.setBrush(rg)
-        p.drawEllipse(QPointF(bx, by), 10, 10)
-        p.setPen(QPen(C("#c9ced3"), 0.9))
-        p.setBrush(Qt.NoBrush)
-        p.drawEllipse(QPointF(bx, by), 3.5, 3.5)
-        p.drawLine(QPointF(bx - 2, by + 2), QPointF(bx + 2, by - 2))
+            cx = self.buttons(g)[2][0]
+            self.paint_key_panel(p, cx, (-35, -17.5, 0, 17.5, 35), 12.2, round_mid=True, group=g)
+            self.g = g                         # 面板下面的液晶螢幕底框（重量、時間的數字由 paint_lcd 疊上去）
+            for r in self.lcd_rects():
+                lcd = rrect(r.left() - 1, r.top() - 1, r.right() + 1, r.bottom() + 1, 3)
+                p.fillPath(lcd, vgrad(r.top() - 1, r.bottom() + 1, [(0, C("#0b0e10")), (1, C("#1a2024"))]))
+                p.setPen(QPen(C("#c9ced3", 160), 0.8))
+                p.setBrush(Qt.NoBrush)
+                p.drawPath(lcd)
+            self.g = 0
         f = QFont(a.mono, 6)
         f.setBold(True)
-        f.setLetterSpacing(QFont.AbsoluteSpacing, 1.5)
+        f.setItalic(True)
+        f.setLetterSpacing(QFont.AbsoluteSpacing, 1.0)
         p.setFont(f)
-        p.setPen(C("#c9ced3", 160))
-        p.drawText(QRectF(203, 92, 80, 12), Qt.AlignCenter, "DUO · 2G")
+        p.setPen(C("#e6ecee", 210))
+        p.drawText(QRectF(R - 92, 70, 58, 20), Qt.AlignCenter, "DUO · 2G")                # 機身銘牌（右上角）
+        # 背板下方的小壓力錶：圓形鉻框（左邊那個是左頭的、右邊是右頭的）
+        for g in (0, 1):
+            gx, gy = self.gauge_c(g)
+            rg = QRadialGradient(gx - 6, gy - 7, 26)
+            rg.setColorAt(0, C("#f6f8f9"))
+            rg.setColorAt(1, C("#7d848b"))
+            p.setPen(QPen(C("#2c3135", 160), 0.8))
+            p.setBrush(rg)
+            p.drawEllipse(QPointF(gx, gy), 19.5, 19.5)
+            p.setPen(Qt.NoPen)
+            p.setBrush(C("#fbfbf9"))
+            p.drawEllipse(QPointF(gx, gy), 16.5, 16.5)
+            self.paint_square_dial(a, p, (gx, gy), self.gauge_r, PRESSURE_RANGE)
+        # 左右兩端的蒸氣桿座（黑色圓桿、鉻圈）：照片裡上機身兩端那對黑色橢圓
+        for sx in (self.knob[0], R - 14):
+            p.fillPath(rrect(sx - 12, 52, sx + 12, 104, 11), vgrad(52, 104, [(0, C("#f2f4f6")), (0.5, C("#9aa1a8")), (1, C("#4e545a"))]))
+            p.fillPath(rrect(sx - 8, 56, sx + 8, 100, 8), C("#15161a"))
+            p.fillPath(rrect(sx - 3.5, 61, sx + 3.5, 90, 3), vgrad(61, 90, [(0, C("#5a5c60")), (1, C("#0a0a0b"))]))
         p.setPen(Qt.NoPen)
         p.setBrush(C("#0a0a0b"))
-        for pt in (self.heat_lamp, self.grind_lamp):
-            p.drawEllipse(QPointF(*pt), 2.4, 2.4)
+        p.drawEllipse(QPointF(*self.heat_lamp), 2.4, 2.4)
         p.drawEllipse(QPointF(*self.vent), 2.0, 1.3)
 
-        # 內建磨豆機出粉口與把手托架（同一體機）
-        outlet = rrect(OUTLET, 111.5, OUTLET + 64, 146, 6)
-        outlet.addRect(QRectF(OUTLET, 111.5, 64, 8))
-        p.fillPath(outlet.simplified(), vgrad(111.5, 146, [(0, C("#5d646b")), (0.3, C("#d0d5da")),
-                                                           (1, C("#5d646b"))]))
-        p.fillPath(rrect(OUTLET + 24, 144, OUTLET + 40, 152, 2), C("#141516"))
-        p.fillPath(rrect(OUTLET, 202, OUTLET + 64, 208, 2), vgrad(202, 208, [(0, C("#2a2b2e")), (1, C("#0a0a0b"))]))
-        for x in (OUTLET + 4, OUTLET + 56):
-            p.fillPath(rrect(x, 196, x + 6, 206, 2), C("#1a1b1d"))
-
-        # 沖煮頭與分水網（同 DESK·01，兩組）
+        # 沖煮頭與分水網：每組有一塊梯形的鉻色座
         for gx in GROUPS:
+            housing = QPainterPath()
+            housing.moveTo(gx - 16, 111)
+            housing.lineTo(gx + 88, 111)
+            housing.lineTo(gx + 78, 133)
+            housing.lineTo(gx - 6, 133)
+            housing.closeSubpath()
+            p.fillPath(housing, vgrad(111, 133, [(0, C("#f2f4f6")), (0.5, C("#b4bbc1")), (1, C("#6a7077"))]))
             p.fillRect(QRectF(gx - 2, 111.5, 76, 18.5), vgrad(111.5, 130, [(0, C("#6e757c")), (0.35, C("#e3e7ea")),
                                                                           (0.6, C("#a7aeb5")), (1, C("#5c6369"))]))
             p.fillPath(rrect(gx + 4, 124, gx + 68, 133, 3), vgrad(124, 133, [(0, C("#5c6369")), (1, C("#2c3034"))]))
@@ -196,39 +207,84 @@ class Duo(AllInOne):
             p.drawEllipse(QPointF(gx + 36, 132), 28, 2.4)
             p.setBrush(C("#7d848b", 150))
             p.drawEllipse(QPointF(gx + 36, 131.6), 23, 1.3)
-        # 蒸氣閥座（深色，同一體機）
-        p.fillPath(rrect(34, 92, 44, 128, 3), hgrad(34, 44, [(0, C("#2a2b2e")), (1, C("#0a0a0b"))]))
+        # 下機身：整塊圓角的烤漆裙板（兩端大弧度、露在滴水盤外面），上緣一條鉻邊，底下兩個黑色機腳
+        for fx in (42, R - 44):
+            p.fillPath(rrect(fx, 360, fx + 22, 369, 3), C("#0a0a0b"))
+        base = rrect(16, 326, R + 4, 366, 20)
+        p.fillPath(base, vgrad(326, 366, [(0, C(BODY[0])), (0.35, C(BODY[1])), (1, C(BODY[2]))]))
+        p.fillRect(QRectF(34, 329, R - 48, 1.4), C("#ffffff", 70))
+        p.fillRect(QRectF(26, 326, R - 28, 3), hgrad(26, R, [(0, C("#7d848b")), (0.3, C("#f2f4f6")), (0.7, C("#b8bfc5")),
+                                                             (1, C("#6a7077"))]))
 
-        self.paint_drip_tray(p, 52, 448, top=338)
+    def paint_key_panel(self, p, cx, offsets, width, round_mid=False, group=None):
+        """一塊深灰藍的觸控面板（照片裡上機身的鍵盤）：offsets＝各鍵相對面板中心的 x，width＝鍵的寬度；
+        round_mid＝中間那顆是圓的沖煮鍵（亮燈由 paint_dynamic 畫）"""
+        half = abs(offsets[0]) + width / 2 + 6
+        pod = rrect(cx - half, 58, cx + half, 82, 5)
+        p.fillPath(pod, vgrad(58, 82, [(0, C("#42525c")), (1, C("#1e272e"))]))
+        p.setPen(QPen(C("#c9ced3", 200), 1.0))
+        p.setBrush(Qt.NoBrush)
+        p.drawPath(pod)
+        y = 70
+        for k, dx in enumerate(offsets):
+            x = cx + dx
+            if round_mid and k == len(offsets) // 2:
+                p.setPen(QPen(C("#c9ced3"), 1.0))
+                p.setBrush(C("#12171b"))
+                p.drawEllipse(QPointF(x, y), 6.2, 6.2)
+                continue
+            w2 = width / 2
+            p.fillPath(rrect(x - w2, y - 5.5, x + w2, y + 5.5, 2.2), vgrad(y - 5.5, y + 5.5, [(0, C("#6f8590")), (1, C("#3d4e58"))]))
+            p.setPen(QPen(C("#f2f6f8", 230), 0.8))                                       # 鍵上的小符號
+            p.setBrush(Qt.NoBrush)
+            if k == 0 and len(offsets) == 5:
+                p.drawArc(QRectF(x - 2.6, y - 2.6, 5.2, 5.2), 0, -180 * 16)
+            elif k == 1 and len(offsets) == 5:
+                for d in (-2.6, 2.6):
+                    p.drawArc(QRectF(x + d - 2.2, y - 2.2, 4.4, 4.4), 0, -180 * 16)
+            else:
+                for d in (-2, 0, 2):
+                    p.drawLine(QPointF(x + d, y - 2.5), QPointF(x + d + (0.7 if k % 2 else -0.7), y + 2.5))
+
+
+        self.paint_drip_tray(p, 52, R - 32, top=338, bottom=356)
         for g in (0, 1):                      # 每個沖煮頭下面一台電子秤
             self.g = g
             self.paint_scale(p)
         self.g = 0
 
+    def paint_front(self, a, p):
+        """前景圖層：上機身下面的斜面遮檐（蓋在蒸氣管上面，蒸氣管從遮檐後面掛下來）"""
+        visor = QPainterPath()
+        visor.moveTo(38, 110)
+        visor.lineTo(R - 18, 110)
+        visor.lineTo(R - 34, 130)
+        visor.lineTo(54, 130)
+        visor.closeSubpath()
+        p.fillPath(visor, vgrad(110, 130, [(0, C("#e9edf0")), (0.5, C("#b4bbc1")), (1, C("#6a7077"))]))
+        p.setPen(QPen(C("#2c3135", 90), 0.7))
+        for x in range(60, R - 50, 6):
+            p.drawLine(QPointF(x, 118), QPointF(x - 1, 126))
+        p.fillRect(QRectF(22, 108, R - 22, 3), hgrad(22, R, [(0, C("#7d848b")), (0.3, C("#f2f4f6")), (0.7, C("#b8bfc5")),
+                                                          (1, C("#6a7077"))]))
+
     def paint_dynamic(self, a, p):
-        wf = a.workflow
-        if wf is None and a.twin is not None:                 # 第二杯在備粉時也算在磨豆
-            wf = a.twin_get("workflow")
-        grinding = bool(wf and wf.grinding)
-        self.paint_hopper(a, p, grinding)
-        hx1 = self.hopper[0]
-        k = clamp((a.params.grind_um - 150) / 350, 0, 1)    # 研磨刻度窗
-        p.fillPath(rrect(hx1 + 2 + 80 * k, 41, hx1 + 10 + 80 * k, 45, 1.5), C("#f0a050"))
-        r = 7.5
+        r = 5.6
         self.paint_brew_light(a, p, self.buttons(0)[2], r=r, halo_r=26)
         with a.on_twin():                     # 第二個沖煮頭的燈看第二杯
             self.paint_brew_light(a, p, self.buttons(1)[2], r=r, halo_r=26)
-        if grinding:
-            self.paint_lamp(a, p, self.grind_lamp, True, "#ffb050", 2.0)
         self.paint_lamp(a, p, self.heat_lamp, a.boiler.heater, "#ff7a30", 2.0)
-        self.paint_wand(a, p)
+        right = a.twin_get("wand_angle") if a.twin is not None else 0.0
+        if self.traits.dual_wand:
+            self.paint_wand(a, p)
+            old, self.g = self.g, 1                # 右邊那支（第二個沖煮頭的杯子用）
+            try:
+                self.paint_wand(a, p, angle=right)
+            finally:
+                self.g = old
+        else:
+            self.paint_wand(a, p, angle=max(a.wand_angle, right))     # 一支蒸氣管：兩杯誰在打奶它就動
         self.paint_steam_knob(a, p, self.knob, 7)
-
-    def paint_dynamic_scene(self, a, p):
-        for second in (False, True):          # 兩杯哪一杯在磨豆，粉就從出粉口落下
-            wf = a.twin_get("workflow") if second else a.workflow
-            if wf and wf.grinding:
-                a.paint_falling_grounds(p, wf)
 
     def paint_collar(self, a, p, pf):
         gx = self.group_pf[0]

@@ -24,6 +24,7 @@ def _g(x1, x2, stops):
 
 class Lever(Machine):
     key = "lever"
+    paint_kind = "copper"
     name = "復古拉桿機"
     traits = Traits(summary="彈簧拉桿：壓力隨萃取遞減、甜感高；大鍋爐蒸氣強、沖煮頭偏熱",
                     profile="lever", temp_offset=1.0, temp_noise=0.5, boiler_heat=0.35, boiler_draw=0.12,
@@ -31,7 +32,7 @@ class Lever(Machine):
 
     drip_area = (40, 230, 340)            # 滴水盤（x1, x2, 上緣；機身座標）
     scene_w = 455
-    mx, my = 150, 18
+    mx, my = 150, 0                   # 底座的底剛好在桌面 FLOOR（364）
     group_pf = (99, 128)
     cup_cx, cup_base = 135, 314
     vent = (135, -4)
@@ -45,8 +46,8 @@ class Lever(Machine):
     wand_steam = (252, 246)
     knob = (214, 120)
 
-    machine_hit = (150 + 50, 18 - 50, 150 + 220, 18 + 140)
-    hover_area = (150 + 24, 18 - 20, 150 + 246, 18 + 364)
+    machine_hit = (150 + 50, -50, 150 + 220, 140)
+    hover_area = (150 + 24, -20, 150 + 246, 364)
 
     def gauges(self, a):
         return [(self.gauge_c, self.gauge_r, a.gauge, PRESSURE_RANGE)]
@@ -122,9 +123,6 @@ class Lever(Machine):
         self.paint_dial_face(a, p, self.gauge_c, self.gauge_r, PRESSURE_RANGE, range(13), (0, 6, 12),
                              (0, 6, 12), [((8, 10), "#5fa865"), ((11, 12), "#d0605a")], "BAR")
 
-        # 蒸氣閥座
-        p.fillPath(rrect(206, 112, 222, 150, 4), _g(206, 222, CHROME))
-
         self.paint_drip_tray(p, 40, 230)
         self.paint_scale(p)
 
@@ -134,6 +132,7 @@ class Lever(Machine):
     def paint_dynamic(self, a, p):
         self.paint_lamp(a, p, (48, 330), a.boiler.heater, "#ff7a30")
         self.paint_wand(a, p)
+        p.fillPath(rrect(206, 112, 222, 150, 4), _g(206, 222, CHROME))     # 蒸氣閥座與旋鈕蓋在管子轉軸上面（管子從閥座後面接出來）
         self.paint_steam_knob(a, p, self.knob, 8)
 
     def paint_collar(self, a, p, pf):

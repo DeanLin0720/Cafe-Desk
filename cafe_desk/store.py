@@ -11,6 +11,7 @@ from dataclasses import replace
 # fines＝沖煮台萃取不均的倍率（brew.FINES_K）；clarity＝沖煮台的甜感加成（brew.CLARITY）
 STATION = ("station",)
 EXTERNAL = ("desk01", "lever", "compact")           # 用獨立磨豆機的咖啡機
+COMMERCIAL = ("duo", "commercial_grinder")          # 營業用磨豆機（雙頭機搭的那台）：升級掛在它身上，效果套在雙頭機（所以 "duo" 在裡面）
 UPGRADES = {
     "desk01_frother": (("desk01",), "專業奶泡機", "換成專業奶泡機：奶泡更細，拉花更容易成功", 18000, {"frother_q": 0.72}),
     "lever_collar": (("lever",), "沖煮頭恆溫套環", "沖煮頭水溫更穩：每杯飄動從 ±0.5°C 降到 ±0.2°C", 12000, {"temp_noise": 0.2}),
@@ -20,12 +21,14 @@ UPGRADES = {
     "grinder_flat": (EXTERNAL, "平刀盤", "獨立磨豆機換成平刀盤：研磨更均勻、通道效應更少，三台用獨立磨豆機的咖啡機都受惠", 15000,
                      {"channel_delta": -0.04}),
     # 營業用雙頭機（店鋪 Lv.9 解鎖）：四項可以一起買，效果疊加
-    "duo_burr": (("duo",), "營業級平刀盤", "雙頭機內建磨豆機換成大平刀盤：研磨更均勻，通道效應更少", 30000,
+    "duo_burr": (COMMERCIAL, "營業級平刀盤", "營業用磨豆機換成大平刀盤：研磨更均勻，通道效應更少", 30000,
                  {"channel_delta": -0.04}),
     "duo_steam": (("duo",), "自動打奶蒸氣管", "雙頭機蒸氣管換成大孔徑自動款：蒸氣更強（1.5 → 1.9），打奶更快、奶泡更細", 35000,
                   {"steam_power": 1.9}),
     "duo_preinfuse": (("duo",), "壓力曲線（預浸）", "萃取前先低壓預浸，粉餅吸飽水再加壓：甜感更好，通道效應再少一點", 40000,
                       {"sweet_add": 0.3, "channel_delta": -0.02}),
+    "duo_dualwand": (("duo",), "雙打奶泡（第二支蒸氣管）", "機身右側加裝第二支蒸氣管：兩杯熱牛奶飲品各打各的、同時打奶，不必共用一壺——摩卡、焦糖瑪奇朵、不同的奶也能一起做", 45000,
+                     {"dual_wand": True}),
     "duo_boiler": (("duo",), "雙鍋爐快速回溫", "加大加熱器：鍋爐回溫更快，兩杯一起萃取時水溫幾乎不掉", 25000,
                    {"boiler_heat": 1.0, "boiler_draw": 0.05}),
     "station_ghost": (STATION, "鬼齒刀盤", "手沖用磨豆機換成鬼齒刀盤：細粉更少，手沖、冰滴、摩卡壺、虹吸壺喝起來更乾淨、更甜，研磨偏細也比較不會萃取不均", 12000,
@@ -33,14 +36,14 @@ UPGRADES = {
 }
 # 商店卡片的圖示（render/icons.py 的 upgrade_icon）
 UPGRADE_ICONS = {"desk01_frother": "frother", "lever_collar": "collar", "compact_pid": "pid", "allinone_burr": "conical",
-                 "duo_burr": "flat", "duo_steam": "steam", "duo_preinfuse": "preinfuse", "duo_boiler": "boiler",
+                 "duo_burr": "flat", "duo_steam": "steam", "duo_dualwand": "steam", "duo_preinfuse": "preinfuse", "duo_boiler": "boiler",
                  "grinder_flat": "flat", "station_ghost": "ghost"}
-TARGET_NAMES = {EXTERNAL: "獨立磨豆機", STATION: "手沖用磨豆機"}
+TARGET_NAMES = {EXTERNAL: "獨立磨豆機", STATION: "手沖用磨豆機", COMMERCIAL: "營業用磨豆機"}
 
 
 def balance(stats):
-    """錢包餘額"""
-    return stats.data["revenue_total"] - stats.data["spent"]
+    """錢包餘額（初始資金＋累積營業額－花掉的錢）"""
+    return stats.wallet()
 
 
 def apply_upgrades(owned):
@@ -70,7 +73,7 @@ def upgraded(machine_key, owned):
 
 
 def upgrade_names(machine_key, owned):
-    """這台咖啡機身上已經有的升級名稱（含共用的獨立磨豆機）"""
+    """這台咖啡機身上已經有的升級名稱（含共用的獨立磨豆機、雙頭機搭的營業用磨豆機）"""
     return [name for k, (targets, name, *_r) in UPGRADES.items() if machine_key in targets and k in owned]
 
 

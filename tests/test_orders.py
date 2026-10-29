@@ -139,22 +139,25 @@ def test_leaving_order_mode_clears_queue(desk):
     assert desk.queue == [] and not desk.business()
 
 
-def test_mode_menu_three_way(desk):
-    """右鍵與系統匣：手動／自動／營業 三選一，勾選狀態同步；自動間隔只有自動時能選；不會偷偷還原成自動"""
-    assert desk.mode() == "manual" and desk.mode_actions["manual"].isChecked()
-    desk.mode_actions["auto"].trigger()
-    assert desk.mode() == "auto" and desk.auto and desk.interval_menu.isEnabled()
+def test_mode_menu_practice_and_business(desk):
+    """右鍵：練習（手動、自動合在一起）／營業 二選一，「自動做咖啡」子選單選關閉或間隔；系統匣多一個自動開關；不會偷偷還原成自動"""
+    assert desk.mode() == "manual" and desk.mode_actions["practice"].isChecked() and desk.interval_acts[None].isChecked()
+    desk.interval_acts[180].trigger()
+    assert desk.mode() == "auto" and desk.auto and desk.interval == 180 and desk.mode_actions["practice"].isChecked()
+    assert desk.interval_acts[180].isChecked() and not desk.interval_acts[None].isChecked()
     if desk.tray:
         assert desk.tray_mode_actions["auto"].isChecked()
     desk.set_mode("business")
     assert desk.business() and not desk.auto and not desk.interval_menu.isEnabled()
-    assert desk.mode_actions["business"].isChecked() and not desk.mode_actions["auto"].isChecked()
+    assert desk.mode_actions["business"].isChecked() and not desk.mode_actions["practice"].isChecked()
     desk.set_mode("manual")
     assert desk.mode() == "manual" and not desk.auto, "離開營業是選的那個模式，不會自己變回自動"
-    assert not desk.interval_menu.isEnabled()
+    assert desk.interval_acts[None].isChecked()
+    desk.interval_acts[None].trigger()
+    assert desk.mode() == "manual"
     labels = [a.text() for a in desk.menu.actions()]
-    i = labels.index(desk.mode_actions["manual"].text())
-    assert labels[i + 3] == desk.interval_menu.title(), "自動間隔就在三選一下面"
+    i = labels.index(desk.mode_actions["practice"].text())
+    assert labels[i + 2] == desk.interval_menu.title(), "自動做咖啡的子選單就在二選一下面"
 
 
 def test_espresso_orders_use_random_machine(desk, unlocked, monkeypatch):
@@ -197,11 +200,15 @@ def test_order_mode_locks_menus(desk):
     for menu in (desk.method_menu, desk.machine_menu, desk.drink_menu, desk.art_menu,
                  desk.interval_menu, desk.maint_menu):
         assert not menu.isEnabled()
-    assert desk.bean_menu.isEnabled(), "營業中也能換豆子（這杯做完才換）"
+    for menu in (desk.method_menu, desk.machine_menu, desk.drink_menu, desk.art_menu, desk.maint_menu):
+        assert not menu.menuAction().isVisible()
+    assert not desk.act_brew.isVisible() and not desk.act_params.isVisible()
+    assert not desk.bean_menu.menuAction().isVisible() and not desk.ing_menu.menuAction().isVisible(), "營業模式隱藏豆子與食材"
     assert not desk.settings_dlg.drink.isEnabled() and not desk.settings_dlg.art.isEnabled()
     desk.set_order_mode(False)
     for menu in (desk.method_menu, desk.machine_menu, desk.drink_menu, desk.art_menu, desk.bean_menu):
-        assert menu.isEnabled()
+        assert menu.isEnabled() and menu.menuAction().isVisible()
+    assert desk.ing_menu.menuAction().isVisible() and desk.act_brew.isVisible() and desk.act_params.isVisible()
     assert desk.settings_dlg.drink.isEnabled()
 
 
@@ -283,21 +290,26 @@ def test_switch_pauses_before_making(desk):
     assert desk.session is not None
 
 
-def test_leaving_business_hides_order_slip(desk):
-    """營業中正在做的那杯切到手動：照樣做完記帳，但點單紙馬上不畫、做完就收掉"""
-    from conftest import run_until_idle, until_making
+def test_switching_mode_aborts_current_animation(desk):
+    """營業中切到練習（或反過來）：正在做的那杯、點單紙、櫃檯動畫立刻中止，不記帳"""
+    from conftest import until_making
     desk.set_mode("business")
     desk.arrive_in = 0
     desk.step(0.05, 0.05)
     desk.order.t = 3
     desk.step(0.05, 0.05)
     until_making(desk)
+    assert desk.making()
     desk.set_mode("manual")
-    run_until_idle(desk)
+    assert not desk.making() and not desk.busy() and desk.order is None and desk.order_alpha == 0
+    assert desk.queue == [] and desk.ready == [] and desk.delivery is None and desk.checkout is None
     for _ in range(5):
         desk.step(0.05, 0.05)
-    assert desk.order is None and desk.order_alpha == 0
-    assert desk.stats.day()["orders"] == 1, "做完的那杯照樣算給客人"
+    assert desk.stats.day()["orders"] == 0, "中止的單不算"
+    desk.start_session("espresso", False)
+    assert desk.making()
+    desk.set_mode("business")
+    assert not desk.making() and desk.session is None, "練習中的杯子也中止"
     assert not desk.cards_left() > 4
 
 

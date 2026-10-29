@@ -15,6 +15,7 @@ from .cups import SIZE_K
 from .drinks import DRINKS, ART_NAMES, MILK_KINDS, FESTIVAL_DRINKS, base_of
 from .festivals import adjust_weights
 from .i18n import T
+from . import regulars, beans
 from .util import clamp
 
 CUSTOMERS = ("小陳", "阿哲", "Amy", "小美", "Ken", "王先生", "林小姐", "Joe", "小雨", "阿凱", "Mia", "老張",
@@ -37,7 +38,9 @@ MOD_TEXT = {
     ("cocoa", "no"): "不要可可粉",
     ("water", "less"): "濃一點", ("water", "more"): "淡一點",
     ("ice", "less"): "少冰", ("ice", "more"): "多冰",
+    ("bean", "geisha"): "指定巴拿馬 藝妓", ("bean", "bluemountain"): "指定牙買加 藍山", ("bean", "kona"): "指定夏威夷 可娜",
 }
+BEAN_ASK_P = 0.1               # 營業模式：這位客人是衝著精品豆來的（指定一種精品豆；店裡現在用的不一樣就扣符合度）
 
 # 價格（$）；沒列的（節日限定飲品）用 FESTIVAL_PRICE
 PRICES = {"espresso": 70, "ristretto": 70, "lungo": 75, "doppio": 90, "americano": 90, "iced_americano": 95,
@@ -90,6 +93,12 @@ class Order:
     to_go: bool = False          # 營業模式：外帶（紙杯）；內用（玻璃杯，交付時放上杯盤）
     size: str = "M"              # 營業模式：大中小杯（SIZE_DRINKS 才有，其他一律 M）
     party: list = field(default=None, compare=False, repr=False)   # 同一位客人點的幾杯（同一個 list）；一杯時 None
+    regular: int = 0             # 營業模式：熟客等級 0–3（regulars.py）；越高小費越多、越有耐心
+    usual: bool = False          # 熟客點了「老樣子」（最常點的飲品）
+    dessert: str = ""            # 營業模式：加購的甜點（ingredients.DESSERTS 的 key；沒有就是空字串）
+    dessert_price: int = 0       # 甜點的折後售價（已經算在 price 裡）
+    refunded: bool = False       # 客人沒取餐、食材與甜點已經退回庫存（只退一次）
+    inspector: bool = False      # 評鑑員客人（Lv.10 之後偶爾來）：這杯在星級評鑑裡分數算兩倍
     paid: bool = True            # 營業模式：接單時在 POS 付過錢了沒（new_order 設成 False，start_checkout 結帳）
     revealed: bool = True        # 分數公布了沒：營業模式做好時先不公布，到櫃檯結帳完才公布（點單紙蓋章、狀態列、紀錄）
     rec: dict = field(default=None, compare=False, repr=False)     # 營業模式：結帳後才寫進紀錄的這一杯（cup_record 的內容）
@@ -145,8 +154,10 @@ def mod_pool(drink):
     return pool
 
 
-def make_order(no, rnd=random, last_name=None, exclude=()):
-    """exclude：現在不能點的飲品（冰滴還沒滴好）"""
+def make_order(no, rnd=random, last_name=None, exclude=(), name=None, favorite=None, bean_p=0.0, bean_pool=None, avail=None):
+    """exclude：現在不能點的飲品（冰滴還沒滴好）；name：指定客人（熟客）；favorite：熟客的最愛，有機率點「老樣子」；
+    bean_p：這位客人指定一種精品豆的機率（營業模式）；bean_pool：客人只會從這些精品豆挑（店裡右下櫥窗擺出來的，None＝全部）；
+    avail(drink, mods)：食材庫存夠不夠做（營業模式），不夠的要求（例如換燕麥奶）客人不會提"""
     weights = adjust_weights(ORDER_WEIGHTS, DRINKS)          # 夏天冰飲多、冬天熱飲多、節日點限定飲品
     for k in exclude:
         weights.pop(k, None)
@@ -154,8 +165,13 @@ def make_order(no, rnd=random, last_name=None, exclude=()):
         return None                                       # 現在沒有可以點的
     keys = list(weights)
     drink = rnd.choices(keys, weights=[weights[k] for k in keys])[0]
+    usual = favorite in weights and rnd.random() < regulars.USUAL_P
+    if usual:
+        drink = favorite
     names = [n for n in CUSTOMERS if n != last_name]
     pool = mod_pool(drink)
+    if avail is not None:
+        pool = [m for m in pool if avail(drink, [m])]
     n = min(len(pool), rnd.choices((0, 1, 2), weights=(0.3, 0.45, 0.25))[0])
     mods = []
     rnd.shuffle(pool)
@@ -164,7 +180,10 @@ def make_order(no, rnd=random, last_name=None, exclude=()):
             break
         if all(m[0] != k for k, _ in mods):          # 同一類要求只會有一個
             mods.append(m)
-    return Order(no, rnd.choice(names), drink, mods, price=price_of(drink))
+    pool_b = list(beans.PREMIUM) if bean_pool is None else list(bean_pool)
+    if bean_p and pool_b and rnd.random() < bean_p:
+        mods = mods[:1] + [("bean", rnd.choice(pool_b))]      # 點單紙放得下的要求有限：最多再帶一項
+    return Order(no, name or rnd.choice(names), drink, mods, price=price_of(drink), usual=usual)
 
 
 def price_of(drink):
@@ -191,7 +210,7 @@ def wait_penalty(order):
 
 def tip(order):
     rate = 0.2 if order.score >= 92 else (0.1 if order.score >= 84 else 0.0)
-    return int(round(order.price * rate))
+    return int(round(order.price * rate * regulars.tip_k(order.regular)))
 
 
 def order_params(order, dp, rnd=random, skill=1.0):
@@ -267,6 +286,10 @@ def evaluate(order, session):
             ok = clamp(1 - (abs(m.foam - target) - 8) / 20, 0, 1)
             if ok < 0.8:
                 complaint = complaint or T("奶泡跟我想的不太一樣")
+        elif kind == "bean":
+            if session.app.bag["origin"] != value:
+                ok = 0.0
+                complaint = complaint or T("不是我要的豆子")
         elif kind == "art" and m is not None:
             name = T(ART_NAMES[value])
             if m.art == value and not m.art_note:

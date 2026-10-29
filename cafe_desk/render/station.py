@@ -23,7 +23,8 @@ GLASS = "#dfe8ec"
 WOOD = ("#8a5a34", "#b07a4a", "#5e3a1e")
 PAPER = "#f3ece0"
 WATER_C = "#cfe2ea"
-POUR_PAD = 60                    # 營業模式出杯台右邊留給倒入時拉花杯／奶泡壺的空間（不然會被視窗裁切）
+POUR_PAD = 35                    # 營業模式出杯台右邊留給倒入時拉花杯／奶泡壺的空間（不然會被視窗裁切）
+POUR_PAD2 = 40                  # 雙頭機第二個杯位在出杯台最右邊：從右邊倒入的量杯、拉花杯要再多留這麼多（放不下時機身左邊的空白移出視窗）
 UNIFORM_W = (WIN_H + TOP_PAD) * 16 / 9    # 視窗一律 16:9（場景座標約 1031）；內容置中，多的空白由視窗化背景延伸
 # 右鍵「大小」：視窗的像素寬（16:9，Windows 顯示比例 100% 時）；縮放＝寬 ÷ UNIFORM_W
 WINDOW_SIZES = (1920, 1600, 1280, 960)
@@ -68,9 +69,13 @@ class StationRenderer:
         ext, c = self.scene_extent()
         W = self.scene_width()
         dx = W / 2 - c
+        low = 0.0
         if self.side_on():
-            dx = min(dx, W - ext - POUR_PAD)
-        return max(0.0, dx)
+            duo = self.machine.traits.groups > 1
+            dx = min(dx, W - ext - POUR_PAD - (POUR_PAD2 if duo else 0))
+            if duo:                                  # 雙頭機加出杯台比視窗還寬：機身左邊的空白可以移出視窗（留 12）
+                low = -max(0.0, self.machine.hover_area[0] - 12)
+        return max(low, dx)
 
     def station_w(self):
         return min(self.machine.scene_w, STATION_W)

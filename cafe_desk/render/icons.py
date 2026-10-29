@@ -491,3 +491,216 @@ def _rr(x0, y0, x1, y1, r):
     path = QPainterPath()
     path.addRoundedRect(QRectF(x0, y0, x1 - x0, y1 - y0), r, r)
     return path
+
+
+def decor_icon(key, size=64, dpr=1.0):
+    """商店的店面裝潢小圖（decor.ITEMS 的每一款）：配色款畫示意的色塊，掛畫、植物、燈光直接用櫃檯畫面的繪圖函式"""
+    from .. import decor
+    from . import shop
+    pm, p = _canvas(size, dpr)
+    p.scale(size / 64, size / 64)
+    slot = decor.ITEMS[key][0]
+    look = decor.LOOK.get(key, {})
+
+    def val(k):
+        return look.get(k, shop.STORE.get(k))
+
+    def vgrad(y0, y1, c0, c1):
+        g = QLinearGradient(0, y0, 0, y1)
+        g.setColorAt(0, QColor(c0))
+        g.setColorAt(1, QColor(c1))
+        return g
+    if slot == "counter":
+        front, top = val("front"), val("top")
+        p.fillPath(_rr(6, 26, 58, 56, 3), vgrad(26, 56, *front))
+        p.fillPath(_rr(4, 18, 60, 28, 2), vgrad(18, 28, *top))
+        p.fillRect(QRectF(14, 36, 24, 4), QColor(val("logo")))
+        p.fillRect(QRectF(14, 44, 14, 2.5), QColor(val("logo")).darker(120))
+    elif slot == "cabinet":
+        c0, c1 = look.get("cab", ("#6e4c30", "#4e3420"))
+        for i in range(2):
+            x = 6 + i * 28
+            p.fillPath(_rr(x, 16, x + 26, 56, 2), vgrad(16, 56, c0, c1))
+            p.fillRect(QRectF(x + 3, 21, 20, 1.2), QColor(look.get("cab_line", "#8a6440")))
+            p.fillPath(_rr(x + 7, 32, x + 19, 36, 2), QColor(look.get("handle", "#c9a35a")))
+    elif slot == "floor":
+        c0, c1 = val("floor")
+        if look.get("floor_pat") == "check":
+            for r in range(3):
+                for c in range(5):
+                    p.fillRect(QRectF(4 + c * 12, 22 + r * 12, 12, 12), QColor((c0, c1)[(r + c) % 2]))
+        else:
+            p.fillPath(_rr(4, 22, 60, 58, 3), vgrad(22, 58, c0, c1))
+            p.setPen(QPen(QColor(0, 0, 0, 60), 1))
+            for x in range(10, 60, 14):
+                p.drawLine(QPointF(x, 22), QPointF(x - 5, 58))
+    elif slot == "wall":
+        c0, c1 = val("wall")
+        p.fillPath(_rr(4, 8, 60, 58, 3), vgrad(8, 58, c0, c1))
+        if look.get("wall_pat") == "brick":
+            p.setPen(QPen(QColor(0, 0, 0, 90), 1))
+            for i, y in enumerate(range(8, 58, 8)):
+                p.drawLine(QPointF(4, y), QPointF(60, y))
+                for x in range(4 + 10 * (i % 2), 60, 20):
+                    p.drawLine(QPointF(x, y), QPointF(x, y + 8))
+    elif slot == "board":
+        frame = look.get("frame")
+        if look.get("neon"):
+            p.setPen(QPen(QColor(look["neon"]).lighter(100), 3))
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(QRectF(6, 12, 52, 40), 3, 3)
+            p.setPen(Qt.NoPen)
+        p.fillPath(_rr(4 if frame else 6, 10 if frame else 12, 60 if frame else 58, 54 if frame else 52, 3), QColor(frame or "#0e0d0c"))
+        light = look.get("board_light")
+        p.fillPath(_rr(8, 14, 56, 50, 2), QColor("#f4f0e6" if light else val("board")))
+        acc = QColor(look.get("accent", shop.STORE["accent"]))
+        p.fillRect(QRectF(14, 19, 22, 3), acc)
+        for i in range(3):
+            p.fillRect(QRectF(14, 27 + i * 7, 28, 2.4), QColor("#3a2a1e" if light else "#efe6d4"))
+            p.fillRect(QRectF(46, 27 + i * 7, 6, 2.4), QColor("#7a6a56" if light else "#c8b8a0"))
+    elif slot == "machine":
+        c = QColor("#c9ced3")
+        spec = decor.MACHINE_TINT.get(key)
+        if spec:
+            hue, s_k, s_add, v_k = spec[:4]
+            c = QColor.fromHsv(c.hue() if hue is None else hue, min(255, int(c.saturation() * s_k + 255 * s_add)),
+                               min(255, int(c.value() * v_k)))
+        p.fillPath(_rr(8, 16, 56, 52, 4), vgrad(16, 52, c.lighter(115).name(), c.darker(125).name()))
+        p.fillPath(_rr(8, 16, 56, 26, 4), QColor("#2a2b2e"))
+        p.setBrush(QColor("#f0e8d8"))
+        p.drawEllipse(QPointF(20, 21), 3.4, 3.4)
+        p.drawEllipse(QPointF(30, 21), 3.4, 3.4)
+        p.fillRect(QRectF(16, 40, 32, 3), QColor("#1a1b1d"))
+        p.fillRect(QRectF(24, 52, 16, 4), QColor("#3a3b3e"))
+    elif slot == "lighting":
+        p.fillRect(QRectF(4, 10, 56, 48), QColor("#2b2522"))
+        if key == "neon_sign":
+            p.save()
+            p.translate(-2, 2)
+            p.scale(0.72, 0.72)
+            shop.paint_neon_sign(p, 2, 6)
+            p.restore()
+        elif key == "none":
+            p.setBrush(QColor("#6a5a4a"))
+            p.drawEllipse(QPointF(32, 34), 6, 6)
+        elif key == "fairy":
+            p.save()
+            p.setClipRect(QRectF(4, 10, 56, 48))
+            shop.paint_fairy_lights(p, 2, 62, 22, sag=9, swag=60)
+            shop.paint_fairy_lights(p, 2, 62, 40, sag=9, swag=60)
+            p.restore()
+        else:
+            p.save()
+            p.setClipRect(QRectF(4, 10, 56, 48))
+            p.translate(32 - shop.LAMP_X[0], -34)               # 第一盞燈放在圖的中間
+            shop.paint_lamps(p, key, 640)
+            p.restore()
+    elif slot == "cup":
+        pat, col = decor.CUP_STYLES.get(key, (None, None))
+        p.fillPath(_poly([(20, 22), (44, 22), (40, 56), (24, 56)]), vgrad(22, 56, "#f4f0e6", "#d8d2c4"))
+        p.fillPath(_poly([(21.4, 31), (42.6, 31), (41.2, 45), (22.8, 45)]), QColor("#c49a6a"))
+        p.fillPath(_rr(18, 17, 46, 23, 2), QColor("#f4f2ee"))
+        p.save()
+        p.setClipPath(_poly([(21.4, 31), (42.6, 31), (41.2, 45), (22.8, 45)]))
+        if pat == "stripe":
+            p.setPen(QPen(QColor(col), 1.8))
+            for k in range(-4, 5):
+                p.drawLine(QPointF(32 + k * 4.4, 30), QPointF(32 + k * 4.4, 46))
+        elif pat == "dots":
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(col))
+            for r, y in enumerate((34, 38.5, 43)):
+                for k in range(-4, 5):
+                    p.drawEllipse(QPointF(32 + k * 4.6 + (r % 2) * 2.3, y), 1.3, 1.3)
+        elif pat == "brand":
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(col))
+            p.drawEllipse(QPointF(32, 38), 4.4, 4.4)
+            p.setBrush(QColor("#6a4a30"))
+            p.drawEllipse(QPointF(32, 38), 2.6, 2.6)
+        elif pat == "hearts":
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(col))
+            for r, y in enumerate((35, 42)):
+                for k in range(-3, 4):
+                    p.drawPath(shop.heart_path(32 + k * 5.6 + (r % 2) * 2.8, y, 2.2))
+        elif pat == "waves":
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(QColor(col), 1.3))
+            for yy in (34, 38.5, 43):
+                wave = QPainterPath()
+                wave.moveTo(20, yy)
+                for k in range(-5, 5):
+                    wave.quadTo(32 + k * 4.4 + 1.1, yy - 1.8, 32 + k * 4.4 + 2.2, yy)
+                    wave.quadTo(32 + k * 4.4 + 3.3, yy + 1.8, 32 + k * 4.4 + 4.4, yy)
+                p.drawPath(wave)
+        p.restore()
+    elif slot == "pos":
+        pl = decor.POS_BASE | decor.POS_LOOK.get(key, {})
+        p.fillPath(_rr(22, 44, 42, 58, 2), vgrad(44, 58, *pl["stand"]))
+        p.fillRect(QRectF(30, 38, 4, 8), QColor(pl["stand"][1]))
+        p.fillPath(_rr(7, 10, 57, 42, 4), QColor(pl["bezel"]))
+        p.fillPath(_rr(10, 13, 54, 39, 2), vgrad(13, 39, *pl["screen"]))
+        p.fillRect(QRectF(14, 17, 18, 2.6), QColor(pl["ink"]))
+        for i in range(3):
+            p.fillRect(QRectF(14, 22 + i * 4.5, 26, 1.8), QColor(pl["ink2"]))
+            p.fillRect(QRectF(44, 22 + i * 4.5, 6, 1.8), QColor(pl["muted"]))
+        p.fillRect(QRectF(14, 35, 36, 1), QColor(pl["line"]))
+    elif slot == "paintings":
+        shop.paint_painting(p, key, 4, 10, 56, 44)
+    else:                                                    # plants
+        shop.paint_plant(p, key, 32, 20 if key == "plant_hang" else 56)
+    p.end()
+    return pm
+
+
+def _poly(pts):
+    from PySide6.QtGui import QPolygonF
+    path = QPainterPath()
+    path.addPolygon(QPolygonF([QPointF(x, y) for x, y in pts]))
+    path.closeSubpath()
+    return path
+
+
+def dessert_icon(key, size=64, dpr=1.0, ok=True):
+    """商店的甜點小圖：跟櫥窗裡是同一組畫法（shop.paint_dessert），放大畫在小盤子上"""
+    from . import shop
+    pm, p = _canvas(size, dpr)
+    k = size / 40
+    p.scale(k, k)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor("#efe9dc"))
+    p.drawEllipse(QPointF(20, 33), 17, 4)
+    p.scale(1.45, 1.45)
+    shop.paint_dessert(p, key, 20 / 1.45, 32 / 1.45)
+    p.end()
+    if not ok:                                   # 圖鑑還沒賣過：灰色剪影
+        img = pm.toImage()
+        q = QPainter(img)
+        q.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        q.fillRect(img.rect(), GREY)
+        q.end()
+        pm = QPixmap.fromImage(img)
+        pm.setDevicePixelRatio(dpr)
+    return pm
+
+
+def ingredient_icon(key, size=64, dpr=1.0, ok=True):
+    """商店與圖鑑的食材小圖：跟配料架上的是同一組畫法（shop._rack_item），放大畫在透明圖上；ok＝False 是灰色剪影（圖鑑還沒用過）"""
+    from . import shop
+    pm, p = _canvas(size, dpr)
+    k = size / 40
+    p.scale(k, k)
+    p.setRenderHint(QPainter.Antialiasing)
+    shop._rack_item(p, key, 20, 36)
+    p.end()
+    if not ok:
+        img = pm.toImage()
+        q = QPainter(img)
+        q.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        q.fillRect(img.rect(), GREY)
+        q.end()
+        pm = QPixmap.fromImage(img)
+        pm.setDevicePixelRatio(dpr)
+    return pm

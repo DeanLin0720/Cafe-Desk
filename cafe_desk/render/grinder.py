@@ -11,19 +11,25 @@ from ..util import clamp
 
 DIAL = (63, 140)
 HOPPER = [(26, 24), (100, 24), (86, 100), (40, 100)]
+HOPPER_C = [(8, 2), (118, 2), (92, 100), (34, 100)]          # 營業用磨豆機：又大又高的豆倉
 GRIND_RANGE = (150.0, 500.0)
 
 
-def _hopper_path():
+def _hopper_path(style="standard"):
+    poly = HOPPER_C if style == "commercial" else HOPPER
     path = QPainterPath()
-    path.moveTo(*HOPPER[0])
-    for pt in HOPPER[1:]:
+    path.moveTo(*poly[0])
+    for pt in poly[1:]:
         path.lineTo(*pt)
     path.closeSubpath()
     return path
 
 
 class GrinderRenderer:
+    def _grinder_style(self):
+        """目前這台咖啡機搭的獨立磨豆機外觀（圖鑑縮圖可以用 _grinder_style_override 指定）"""
+        return self.__dict__.get("_grinder_style_override") or getattr(self.machine, "grinder_style", "standard")
+
     # ───────────── 靜態背景 ─────────────
     def paint_grinder_shadow(self, p):
         sh = QRadialGradient(80, 370, 72)
@@ -37,25 +43,33 @@ class GrinderRenderer:
         p.restore()
 
     def paint_grinder_static(self, p):
+        com = self._grinder_style() == "commercial"
         # 底座與填壓墊
-        p.fillPath(rrect(16, 334, 108, 366, 7), vgrad(334, 366, [(0, C("#3a3d41")), (0.12, C("#26282b")),
-                                                                 (1, C("#111214"))]))
+        p.fillPath(rrect(16, 334, 108, 366, 7), vgrad(334, 366, [(0, C("#8a9096")), (0.12, C("#6a7076")), (1, C("#3a4046"))])
+                   if com else vgrad(334, 366, [(0, C("#3a3d41")), (0.12, C("#26282b")), (1, C("#111214"))]))
         p.fillRect(QRectF(20, 334.5, 84, 1), C("#ffffff", 45))
         p.fillPath(rrect(26, 326, 98, 335, 3), vgrad(326, 335, [(0, C("#4a3a30")), (1, C("#2a201a"))]))
         # 背柱（把手放在它前面）
         p.fillPath(rrect(66, 210, 98, 336, 4), hgrad(66, 98, [(0, C("#1a1b1d")), (0.4, C("#3a3d41")),
                                                               (1, C("#121315"))]))
-        # 機身（霧黑）
-        body = rrect(28, 100, 98, 226, 10)
-        p.fillPath(body, hgrad(28, 98, [(0, C("#121315")), (0.22, C("#3b3e43")), (0.35, C("#4a4e53")),
-                                        (0.7, C("#232528")), (1, C("#0f1011"))]))
-        p.fillRect(QRectF(32, 101, 62, 1.2), C("#ffffff", 60))
+        if com:                                                       # 營業用：不鏽鋼拉絲機身，比較寬
+            body = rrect(18, 100, 108, 226, 10)
+            p.fillPath(body, hgrad(18, 108, [(0, C("#5a6066")), (0.2, C("#dfe3e6")), (0.38, C("#f8fafb")),
+                                             (0.7, C("#aab1b8")), (1, C("#4d5359"))]))
+            p.fillRect(QRectF(22, 101, 82, 1.4), C("#ffffff", 140))
+            p.fillRect(QRectF(18, 206, 90, 6), C("#1a1b1d"))                                  # 下緣的黑色飾條
+            p.fillRect(QRectF(18, 206, 90, 1), C("#c9a24a", 200))                              # 金線
+        else:                                                         # 機身（霧黑）
+            body = rrect(28, 100, 98, 226, 10)
+            p.fillPath(body, hgrad(28, 98, [(0, C("#121315")), (0.22, C("#3b3e43")), (0.35, C("#4a4e53")),
+                                            (0.7, C("#232528")), (1, C("#0f1011"))]))
+            p.fillRect(QRectF(32, 101, 62, 1.2), C("#ffffff", 60))
         # 研磨刻度盤（指針是動態的）
         cx, cy = DIAL
         rg = QRadialGradient(cx - 5, cy - 6, 26)
-        rg.setColorAt(0, C("#f2f4f5"))
-        rg.setColorAt(0.6, C("#9aa1a8"))
-        rg.setColorAt(1, C("#4c5258"))
+        rg.setColorAt(0, C("#f6e6b0" if com else "#f2f4f5"))
+        rg.setColorAt(0.6, C("#c9a24a" if com else "#9aa1a8"))
+        rg.setColorAt(1, C("#6a4a18" if com else "#4c5258"))
         p.setPen(Qt.NoPen)
         p.setBrush(rg)
         p.drawEllipse(QPointF(cx, cy), 19, 19)
@@ -84,8 +98,12 @@ class GrinderRenderer:
         p.fillPath(rrect(36, fork[1] - 6, 98, fork[1] - 1, 2),
                    vgrad(fork[1] - 6, fork[1] - 1, [(0, C("#c9ced3")), (1, C("#4a5055"))]))
         # 豆倉上蓋與頸部
-        p.fillPath(rrect(22, 14, 104, 24, 5), vgrad(14, 24, [(0, C("#3e4247")), (1, C("#141517"))]))
-        p.fillPath(rrect(36, 96, 90, 104, 2), vgrad(96, 104, [(0, C("#c9ced3")), (1, C("#5d646b"))]))
+        if com:
+            p.fillPath(rrect(4, -6, 122, 6, 5), vgrad(-6, 6, [(0, C("#3e4247")), (1, C("#141517"))]))
+            p.fillPath(rrect(30, 96, 96, 106, 2), vgrad(96, 106, [(0, C("#c9ced3")), (1, C("#5d646b"))]))
+        else:
+            p.fillPath(rrect(22, 14, 104, 24, 5), vgrad(14, 24, [(0, C("#3e4247")), (1, C("#141517"))]))
+            p.fillPath(rrect(36, 96, 90, 104, 2), vgrad(96, 104, [(0, C("#c9ced3")), (1, C("#5d646b"))]))
         # 敲渣盒
         self.paint_knock_box(p, self.machine.knock_box)
 
@@ -100,7 +118,8 @@ class GrinderRenderer:
     # ───────────── 動態 ─────────────
     def bean_pixmap(self, level):
         """豆倉裡的咖啡豆：依存量分級快取，避免每幀畫幾百顆豆子"""
-        key = (round(level * 20), self.devicePixelRatioF(), self.scale_f, self.params.roast)
+        style = self._grinder_style()
+        key = (round(level * 20), self.devicePixelRatioF(), self.scale_f, self.params.roast, style)
         cache = getattr(self, "_bean_cache", None)
         if cache and cache[0] == key:
             return cache[1]
@@ -112,11 +131,12 @@ class GrinderRenderer:
         pm.fill(Qt.transparent)
         q = QPainter(pm)
         q.setRenderHint(QPainter.Antialiasing)
-        q.setClipPath(_hopper_path())
-        top = 100 - 52 * clamp(key[0] / 20, 0, 1)
+        q.setClipPath(_hopper_path(style))
+        com = style == "commercial"
+        top = 100 - (74 if com else 52) * clamp(key[0] / 20, 0, 1)
         rnd = random.Random(8)
-        for _ in range(260):
-            bx, by = rnd.uniform(24, 102), rnd.uniform(top, 104)
+        for _ in range(360 if com else 260):
+            bx, by = rnd.uniform(12 if com else 24, 114 if com else 102), rnd.uniform(top, 104)
             q.setPen(Qt.NoPen)
             dark, light, line = BEAN_COLORS.get(key[3], BEAN_COLORS["中焙"])
             q.setBrush(C(mix(dark, light, rnd.random())))
@@ -133,30 +153,35 @@ class GrinderRenderer:
 
     def paint_grinder_dynamic(self, p):
         wf = self.workflow
+        if wf is None and self.twin is not None:                      # 雙頭機：第二杯在備粉時也用這台磨豆機
+            wf = self.twin_get("workflow")
         grinding = bool(wf and wf.grinding)
+        style = self._grinder_style()
         # 豆子（磨豆時微微震動）
         jig = math.sin(self.anim_t * 90) * 0.5 if grinding else 0.0
         p.save()
         p.translate(0, jig)
         p.drawPixmap(QPointF(0, 0), self.bean_pixmap(self.hopper))
         p.restore()
-        hop = _hopper_path()
+        hop = _hopper_path(style)
         p.fillPath(hop, C("#9fb0bc", 38))
         p.setPen(QPen(C("#ffffff", 90), 1.2))
         p.setBrush(Qt.NoBrush)
         p.drawPath(hop)
-        (x0, y0), (x1, y1) = HOPPER[0], HOPPER[3]                    # 左側斜邊：上寬下窄
+        poly = HOPPER_C if style == "commercial" else HOPPER
+        (x0, y0), (x1, y1) = poly[0], poly[3]                        # 左側斜邊：上寬下窄
         def edge(y):
             return x0 + (x1 - x0) * (y - y0) / (y1 - y0)
         strip = QPainterPath()
-        strip.moveTo(edge(30) + 4, 30)
-        strip.lineTo(edge(30) + 9, 30)
+        top_y = 14 if style == "commercial" else 30
+        strip.moveTo(edge(top_y) + 4, top_y)
+        strip.lineTo(edge(top_y) + 9, top_y)
         strip.lineTo(edge(92) + 8, 92)
         strip.lineTo(edge(92) + 4, 92)
         strip.closeSubpath()
         p.save()
         p.setClipPath(hop)
-        p.fillPath(strip, vgrad(30, 92, [(0, C("#ffffff", 70)), (1, C("#ffffff", 20))]))
+        p.fillPath(strip, vgrad(top_y, 92, [(0, C("#ffffff", 70)), (1, C("#ffffff", 20))]))
         p.restore()
 
         # 刻度盤指針：對應研磨粒徑

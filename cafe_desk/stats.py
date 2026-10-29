@@ -18,7 +18,7 @@ import json
 import os
 import sqlite3
 
-from . import paths
+from . import paths, ingredients
 from .festivals import today
 from .growth import level_of
 
@@ -58,6 +58,17 @@ ACHIEVEMENTS = [
     ("world", "環遊世界", "用 7 個產地的豆子為客人做過咖啡"),
     ("world_7", "全產地制霸", "用全部 10 個產地的豆子為客人做過咖啡（含精品豆）"),
     ("bags_10", "豆子愛好者", "開過 10 包豆子"),
+    ("bags_50", "咖啡豆大戶", "開過 50 包豆子"),
+    ("bags_150", "豆子消耗大王", "開過 150 包豆子"),
+    ("ing_30", "備料新手", "營業中用掉 30 份食材（牛奶、醬料、鮮奶油…）"),
+    ("ing_150", "原料大戶", "營業中用掉 150 份食材"),
+    ("ing_500", "食材消耗狂人", "營業中用掉 500 份食材"),
+    ("ing_all", "吧台食材全制霸", "營業中用過每一種常態食材（鮮奶、三種植物奶、鮮奶油、巧克力醬、香草糖漿、焦糖醬、可可粉、冰淇淋、通寧水）"),
+    ("dessert_10", "甜點上架", "營業中賣出 10 個甜點（客人加購）"),
+    ("dessert_50", "甜點專賣店", "營業中賣出 50 個甜點"),
+    ("dessert_200", "甜點大亨", "營業中賣出 200 個甜點"),
+    ("dessert_all", "甜點全制霸", "可頌、蛋糕、馬芬、餅乾都賣出過"),
+    ("dessert_full", "櫥窗滿滿", "櫥窗裡四種甜點同時都有庫存"),
     ("clean", "乾淨的吧台", "四種清潔保養都做過"),
     ("early_bird", "早起的咖啡師", "早上 5–7 點為客人做一杯咖啡"),
     ("night_owl", "夜貓子", "晚上 11 點到凌晨 4 點為客人做一杯咖啡"),
@@ -100,6 +111,9 @@ TIER_GROUPS = {
     "revenue": (("good_business", 5000), ("biz_5000", 15000), ("biz_10000", 30000)),
     "no_walkout": (("no_walkout", 20), ("no_walkout_30", 50), ("no_walkout_50", 100)),
     "shop": (("shop_3", 3), ("shop_6", 6), ("shop_10", 10)),
+    "bags": (("bags_10", 10), ("bags_50", 50), ("bags_150", 150)),         # 開過幾包豆子（消耗咖啡豆）
+    "dessert": (("dessert_10", 10), ("dessert_50", 50), ("dessert_200", 200)),   # 營業中賣出幾個甜點
+    "ing": (("ing_30", 30), ("ing_150", 150), ("ing_500", 500)),           # 營業中用掉幾份食材
     # 兩級的（2026-10-23 整理：原本是兩個單項成就）
     "festival": (("festival", 1), ("festival_all", 3)),                # 為客人做過幾款節日限定飲品（共 3 款）
     "art": (("art_trio", 3), ("art_all", 7)),                           # 為客人拉出幾種拉花圖案（ART_BOOK 7 種）
@@ -109,7 +123,7 @@ ACH_SECTIONS = (
     ("營業", ("first_cup", "ten_cups", "busy_day", "good_business", "no_walkout", "serve_30", "tips_500", "rush",
              "to_go_20", "dine_in_50", "size_l_20", "party_3", "seats_full", "duo_pair", "shop_3")),
     ("手藝", ("perfect", "streak", "regulars", "picky", "fresh", "rosetta", "art_trio", "machines_90", "together")),
-    ("收集", ("all_drinks", "festival", "all_machines", "plant_milk", "world_3", "bags_10")),
+    ("收集", ("all_drinks", "festival", "all_machines", "plant_milk", "world_3", "bags_10", "ing_30", "ing_all", "dessert_10", "dessert_all", "dessert_full")),
     ("沖煮方式", ("first_pourover", "pourover_90", "bloom", "cold_drip", "moka_85", "siphon_85", "all_methods")),
     ("日常", ("daily_7", "clean", "early_bird", "night_owl")),
 )
@@ -136,9 +150,14 @@ CUP_FIELDS = ("ts", "day", "drink", "title", "score", "comment", "machine", "mil
               "festival", "art", "art_q", "seed", "art_note", "is_order", "mods", "match",
               "price", "tip", "wait",                                           # 1.2：營業模式
               "to_go",                                                          # 收銀台：外帶（"1"）／內用（""）
-              "size")                                                           # 大中小杯：S／M／L
-CUP_FIELD_VERSIONS = (19, 22, 23, 24)
+              "size",                                                           # 大中小杯：S／M／L
+              "inspector",                                                      # 評鑑員客人（"1"）：這杯在星級評鑑裡算兩倍
+              "customer")                                                       # 客人的名字（熟客系統 regulars.py）
+CUP_FIELD_VERSIONS = (19, 22, 23, 24, 25, 26)
 REAL_FIELDS = ("score", "bean_age", "dose", "art_q", "match", "price", "tip", "wait")
+
+
+START_FUNDS = 5000          # 錢包的初始資金（不計入店鋪等級的累積營業額；舊存檔也有）
 
 
 def db_path():
@@ -164,6 +183,13 @@ def _sign(prev, values):
 def _empty():
     return {"days": {}, "achievements": {}, "streak": 0, "total": 0, "orders_good": 0, "revenue_total": 0,
             "order_total": 0, "order_streak": 0,     # 成就只算為客人做的杯子（訂單）
+            "bean_stock": {},                        # 各種豆子庫存的包數（商店買的 bean_buy 減開包的 bean_use）
+            "dessert_sold": {}, "dessert_bought": {}, "dessert_spent": 0,   # 甜點：各種賣出的個數、進貨的盤數、進貨花費（購買紀錄）
+            "ing_used_by": {},                       # 各種食材營業中用掉的份數累計（圖鑑與消耗成就）
+            "ing_stock": dict(ingredients.START_STOCK),   # 各種食材庫存的份數（開局送的＋商店買的 ing_buy 減營業用掉的 ing_use）
+            "stamps_spent": 0,                       # 用掉的挑戰章數（裝潢的限定款，decor.py）
+            "customers": {},                         # 客人名字 → {cups, score_sum, fav}（熟客系統）
+            "challenges": [],                        # 完成過的挑戰 id（challenges.py）
             "order_to_go": 0,                        # 外帶的訂單杯數
             "order_dine": 0, "order_large": 0, "order_drinks": {},       # 內用、大杯的訂單杯數（有記大中小杯的新紀錄才算）
             "order_col": {"art": {}, "drinks": [], "machines": [], "milks": [], "origins": [], "machine_best": {}},
@@ -275,6 +301,18 @@ class Stats:
                 self.day(ev["day"])["walkouts"] += 1
             elif ev["kind"] == "purchase":
                 self._apply_purchase(ev["value"])
+            elif ev["kind"] == "bean_buy":
+                self._apply_bean_buy(ev["value"])
+            elif ev["kind"] == "bean_use":
+                self.data["bean_stock"][ev["value"]] = max(0, self.data["bean_stock"].get(ev["value"], 0) - 1)
+            elif ev["kind"] == "ing_buy":
+                self._apply_ing_buy(ev["value"])
+            elif ev["kind"] == "ing_use":
+                self._apply_ing_use(ev["value"])
+            elif ev["kind"] == "decor_stamps":
+                self._apply_stamp_purchase(ev["value"])
+            elif ev["kind"] == "challenge" and ev["value"] not in self.data["challenges"]:
+                self.data["challenges"].append(ev["value"])
         for key, day, sig in self.db.execute("SELECT key, day, sig FROM achievements"):
             if hmac.compare_digest(_sign("ach", (key, day)), sig or ""):
                 self.data["achievements"][key] = day
@@ -289,7 +327,9 @@ class Stats:
         key = date.isoformat() if isinstance(date, datetime.date) else (date or today().isoformat())
         return self.data["days"].setdefault(key, {"cups": 0, "score_sum": 0.0, "best": None, "drinks": {}, "order_drinks": {},
                                                    "orders": 0, "beans_g": 0.0, "revenue": 0, "walkouts": 0,
-                                                   "wait_sum": 0.0, "waited": 0, "tips": 0})
+                                                   "wait_sum": 0.0, "waited": 0, "tips": 0,
+                                                   "rate_sum": 0.0, "rate_n": 0,
+                                                   "hi": {}, "large": 0, "to_go": 0, "dine": 0, "festival": 0})   # 每日挑戰：90 分以上（依飲品）、大杯、外帶、內用、季節限定的訂單杯數        # 星級評鑑：訂單分數的加權總和與權重（評鑑員那杯算 2）
 
     def top_drinks(self, n=3):
         """熱賣前 n 名（為客人做的杯數）：(標題, [(飲品, 杯數)…])；今天不到 n 種就看累積的"""
@@ -325,6 +365,34 @@ class Stats:
         d["beans_g"] += float(cup.get("dose") or 0)
         if cup.get("is_order"):
             d["orders"] += 1
+            name = cup.get("customer")
+            if name:
+                c = self.data["customers"].setdefault(name, {"cups": 0, "score_sum": 0.0, "fav": {}, "size": {}, "milk": {},
+                                                             "to_go": 0, "dine": 0, "last": "", "best": 0.0})
+                c["cups"] += 1
+                c["score_sum"] += score
+                c["fav"][cup["drink"]] = c["fav"].get(cup["drink"], 0) + 1
+                if cup.get("size"):                       # 杯型、內用外帶：舊紀錄沒有，不算
+                    c["size"][cup["size"]] = c["size"].get(cup["size"], 0) + 1
+                    c["to_go" if cup.get("to_go") else "dine"] += 1
+                if cup.get("milk") and cup.get("drink") in ("latte", "cappuccino", "flat_white", "cortado", "macchiato",
+                                                           "mocha", "caramel_macchiato", "iced_latte"):
+                    c["milk"][cup["milk"]] = c["milk"].get(cup["milk"], 0) + 1
+                c["last"] = max(c["last"], cup["day"])
+                c["best"] = max(c["best"], score)
+            w = 2 if cup.get("inspector") else 1
+            d["rate_sum"] += score * w
+            d["rate_n"] += w
+            if score >= 90:
+                d["hi"][cup["drink"]] = d["hi"].get(cup["drink"], 0) + 1
+            if cup.get("size") == "L":
+                d["large"] += 1
+            if cup.get("to_go"):
+                d["to_go"] += 1
+            elif cup.get("size"):
+                d["dine"] += 1
+            if cup.get("festival"):
+                d["festival"] += 1
             d["order_drinks"][cup["drink"]] = d["order_drinks"].get(cup["drink"], 0) + 1      # 熱賣（櫃檯的 MENU 板）
             od = self.data.setdefault("order_drinks", {})
             od[cup["drink"]] = od.get(cup["drink"], 0) + 1
@@ -391,6 +459,7 @@ class Stats:
         row["day"] = today().isoformat()
         row["is_order"] = "1" if cup.get("order") else ""
         row["to_go"] = "1" if cup.get("to_go") else ""
+        row["inspector"] = "1" if cup.get("inspector") else ""
         row["score"] = round(float(cup["score"]), 2)
         for k in ("art_q", "match", "bean_age", "dose", "price", "tip", "wait"):   # REAL 欄位：簽章與讀回的值要一致
             if row[k] is not None:
@@ -427,6 +496,156 @@ class Stats:
         self.day()["walkouts"] += 1
         return self.check(None, ())
 
+    def wallet(self):
+        """錢包餘額：初始資金＋累積營業額－花掉的錢"""
+        return START_FUNDS + self.data["revenue_total"] - self.data["spent"]
+
+    def _apply_bean_buy(self, value):
+        """events 的 bean_buy 值是「產地:價格」：花錢、庫存加一包"""
+        origin, _, price = str(value).rpartition(":")
+        try:
+            self.data["spent"] += int(price)
+        except ValueError:
+            return
+        self.data["bean_stock"][origin] = self.data["bean_stock"].get(origin, 0) + 1
+
+    def record_bean_buy(self, origin, price):
+        """商店買一包豆子（有簽章）；餘額不夠時回傳 False"""
+        if self.wallet() < price:
+            return False
+        value = f"{origin}:{int(price)}"
+        try:
+            self._insert("events", ("ts", "day", "kind", "value"), [stamp(), today().isoformat(), "bean_buy", value])
+        except sqlite3.Error:
+            pass
+        self._apply_bean_buy(value)
+        return True
+
+    def record_bean_use(self, origin):
+        """開一包庫存的豆子（有簽章）；沒有庫存時回傳 False"""
+        if self.data["bean_stock"].get(origin, 0) <= 0:
+            return False
+        try:
+            self._insert("events", ("ts", "day", "kind", "value"), [stamp(), today().isoformat(), "bean_use", origin])
+        except sqlite3.Error:
+            pass
+        self.data["bean_stock"][origin] -= 1
+        return True
+
+    def _apply_ing_buy(self, value):
+        """events 的 ing_buy 值是「食材:價格」：花錢、庫存加一包的份數"""
+        key, _, price = str(value).rpartition(":")
+        if key not in ingredients.ALL:
+            return
+        try:
+            self.data["spent"] += int(price)
+        except ValueError:
+            return
+        self.data["ing_stock"][key] = self.data["ing_stock"].get(key, 0) + ingredients.pack(key)
+        if key in ingredients.DESSERTS:
+            self.data["dessert_bought"][key] = self.data["dessert_bought"].get(key, 0) + 1
+            self.data["dessert_spent"] += int(price)
+
+    def _apply_ing_use(self, value):
+        """events 的 ing_use 值是「食材:份數」：庫存減掉用掉的份數（不會低於 0）；份數是負的＝客人沒取餐、退回庫存
+        （用掉量、賣出量跟著減回去，不會低於 0）"""
+        key, _, n = str(value).rpartition(":")
+        try:
+            n = int(n)
+        except ValueError:
+            return
+        self.data["ing_stock"][key] = max(0, self.data["ing_stock"].get(key, 0) - n)
+        if key in ingredients.ITEMS:
+            self.data["ing_used_by"][key] = max(0, self.data["ing_used_by"].get(key, 0) + n)
+        elif key in ingredients.DESSERTS:
+            self.data["dessert_sold"][key] = max(0, self.data["dessert_sold"].get(key, 0) + n)
+
+    def dessert_log(self, limit=12):
+        """甜點進貨紀錄（新的在前）：[(日期, 甜點 key, 價格)]"""
+        if self.db is None:
+            return []
+        out = []
+        try:
+            rows = self.db.execute("SELECT day, value FROM events WHERE kind='ing_buy' ORDER BY id DESC").fetchall()
+        except sqlite3.Error:                    # 資料庫已關閉（關程式時畫面才重畫）
+            return []
+        for day, value in rows:
+            key, _, price = str(value).rpartition(":")
+            if key in ingredients.DESSERTS:
+                out.append((day, key, int(price) if price.isdigit() else 0))
+                if len(out) >= limit:
+                    break
+        return out
+
+    def record_ing_buy(self, key):
+        """商店買一包食材（有簽章）；餘額不夠或沒這種食材時回傳 False"""
+        if key not in ingredients.ALL or self.wallet() < ingredients.price_of(key):
+            return False
+        value = f"{key}:{ingredients.price_of(key)}"
+        try:
+            self._insert("events", ("ts", "day", "kind", "value"), [stamp(), today().isoformat(), "ing_buy", value])
+        except sqlite3.Error:
+            pass
+        self._apply_ing_buy(value)
+        return True
+
+    def record_ing_use(self, key, n=1):
+        """營業中用掉 n 份食材（有簽章）；庫存不夠時回傳 False（不扣）"""
+        if key not in ingredients.ALL or self.data["ing_stock"].get(key, 0) < n:
+            return False
+        value = f"{key}:{n}"
+        try:
+            self._insert("events", ("ts", "day", "kind", "value"), [stamp(), today().isoformat(), "ing_use", value])
+        except sqlite3.Error:
+            pass
+        self._apply_ing_use(value)
+        return True
+
+    def record_ing_refund(self, key, n=1):
+        """客人沒取餐（等太久離開、打烊）：把先前扣掉的 n 份食材退回庫存（有簽章；事件是負的 ing_use）"""
+        if key not in ingredients.ALL or n <= 0:
+            return False
+        value = f"{key}:{-n}"
+        try:
+            self._insert("events", ("ts", "day", "kind", "value"), [stamp(), today().isoformat(), "ing_use", value])
+        except sqlite3.Error:
+            pass
+        self._apply_ing_use(value)
+        return True
+
+    def _apply_stamp_purchase(self, value):
+        """events 的 decor_stamps 值是「品項:章數」"""
+        key, _, n = str(value).rpartition(":")
+        try:
+            self.data["stamps_spent"] += int(n)
+        except ValueError:
+            return
+        if key not in self.data["owned"]:
+            self.data["owned"].append(key)
+
+    def record_stamp_purchase(self, key, stamps, available):
+        """用挑戰章數兌換限定的裝潢（有簽章）；章數不夠時回傳 False"""
+        if available < stamps:
+            return False
+        value = f"{key}:{int(stamps)}"
+        try:
+            self._insert("events", ("ts", "day", "kind", "value"), [stamp(), today().isoformat(), "decor_stamps", value])
+        except sqlite3.Error:
+            pass
+        self._apply_stamp_purchase(value)
+        return True
+
+    def record_challenge(self, cid):
+        """完成一個每日／每週挑戰（有簽章；同一個挑戰只記一次）"""
+        if cid in self.data["challenges"]:
+            return False
+        try:
+            self._insert("events", ("ts", "day", "kind", "value"), [stamp(), today().isoformat(), "challenge", cid])
+        except sqlite3.Error:
+            pass
+        self.data["challenges"].append(cid)
+        return True
+
     def _apply_purchase(self, value):
         """events 的 purchase 值是「品項:價格」"""
         key, _, price = str(value).rpartition(":")
@@ -439,7 +658,7 @@ class Stats:
 
     def record_purchase(self, key, price):
         """商店買東西（有簽章）；餘額不夠時回傳 False"""
-        if self.data["revenue_total"] - self.data["spent"] < price:
+        if self.wallet() < price:
             return False
         value = f"{key}:{int(price)}"
         try:
@@ -475,7 +694,9 @@ class Stats:
         return {"cups": self.data["order_total"], "busy": d["orders"], "daily": self.day_streak("orders"),
                 "streak": self.data["order_streak"], "regulars": self.data["orders_good"], "world": len(oc["origins"]),
                 "revenue": d["revenue"], "no_walkout": d["waited"] if d["walkouts"] == 0 else 0,
-                "shop": level_of(self.data["revenue_total"]),
+                "shop": level_of(self.data["revenue_total"]), "bags": self.data["collection"]["bags"],
+                "ing": sum(self.data["ing_used_by"].values()),
+                "dessert": sum(self.data["dessert_sold"].values()),
                 "festival": sum(1 for k in oc["drinks"] if k in FESTIVAL_DRINKS),
                 "art": sum(1 for a in ART_BOOK if a in oc["art"])}
 
@@ -501,7 +722,9 @@ class Stats:
             "plant_milk": all(m in oc["milks"] for m in ("oat", "soy", "almond")),
             "picky": bool(cup and cup.get("mods", 0) >= 2 and cup.get("match", 0) >= 99.9),
             "fresh": bool(cup and 7 <= cup.get("bean_age", 0) <= 21 and cup["score"] >= 90),
-            "bags_10": col["bags"] >= 10,
+            "ing_all": all(self.data["ing_used_by"].get(k, 0) > 0 for k in ingredients.COMMON),
+            "dessert_all": all(self.data["dessert_sold"].get(k, 0) > 0 for k in ingredients.DESSERTS),
+            "dessert_full": all(self.data["ing_stock"].get(k, 0) > 0 for k in ingredients.DESSERTS),
             "clean": len(col["cleaned"]) >= 4,
             "early_bird": bool(cup) and 5 <= hour < 7,
             "night_owl": bool(cup) and (hour >= 23 or hour < 4),

@@ -5,11 +5,12 @@ import platform
 from PySide6 import __version__ as QT_VERSION
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGridLayout, QMessageBox
+from PySide6.QtWidgets import QTabWidget, QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGridLayout, QMessageBox
 
 from . import __version__, paths, errlog, theme
 from .i18n import T
 from .stats import db_path
+from .records import RecordsDialog
 
 
 DANGER = "QPushButton { color: #a8321e; border-color: #d29a86; }"     # 無法復原的動作：紅字
@@ -23,8 +24,15 @@ class AboutDialog(QDialog):
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         self.setWindowIcon(app.icon)
         theme.apply_dialog(self)
-        lay = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        tabs = self.tabs = QTabWidget()                     # 關於／說明（遊戲說明從紀錄與收集冊搬來）
+        root.addWidget(tabs)
+        page = QWidget()
+        page.setObjectName("page")
+        lay = QVBoxLayout(page)
         lay.setSpacing(8)
+        tabs.addTab(page, T("關於"))
+        tabs.addTab(RecordsDialog.scroll(RecordsDialog.guide_tab()), T("說明"))
 
         head = QHBoxLayout()
         icon = QLabel()
@@ -76,8 +84,8 @@ class AboutDialog(QDialog):
         close.setDefault(True)
         close.clicked.connect(self.close)
         row.addWidget(close)
-        lay.addLayout(row)
-        self.setMinimumWidth(380)
+        root.addLayout(row)
+        self.setMinimumSize(520, 480)
 
     def confirm_reset(self):
         """重新遊玩：先講清楚會刪掉什麼、保留什麼，預設按鈕是「取消」"""

@@ -138,6 +138,63 @@ def skill(cups):
     return RANKS[rank_of(cups)][2]
 
 
+# ───────────── 飲品專精星級（咖啡師到「大師」之後） ─────────────
+MASTERY_RANK = len(RANKS) - 1                   # 大師才開始有專精星級
+# 每顆星要的（這種飲品做過的杯數, 最高分）：兩個都要到
+MASTERY_STEPS = ((10, 80.0), (30, 86.0), (60, 90.0), (120, 94.0), (250, 97.0))
+MASTERY_K = 0.03                                # 每顆星這種飲品的手感誤差再少 3%（五星少 15%）
+
+
+def mastery_open(total):
+    """咖啡師是「大師」了嗎（總杯數）：專精星級才有效果、才顯示"""
+    return rank_of(total) >= MASTERY_RANK
+
+
+def mastery_stars(info):
+    """這種飲品的專精星級 0–5：info 是圖鑑記的 {count, best}（沒做過＝None）"""
+    if not info:
+        return 0
+    return sum(1 for need, best in MASTERY_STEPS if info["count"] >= need and info["best"] >= best)
+
+
+def mastery_k(stars):
+    return 1 - MASTERY_K * stars
+
+
+# ───────────── 店鋪星級評鑑（Lv.10 之後） ─────────────
+STAR_DAYS = 7              # 看近幾天（含今天）
+STAR_MIN_ORDERS = 10       # 近期至少要有幾杯訂單才評鑑得出來
+STAR_SCORE = (60.0, 95.0)  # 平均分數：60 以下 0 分，95 以上滿分
+STAR_LEAVE = 0.15          # 離開比例：0 滿分，15% 以上 0 分（營業模擬正常約 5%）
+STAR_WAIT = (60.0, 200.0)  # 平均等待秒數：60 秒以內滿分，200 秒以上 0 分（營業模擬約 106–138 秒）
+STAR_W = (0.5, 0.25, 0.25)  # 三項的權重：分數、離開、等待
+INSPECTOR_P = 0.04         # 每位新客人是評鑑員的機率（Lv.10、單點一杯；平均約每 25 位一位）
+
+
+def star_rating(stats, today, level):
+    """近 STAR_DAYS 天的星等 1.0–5.0（會隨近況掉星）；還沒到 Lv.10 或近期訂單不夠時 None。
+    today 是 ISO 日期字串。分數用 rate_sum／rate_n（評鑑員那杯算兩倍）"""
+    if level < MAX_LEVEL:
+        return None
+    import datetime
+    end = datetime.date.fromisoformat(today)
+    keys = {(end - datetime.timedelta(days=i)).isoformat() for i in range(STAR_DAYS)}
+    rows = [d for k, d in stats.data["days"].items() if k in keys]
+    orders = sum(d.get("orders", 0) for d in rows)
+    if orders < STAR_MIN_ORDERS:
+        return None
+    n = sum(d.get("rate_n", 0) for d in rows)
+    avg = sum(d.get("rate_sum", 0.0) for d in rows) / n if n else 0.0
+    walk = sum(d.get("walkouts", 0) for d in rows)
+    leave = walk / (orders + walk)
+    waited = sum(d.get("waited", 0) for d in rows)
+    wait = sum(d.get("wait_sum", 0.0) for d in rows) / waited if waited else STAR_WAIT[0]
+    parts = (clamp((avg - STAR_SCORE[0]) / (STAR_SCORE[1] - STAR_SCORE[0]), 0, 1),
+             clamp(1 - leave / STAR_LEAVE, 0, 1),
+             clamp((STAR_WAIT[1] - wait) / (STAR_WAIT[1] - STAR_WAIT[0]), 0, 1))
+    return 1 + 4 * sum(w * x for w, x in zip(STAR_W, parts))
+
+
 # ───────────── 打烊日報 ─────────────
 def report(stats, day, achievement_days=None):
     """某一天的日報內容；那天沒有接過單時回傳 None。

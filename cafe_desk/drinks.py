@@ -375,6 +375,22 @@ def pair_kind(drink, dp=None):
     return None
 
 
+def pair_compat(d1, dp1, d2, dp2, dual_wand=False):
+    """兩杯能不能在雙頭機一起做：只要是義式的飲品都行（黑咖啡、冰飲、加醬或配料的、阿芙佳朵…各自做前置與後製），
+    限制只有蒸氣管只有一支：兩杯都要打奶時，必須是一壺兩杯份共用的那一種（pair_kind 都是 milk、同一種奶）；
+    有「雙打奶泡」升級（第二支蒸氣管，dual_wand）就沒有這個限制。只有一杯要打奶的，那杯自己打自己的"""
+    if method_of(d1) != "espresso" or method_of(d2) != "espresso":
+        return False
+    if base_of(d1) == "milk" and base_of(d2) == "milk" and not dual_wand:
+        return (pair_kind(d1, dp1) == pair_kind(d2, dp2) == "milk") and dp1.milk_kind == dp2.milk_kind
+    return True
+
+
+def pair_shared_milk(d1, dp1, d2, dp2):
+    """兩杯都是 pair_kind milk：一壺打兩杯份的奶，倒完第一杯接著倒第二杯"""
+    return pair_kind(d1, dp1) == pair_kind(d2, dp2) == "milk"
+
+
 # ═══════════════════════════ 階段 ═══════════════════════════
 
 class Stage:
@@ -628,7 +644,8 @@ class PourStage(Stage):
         return self.c_empty + (self.c_full - self.c_empty) * fill
 
     def pour_tilt(self, fill):
-        return vessels.pour_tilt(self.vessel, self.content(fill))
+        # 液量剩下零時角度會直接跳到最大（壺在一幀內翻過去），所以留一點底：倒到最後只是壓到壺嘴剛好倒得出來的角度
+        return vessels.pour_tilt(self.vessel, max(self.content(fill), 0.015))
 
     def update(self, s, dt):
         self.t += dt
@@ -955,13 +972,15 @@ class Session:
 
     pair：雙頭機成對做兩杯時這杯的角色（desk.py 的 start_pair）。("a", 第二杯的奶量, 交接位置)＝第一杯，
     打兩杯份的奶、倒完後拉花杯停在交接位置；("b", 交接位置, 第一杯的奶量)＝第二杯，不打奶，從交接位置接手倒。
+    兩杯不共用一壺奶（其中一杯不是熱牛奶，或一杯是冰飲…）時第二個欄位是 None：只有成對的停頓，各自做自己的。
     成對時萃取前與萃取後各停一次（hold、waiting），由 desk 依序放行（release），start=False 時一開始就停著。"""
 
     def __init__(self, app, drink, full_flow, dp, pair=None, start=True):
         self.app = app
         self.drink = drink
         self.dp = dp.copy()
-        self.pair_role = pair[0] if pair else None
+        self.paired = pair is not None
+        self.pair_role = pair[0] if pair and pair[1] is not None else None     # 共用一壺奶時才有角色
         self.tag = ""                    # 成對時狀態列前面標「①」「②」
         self.hold = set()                # 走到這些階段時先停著（waiting），等 release()
         self.waiting = False
@@ -1029,12 +1048,12 @@ class Session:
         milk_stages = []
         steam = []                      # 打奶（雙頭機跟萃取同時進行）
         if family == "milk":
-            self.milk = evaluate_milk(self.dp, t, t.milk, drink=drink, skill=app.skill())
+            self.milk = evaluate_milk(self.dp, t, t.milk, drink=drink, skill=app.skill(drink))
             if t.steam_heatup:
                 steam.append(HeatStage())
             if self.pair_role == "a":
                 steam.append(SteamStage(extra_g=pair[1]))
-            elif self.pair_role != "b":
+            elif self.pair_role != "b":                  # 自己打自己的（單杯，或成對但另一杯不要奶）
                 steam.append(SteamStage())
             grams, foam, _, _ = milk_plan(drink, self.dp)
             foam_vol = grams * foam / 100 * FOAM_EXPANSION * MILK_KINDS.get(self.dp.milk_kind, MILK_KINDS["dairy"])["foam"]
@@ -1093,7 +1112,7 @@ class Session:
         self.stages = stages
         self.i = 0
         self.done = False
-        if self.pair_role:                               # 成對：萃取前、萃取後各停一次
+        if self.paired:                                  # 成對：萃取前、萃取後各停一次
             self.hold = {self.brew_i, self.brew_i + 1}
         if start:
             self._start_current()

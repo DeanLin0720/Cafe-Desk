@@ -11,7 +11,7 @@ from ..layout import WIN_H, TOP_PAD
 from ..drinks import DRINKS, ART_NAMES, MILK_NAMES, milk_plan, is_milk, base_of
 from ..model import STYLES
 from ..i18n import T, money, retext
-from .. import maintenance, festivals, brew, orders, i18n
+from .. import maintenance, festivals, brew, orders, i18n, regulars
 from ..util import clamp, lerp
 
 STATUS_H = 52               # 狀態列快取圖的高度（視窗底部往上；膠囊在 WIN_H-50 到 WIN_H-6）
@@ -105,6 +105,8 @@ class OverlayRenderer:
         if self.order_mode and (r is None or (o is not None and o.state == "waiting")):
             if o is not None and o.state == "waiting":
                 if self.business():
+                    if o.usual:
+                        return [(T("{name} 點了老樣子：{title}，咖啡師準備中…", name=T(o.name), title=o.title), "#efe6da")]
                     return [(T("{name} 點了{title}，咖啡師準備中…", name=T(o.name), title=o.title), "#efe6da")]
                 return [(T("{name} 點了{title} · 點擊咖啡機開始製作", name=T(o.name), title=o.title), "#efe6da")]
             return [(T("等待客人點單…"), "#efe6da")]
@@ -366,10 +368,19 @@ class OverlayRenderer:
         """咖啡機正上方的透明區（視窗座標）；拉花卡片也出現時兩張並排"""
         cx = self.machine.card_cx + self.scene_dx()
         lo = self.cards_left()
+        if self.cards_compact():                 # 兩杯各一組：窄一點，左邊那杯的往左、右邊那杯的往右錯開，才排得下
+            cx += -43 if self.machine.g == 0 else 43
+            if self.art_alpha > 0.05 and self.art_state() is not None:
+                return QRectF(clamp(cx - 134, lo, self._scene_w - 4 - 268), TOP_PAD - 132, 160, 120)
+            return QRectF(clamp(cx - 80, lo, self._scene_w - 4 - 160), TOP_PAD - 132, 160, 120)
         if self.art_alpha > 0.05 and self.art_state() is not None:
             left = clamp(cx - 169, lo, self._scene_w - 4 - 344)
             return QRectF(left, TOP_PAD - 132, 208, 120)
         return QRectF(clamp(cx - 104, lo, self._scene_w - 4 - 208), TOP_PAD - 132, 208, 120)
+
+    def cards_compact(self):
+        """雙頭機兩個沖煮頭下面都有杯子：兩杯各自一組卡片，用窄版"""
+        return self.twin_live()
 
     def fit_text(self, p, rect, text, font, flags=Qt.AlignLeft | Qt.AlignVCenter, min_pt=5.5):
         """文字太長時先縮小字級，還是放不下就加刪節號（英文介面的長品名用）"""
@@ -460,7 +471,8 @@ class OverlayRenderer:
                        T("{i}/{n} 杯", i=k + 1, n=len(o.party)))
             p.setPen(C("#8a7a66"))
             name_x = x0 + 50
-        self.fit_text(p, QRectF(name_x, r.top() + 6, x0 + iw - name_x, 12), T(o.name), small, Qt.AlignRight | Qt.AlignVCenter)
+        who = T("{name} · {lv}", name=T(o.name), lv=T(regulars.level_name(o.regular))) if o.regular else T(o.name)
+        self.fit_text(p, QRectF(name_x, r.top() + 6, x0 + iw - name_x, 12), who, small, Qt.AlignRight | Qt.AlignVCenter)
         big = QFont(self.ui, 9)
         big.setBold(True)
         p.setFont(big)
@@ -597,6 +609,9 @@ class OverlayRenderer:
             return
         p.save()
         p.setOpacity(a)
+        s = self.shot
+        if self.machine.g == 1 and (not s or not s.log):          # 第二杯還沒開始萃取：不畫空的卡片
+            return
         r = self.chart_rect()
         p.setBrush(QBrush(C("#14110f", 225)))
         p.setPen(QPen(C("#ffffff", 40), 1))
@@ -659,9 +674,9 @@ class OverlayRenderer:
             p.setPen(C("#bfb3a5"))
             w = QFontMetricsF(small).horizontalAdvance(label)
             p.drawText(QPointF(lx + 11, plot.bottom() + 11), label)
-            lx += w + 22
+            lx += w + (22 if r.width() >= 200 else 8)         # 窄版卡片（兩杯各一組）圖例排緊一點
         last = s.log[-1]
         p.setPen(C("#efe6da"))
-        p.drawText(QRectF(r.x() + 10, r.bottom() - 18, r.width() - 20, 14), Qt.AlignCenter,
-                   f"EY {s.res.ey:.1f}%  ·  TDS {s.res.tds:.1f}%  ·  {last[0]:.1f} s  ·  {last[3]:.1f} g")
+        self.fit_text(p, QRectF(r.x() + 6, r.bottom() - 18, r.width() - 12, 14),
+                      f"EY {s.res.ey:.1f}%  ·  TDS {s.res.tds:.1f}%  ·  {last[0]:.1f} s  ·  {last[3]:.1f} g", small, Qt.AlignCenter)
         p.restore()
