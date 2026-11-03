@@ -29,7 +29,12 @@ METHOD_LEVEL = {"espresso": 1, "pourover": 2, "moka": 4, "colddrip": 6, "siphon"
 # 沖煮台的飲品另外看店鋪等級（METHOD_LEVEL）
 DRINK_RANK = {"doppio": 1, "iced_americano": 1, "iced_latte": 1, "cappuccino": 1,
               "ristretto": 2, "lungo": 2, "flat_white": 2, "cortado": 2, "macchiato": 2,
-              "mocha": 3, "caramel_macchiato": 3, "espresso_tonic": 3, "affogato": 3}
+              "mocha": 3, "caramel_macchiato": 3, "espresso_tonic": 3, "affogato": 3,
+              # 1.7 加的飲品（香草拿鐵、熱可可、蜂蜜牛奶、檸檬美式一開始就有）
+              "con_panna": 1, "vienna": 1, "iced_vanilla_latte": 1, "hazelnut_latte": 1, "ginger_milk": 1,
+              "tea_latte": 1, "milk_tea": 1, "italian_soda": 1, "brown_sugar_milk": 1, "iced_pour_over": 1,
+              "iced_mocha": 2, "iced_caramel_latte": 2, "coconut_latte": 2, "matcha_latte": 2, "iced_matcha_latte": 2,
+              "coffee_float": 2, "cocoa_float": 2, "orange_coffee": 2, "dirty_latte": 3}
 FESTIVAL_RANK = 1           # 節日限定飲品（加醬的拿鐵）
 
 

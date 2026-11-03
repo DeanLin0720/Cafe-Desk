@@ -19,7 +19,7 @@ import os
 import sqlite3
 
 from . import paths, ingredients
-from .festivals import today
+from .festivals import today, FESTIVALS
 from .growth import level_of
 
 _KEY = hashlib.sha256(b"cafe-desk/records/v1:" + b"\x63\x61\x66\x65").digest()
@@ -115,7 +115,7 @@ TIER_GROUPS = {
     "dessert": (("dessert_10", 10), ("dessert_50", 50), ("dessert_200", 200)),   # 營業中賣出幾個甜點
     "ing": (("ing_30", 30), ("ing_150", 150), ("ing_500", 500)),           # 營業中用掉幾份食材
     # 兩級的（2026-10-23 整理：原本是兩個單項成就）
-    "festival": (("festival", 1), ("festival_all", 3)),                # 為客人做過幾款節日限定飲品（共 3 款）
+    "festival": (("festival", 1), ("festival_all", len(FESTIVALS))),   # 為客人做過幾款節日限定飲品（每個節日一款）
     "art": (("art_trio", 3), ("art_all", 7)),                           # 為客人拉出幾種拉花圖案（ART_BOOK 7 種）
 }
 # 成就頁的分類：(標題, key…)；分級成就用組裡任一個 key
@@ -136,6 +136,18 @@ def tier_rank(key):
     group, level = TIER_OF[key]
     return level + 3 - len(TIER_GROUPS[group])
 ART_BOOK = ("heart", "tulip", "rosetta", "dot", "mark", "whip", "blob")
+# 熟客的牛奶偏好只看這些飲品（可以換奶的；舊的八種加上 1.7 的牛奶飲品）
+MILK_HABIT_DRINKS = ("latte", "cappuccino", "flat_white", "cortado", "macchiato", "mocha", "caramel_macchiato", "iced_latte",
+                     "vanilla_latte", "hazelnut_latte", "iced_vanilla_latte", "iced_mocha", "iced_caramel_latte",
+                     "dirty_latte", "hot_cocoa", "matcha_latte", "tea_latte", "iced_matcha_latte", "milk_tea")
+
+
+def _shift(ts, sec):
+    """時間戳加減幾秒（格式跟 stamp() 一樣）；格式不對就原樣傳回"""
+    try:
+        return (datetime.datetime.fromisoformat(ts) + datetime.timedelta(seconds=sec)).isoformat(timespec="seconds")
+    except (TypeError, ValueError):
+        return ts or ""
 
 
 def stamp():
@@ -152,8 +164,9 @@ CUP_FIELDS = ("ts", "day", "drink", "title", "score", "comment", "machine", "mil
               "to_go",                                                          # 收銀台：外帶（"1"）／內用（""）
               "size",                                                           # 大中小杯：S／M／L
               "inspector",                                                      # 評鑑員客人（"1"）：這杯在星級評鑑裡算兩倍
-              "customer")                                                       # 客人的名字（熟客系統 regulars.py）
-CUP_FIELD_VERSIONS = (19, 22, 23, 24, 25, 26)
+              "customer",                                                       # 客人的名字（熟客系統 regulars.py）
+              "dessert")                                                        # 這杯加購的甜點（ingredients.DESSERTS 的 key）
+CUP_FIELD_VERSIONS = (19, 22, 23, 24, 25, 26, 27)
 REAL_FIELDS = ("score", "bean_age", "dose", "art_q", "match", "price", "tip", "wait")
 
 
@@ -184,7 +197,7 @@ def _empty():
     return {"days": {}, "achievements": {}, "streak": 0, "total": 0, "orders_good": 0, "revenue_total": 0,
             "order_total": 0, "order_streak": 0,     # 成就只算為客人做的杯子（訂單）
             "bean_stock": {},                        # 各種豆子庫存的包數（商店買的 bean_buy 減開包的 bean_use）
-            "dessert_sold": {}, "dessert_bought": {}, "dessert_spent": 0,   # 甜點：各種賣出的個數、進貨的盤數、進貨花費（購買紀錄）
+            "dessert_sold": {}, "dessert_bought": {}, "dessert_spent": 0,   # 甜點：各種賣出的個數、進貨的盤數、進貨花費
             "ing_used_by": {},                       # 各種食材營業中用掉的份數累計（圖鑑與消耗成就）
             "ing_stock": dict(ingredients.START_STOCK),   # 各種食材庫存的份數（開局送的＋商店買的 ing_buy 減營業用掉的 ing_use）
             "stamps_spent": 0,                       # 用掉的挑戰章數（裝潢的限定款，decor.py）
@@ -375,8 +388,7 @@ class Stats:
                 if cup.get("size"):                       # 杯型、內用外帶：舊紀錄沒有，不算
                     c["size"][cup["size"]] = c["size"].get(cup["size"], 0) + 1
                     c["to_go" if cup.get("to_go") else "dine"] += 1
-                if cup.get("milk") and cup.get("drink") in ("latte", "cappuccino", "flat_white", "cortado", "macchiato",
-                                                           "mocha", "caramel_macchiato", "iced_latte"):
+                if cup.get("milk") and cup.get("drink") in MILK_HABIT_DRINKS:
                     c["milk"][cup["milk"]] = c["milk"].get(cup["milk"], 0) + 1
                 c["last"] = max(c["last"], cup["day"])
                 c["best"] = max(c["best"], score)
@@ -560,22 +572,34 @@ class Stats:
         elif key in ingredients.DESSERTS:
             self.data["dessert_sold"][key] = max(0, self.data["dessert_sold"].get(key, 0) + n)
 
-    def dessert_log(self, limit=12):
-        """甜點進貨紀錄（新的在前）：[(日期, 甜點 key, 價格)]"""
+    def dessert_sales(self, limit=30):
+        """營業中賣出的甜點（新的在前）：[(時間, 甜點 key)]。客人沒取餐退回的（之後一筆負的 ing_use）不算"""
         if self.db is None:
             return []
-        out = []
         try:
-            rows = self.db.execute("SELECT day, value FROM events WHERE kind='ing_buy' ORDER BY id DESC").fetchall()
+            rows = self.db.execute("SELECT ts, value FROM events WHERE kind='ing_use' ORDER BY id DESC").fetchall()
         except sqlite3.Error:                    # 資料庫已關閉（關程式時畫面才重畫）
             return []
-        for day, value in rows:
-            key, _, price = str(value).rpartition(":")
-            if key in ingredients.DESSERTS:
-                out.append((day, key, int(price) if price.isdigit() else 0))
-                if len(out) >= limit:
-                    break
-        return out
+        out, refunded = [], {}
+        for ts, value in rows:
+            key, _, n = str(value).rpartition(":")
+            if key not in ingredients.DESSERTS:
+                continue
+            try:
+                n = int(n)
+            except ValueError:
+                continue
+            if n < 0:                            # 退回：抵掉前面（時間更早）最近的那幾份
+                refunded[key] = refunded.get(key, 0) - n
+                continue
+            for _ in range(n):
+                if refunded.get(key, 0) > 0:
+                    refunded[key] -= 1
+                    continue
+                out.append((ts or "", key))
+            if len(out) >= limit:
+                break
+        return out[:limit]
 
     def record_ing_buy(self, key):
         """商店買一包食材（有簽章）；餘額不夠或沒這種食材時回傳 False"""
@@ -676,6 +700,32 @@ class Stats:
         rows = list(self._verified("cups", CUP_FIELDS, CUP_FIELD_VERSIONS))
         self.tampered = keep
         return rows[-n:][::-1]
+
+    def recent_with_desserts(self, n=20, window=900):
+        """最近幾杯，加購的甜點併進那一杯（cup["dessert"]）：新紀錄的杯子本身就記了甜點；
+        舊紀錄沒有，用時間對：甜點是下單時賣出的，配給 window 秒內、之後第一杯還沒配到甜點的點單"""
+        cups = self.recent(n)
+        if not cups:
+            return cups
+        oldest = min(c["ts"] or "" for c in cups)
+        sales = [(ts, k) for ts, k in self.dessert_sales(n * 4) if ts >= _shift(oldest, -window)][::-1]   # 舊 → 新
+        used = [False] * len(sales)
+        asc = sorted(cups, key=lambda c: c["ts"] or "")
+        for c in asc:                                    # 記了甜點的：用掉它下單時那一筆（之前最近的同一種）
+            if c.get("dessert"):
+                for i in range(len(sales) - 1, -1, -1):
+                    if not used[i] and sales[i][1] == c["dessert"] and sales[i][0] <= (c["ts"] or ""):
+                        used[i] = True
+                        break
+        for i, (ts, key) in enumerate(sales):           # 舊紀錄：之後第一杯還沒配到甜點的點單
+            if used[i]:
+                continue
+            for c in asc:
+                if c.get("is_order") and not c.get("dessert") and ts <= (c["ts"] or "") <= _shift(ts, window):
+                    c["dessert"] = key
+                    used[i] = True
+                    break
+        return cups
 
     def record_bag(self, origin):
         """開了一包新豆子"""

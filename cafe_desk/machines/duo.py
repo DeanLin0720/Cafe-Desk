@@ -9,13 +9,10 @@
 兩個沖煮頭共用一個 Machine 實例：g＝目前在算哪一個（0＝左、1＝右），group_pf、cup_cx 跟著換；
 CafeDesk.on_twin() 換到第二杯時把 g 設成 1，結束時設回 0。
 """
-import math
-
 from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import QPen, QPainterPath, QFont, QRadialGradient
 
 from ..gfx import C, vgrad, hgrad, rrect
-from ..util import clamp
 from .base import Machine, Traits
 
 PRESSURE_RANGE = (0.0, 12.0)
@@ -46,7 +43,7 @@ class Duo(Machine):
     vent = (110, 50)
     gauge_r = 13
     knob = (32, 78)                       # 左邊蒸氣桿座的中心
-    heat_lamp = (R - 14, 108)
+    heat_lamp = (R - 34, 100)              # 加熱燈：右側蒸氣桿座左邊的深色機身上（不要放在 y 108 的鉻條上，前景圖層會蓋住）
 
     # 蒸氣管（機身座標）：左邊一支；有「雙打奶泡」升級時右邊再一支（鏡射），第二個沖煮頭（g＝1）的杯子用右邊那支
     _WAND = ((78, 118), (90, 210), (96, 222))                # 轉軸藏在遮檐後面                # 蒸氣管在機身內側（離側柱一段距離）

@@ -215,7 +215,6 @@ def test_book_has_subtabs_with_ingredients(desk, qapp):
 def test_rack_items_leave_the_shelf_while_in_use(desk, unlocked):
     """做飲品要用的配料從配料架上拿走：鮮奶油槍、可可粉篩網、醬料擠瓶、通寧水；用完放回去"""
     from cafe_desk import drinks
-    from cafe_desk.render import shop
     desk.set_order_mode(True)
     assert desk.rack_in_use() == set()
     assert desk.start_session("mocha", False)
@@ -226,6 +225,33 @@ def test_rack_items_leave_the_shelf_while_in_use(desk, unlocked):
         if not desk.busy() and not desk.session:
             break
     assert {"choc", "cream", "cocoa"} <= seen, seen
-    assert seen <= set(shop.RACK_KINDS)
+    assert seen <= set(desk.rack_kinds())
     desk.counter_view = False
     desk.host.grab()                                            # 畫得出來
+
+
+def test_rack_shows_stocked_ingredients(desk):
+    """配料架擺有庫存的食材（冰箱裡的鮮奶、冰淇淋不算）；買了新食材就多一件，一層放不下往上加一層"""
+    from cafe_desk.render import shop
+    stock = desk.stats.data["ing_stock"]
+    kinds = desk.rack_kinds()
+    assert "milk" not in kinds and "icecream" not in kinds and "choc" in kinds
+    assert "hazelnut" not in kinds
+    assert desk.buy_ingredient("hazelnut")
+    assert "hazelnut" in desk.rack_kinds()
+    for k in ingredients.ITEMS:
+        stock[k] = 5
+    kinds = desk.rack_kinds()
+    assert len(kinds) == len(ingredients.ITEMS) - len(shop.RACK_FRIDGE)
+    pos = shop.rack_positions(0, 160, 100, kinds)
+    assert [k for k, _, _ in pos] == list(kinds), "每件都擺上去"
+    rows = sorted({y for _, _, y in pos}, reverse=True)
+    assert len(rows) > 1 and rows[0] == 100, "放不下就往上加層"
+    for y in rows:
+        xs = sorted(cx for _, cx, yy in pos if yy == y)
+        assert all(b - a >= shop.RACK_STEP for a, b in zip(xs, xs[1:])), "同一層不擠在一起"
+    desk.set_order_mode(True)
+    desk.counter_view = False
+    desk.host.grab()
+    desk.counter_view = True
+    desk.host.grab()

@@ -103,3 +103,33 @@ def test_grinder_icon_has_no_knock_box(desk):
     finally:
         type(desk).paint_knock_box = orig
     assert not calls and "paint_knock_box" not in desk.__dict__
+
+
+def test_next_level_progress():
+    """升下一級還差多少：杯數與平均分數；最高等級回傳 None"""
+    from cafe_desk import regulars
+    assert regulars.next_level({"cups": 1, "score_sum": 90.0})[:3] == ("熟面孔", 2, None)
+    name, cups, avg, prog = regulars.next_level({"cups": 4, "score_sum": 4 * 70.0})
+    assert (name, cups, avg, prog) == ("熟面孔", 0, 75.0, 0.95), "杯數夠了、平均還不到：停在 0.95"
+    name, cups, avg, prog = regulars.next_level({"cups": 5, "score_sum": 5 * 78.0})
+    assert name == "熟客" and cups == 3 and avg == 80.0 and abs(prog - 5 / 8) < 1e-9
+    assert regulars.next_level({"cups": 20, "score_sum": 20 * 90.0}) is None
+
+
+def test_customers_tab_cards(desk):
+    """客人分頁：熟客名冊與其他客人分開，每位一張卡片"""
+    from PySide6.QtWidgets import QFrame, QLabel
+    from cafe_desk.records import RecordsDialog
+    for i in range(4):
+        desk.stats.record({"drink": "latte", "title": "拿鐵", "score": 88, "comment": "", "order": True, "price": 120,
+                           "tip": 0, "customer": "Amy", "size": "L", "to_go": ""}, [])
+    desk.stats.record({"drink": "espresso", "title": "濃縮", "score": 70, "comment": "", "order": True, "price": 70,
+                       "tip": 0, "customer": "Ken", "size": "M", "to_go": "1"}, [])
+    dlg = RecordsDialog(desk)
+    tab = dlg.customers_tab()
+    cards = [f for f in tab.findChildren(QFrame) if f.objectName() == "custcard"]
+    texts = " ".join(lab.text() for lab in tab.findChildren(QLabel))
+    assert len(cards) == 2
+    assert "熟客名冊（1 位）" in texts and "其他客人（1 位）" in texts and "老樣子：熱拿鐵" in texts
+    assert "升「熟客」" in texts and "升「熟面孔」：再 2 杯、平均要 75 分" in texts
+    dlg.close()

@@ -5,7 +5,6 @@
 熟客等級看「累積杯數」與「平均分數」（兩個都要到）；之後做得不好平均掉下來，等級也會掉。
 熟客會常回來、常點「老樣子」（最常點的飲品）、給更多小費、比較有耐心。
 """
-import random
 
 # (需要杯數, 需要平均分數, 稱號)；索引 0 是等級 1
 LEVELS = ((3, 75.0, "熟面孔"), (8, 80.0, "熟客"), (15, 85.0, "老朋友"))
@@ -34,6 +33,21 @@ def tip_k(level):
 
 def patience_k(level):
     return 1 + PATIENCE_STEP * level
+
+
+def next_level(rec):
+    """升下一級還差多少：(下一級稱號, 還要幾杯, 平均要幾分, 進度 0–1)；已經是最高等級時 None。
+    杯數與平均分數兩個都要到；進度看杯數，杯數夠了但平均還不到時停在 0.95"""
+    lv = level_of(rec)
+    if lv >= len(LEVELS):
+        return None
+    need, score, name = LEVELS[lv]
+    cups = (rec or {}).get("cups", 0)
+    avg = rec["score_sum"] / cups if cups else 0.0
+    prog = min(1.0, cups / need)
+    if prog >= 1.0 and avg < score:
+        prog = 0.95
+    return name, max(0, need - cups), score if avg < score else None, prog
 
 
 def favorite(rec):

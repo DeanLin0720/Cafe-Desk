@@ -4,7 +4,7 @@ import random
 from PySide6.QtGui import QImage, QPainter
 
 from cafe_desk import ingredients, orders, stats
-from cafe_desk.i18n import EN
+from cafe_desk.i18n import EN, money
 from cafe_desk.render import shop
 
 
@@ -60,6 +60,24 @@ def test_counter_paints_with_and_without_desserts(desk):
         p = QPainter(img)
         desk.paint_counter(p)
         p.end()
+
+
+def test_counter_layer_cache_redraws_when_shop_changes(desk):
+    """櫃檯畫面的店面快取：沒變就重用同一張圖，甜點庫存、裝潢、語言變了就重畫"""
+    desk.counter_view = True
+    desk.stats.data["ing_stock"].update({k: 0 for k in ingredients.DESSERTS})
+    frame = lambda: (desk.paintEvent(None), dict(desk._counter_layers))[1]
+    a = frame()
+    assert set(a) == {"room", "front"}
+    b = frame()
+    assert b["room"] is a["room"] and b["front"] is a["front"], "沒變就重用"
+    desk.stats.data["ing_stock"]["cake"] = 5
+    c = frame()
+    assert c["front"] is not b["front"] and c["room"] is b["room"], "甜點進貨：只重畫前櫃檯"
+    desk.cfg["decor"] = {"wall": "brick"}
+    desk.stats.data["owned"].append("brick")
+    d = frame()
+    assert d["room"] is not c["room"] and d["front"] is not c["front"], "換裝潢：兩層都重畫"
 
 
 def test_dessert_add_on_discounted_and_uses_stock(desk, unlocked, monkeypatch):
@@ -157,21 +175,45 @@ def test_dessert_achievements_and_counts(desk):
             assert a[1] in EN and a[2] in EN
 
 
-def test_purchase_log_survives_reload_and_shows_in_store(desk, qapp):
+def test_store_dessert_tab_has_no_purchase_log(desk, qapp):
+    """商店「甜點」分頁不再列購買紀錄"""
     from cafe_desk.records import RecordsDialog
+    from PySide6.QtWidgets import QLabel
     _earn(desk.stats, 5000)
-    assert desk.stats.dessert_log() == []
     desk.buy_ingredient("cake")
-    desk.buy_ingredient("cookie")
-    log = desk.stats.dessert_log()
-    assert [k for _, k, _ in log] == ["cookie", "cake"], "新的在前"
-    assert log[0][2] == ingredients.price_of("cookie")
     dlg = RecordsDialog(desk, "shop")
     dlg.store_sub.setCurrentIndex(4)
     dlg.refresh_store()
-    from PySide6.QtWidgets import QLabel
     text = " ".join(lb.text() for lb in dlg.store_sub.currentWidget().widget().findChildren(QLabel))
-    assert "累計進貨 2 盤" in text and "進貨一盤蛋糕" in text
+    assert "購買紀錄" not in text and "進貨一盤" not in text
+    dlg.close()
+
+
+def test_recent_records_merge_dessert_into_its_cup(desk, qapp, monkeypatch):
+    """近期紀錄：加購的甜點併進那一杯（品名「飲品 ＋ 甜點」，不另列、不寫甜點價格）；
+    新紀錄的杯子本身記了甜點，舊紀錄（沒有 dessert 欄位）用時間對到之後的那杯點單；客人沒取餐退回的不算"""
+    from cafe_desk.records import RecordsDialog
+    from PySide6.QtWidgets import QLabel
+    from cafe_desk import stats as stats_mod
+    _earn(desk.stats, 5000)
+    desk.buy_ingredient("cake")
+    desk.buy_ingredient("cookie")
+    clock = iter(f"2026-10-31T10:{m:02d}:00" for m in range(60))
+    monkeypatch.setattr(stats_mod, "stamp", lambda: next(clock))
+    desk.stats.record_ing_use("cake", 1)                 # 10:00 舊紀錄：杯子沒記甜點
+    desk.stats.record({"drink": "latte", "score": 90, "order": True}, [])                      # 10:01
+    desk.stats.record({"drink": "americano", "score": 80, "order": True}, [])                  # 10:02（沒加購）
+    desk.stats.record_ing_use("cookie", 1)               # 10:03 新紀錄：杯子記了甜點
+    desk.stats.record({"drink": "mocha", "score": 85, "order": True, "dessert": "cookie"}, [])  # 10:04
+    desk.stats.record_ing_use("cake", 1)                 # 10:05 客人沒取餐
+    desk.stats.record_ing_refund("cake", 1)              # 10:06
+    desk.stats.record({"drink": "espresso", "score": 88, "order": True}, [])                   # 10:07
+    got = [(c["drink"], c.get("dessert")) for c in desk.stats.recent_with_desserts(10)[:4]]
+    assert got == [("espresso", None), ("mocha", "cookie"), ("americano", None), ("latte", "cake")]
+    dlg = RecordsDialog(desk, None)
+    text = " ".join(lb.text() for lb in dlg.findChildren(QLabel))
+    assert "拿鐵 ＋ 蛋糕" in text and "摩卡 ＋ 餅乾" in text
+    assert money(ingredients.dessert_price("cookie")) not in text
     dlg.close()
 
 
@@ -232,3 +274,13 @@ def test_closing_and_switching_mode_refund_waiting_orders(desk, unlocked, monkey
     assert desk.ing_stock("cake") == 2
     desk.set_order_mode(False)                               # 打烊／切回練習：還沒做的單中止，庫存退回
     assert desk.ing_stock("cake") == 3 and desk.stats.data["dessert_sold"].get("cake", 0) == 0
+
+
+def test_every_dessert_has_realistic_art(qapp):
+    """每種甜點都有寫實圖（render/dessert_art.py）；圖鑑還沒賣過的是剪影，跟賣過的不一樣"""
+    from cafe_desk.render.dessert_art import DESSERT_ART
+    from cafe_desk.render.icons import dessert_icon
+    assert set(ingredients.DESSERTS) <= set(DESSERT_ART)
+    for k in ingredients.DESSERTS:
+        a, b = dessert_icon(k, 64).toImage(), dessert_icon(k, 64, ok=False).toImage()
+        assert a != b

@@ -8,11 +8,13 @@ from PySide6.QtGui import QPen, QBrush, QFont, QFontMetricsF, QPainterPath, QCol
 
 from ..gfx import C, mix, rrect
 from ..layout import WIN_H, TOP_PAD
-from ..drinks import DRINKS, ART_NAMES, MILK_NAMES, milk_plan, is_milk, base_of
+from ..drinks import DRINKS, ART_NAMES, MILK_NAMES, SYRUPS, milk_plan, is_milk, base_of, has_shot, cold_of, cold_amount, syrup_amount
 from ..model import STYLES
 from ..i18n import T, money, retext
 from .. import maintenance, festivals, brew, orders, i18n, regulars
 from ..util import clamp, lerp
+
+COLD_NAMES = {"cold_water": "冷水", "tonic": "通寧水", "soda": "氣泡水", "orange": "柳橙汁"}
 
 STATUS_H = 52               # 狀態列快取圖的高度（視窗底部往上；膠囊在 WIN_H-50 到 WIN_H-6）
 
@@ -160,6 +162,8 @@ class OverlayRenderer:
             drink = self.drink
         info = (f"{T(DRINKS[drink]['name'])} · {T(p_.roast)} {p_.dose:g}g→{p_.yield_g:g}g · {p_.grind_um:.0f}µm · "
                 f"{round(p_.temp, 1):g}°C")             # 溫度最多一位小數（咖啡師調的參數不一定是整數）
+        if not has_shot(drink):                           # 熱可可、奶茶…：沒有濃縮參數
+            info = T(DRINKS[drink]["name"])
         if self.session:
             dp = self.session.dp
         elif self.result is not None and self.last_dp is not None and not (o and o.state == "waiting"):
@@ -196,12 +200,14 @@ class OverlayRenderer:
                 info += T(" · 巧克力醬 {g:.0f}g", g=dp.choc_g)
             elif drink == "caramel_macchiato":
                 info += T(" · 香草糖漿 {g:.0f}g", g=dp.vanilla_g)
+            elif DRINKS[drink].get("syrup") and not DRINKS[drink].get("festival"):
+                info += T(" · {name} {g:.0f}g", name=T(SYRUPS[DRINKS[drink]["syrup"]]["name"]), g=syrup_amount(drink, dp))
             if dp.art in ART_NAMES and drink in ("latte", "cappuccino", "flat_white", "cortado") \
                     or (drink == "mocha" and not dp.whip and dp.art in ART_NAMES):
                 info += T(" · 拉{name}", name=T(ART_NAMES[dp.art]))
-        elif drink == "americano":
+        elif drink in ("americano", "vienna"):
             info += T(" · 熱水 {g:.0f}g", g=dp.water_g)
-        elif drink == "iced_americano":
+        elif drink in ("iced_americano", "lemon_americano", "coffee_float"):
             info += T(" · 冰塊 {n:.0f} · 冷水 {g:.0f}g", n=dp.ice, g=dp.iced_water_g)
         elif drink == "iced_latte":
             info += T(" · 冰塊 {n:.0f} · {milk} {g:.0f}g", n=dp.ice, milk=milk_name, g=dp.iced_milk_g)
@@ -209,6 +215,12 @@ class OverlayRenderer:
             info += T(" · 冰塊 {n:.0f} · 通寧水 {g:.0f}g", n=dp.ice, g=dp.tonic_g)
         elif drink == "affogato":
             info += T(" · 香草冰淇淋 {g:.0f}g", g=dp.scoop_g)
+        elif family == "iced":                            # 新的冰飲：冰塊、冷液體、醬
+            cold = cold_of(drink)
+            name = milk_name if cold == "cold_milk" else T(COLD_NAMES.get(cold, "冷水"))
+            info += T(" · 冰塊 {n:.0f} · {milk} {g:.0f}g", n=dp.ice, milk=name, g=cold_amount(drink, dp))
+            if DRINKS[drink].get("syrup"):
+                info += T(" · {name} {g:.0f}g", name=T(SYRUPS[DRINKS[drink]["syrup"]]["name"]), g=syrup_amount(drink, dp))
         if s and s.style in STYLES:
             info += T(" · 以 {name} 標準評分", name=STYLES[s.style]["name"])
         if self.business():
@@ -303,12 +315,97 @@ class OverlayRenderer:
             p.setBrush(C("#e04040"))
             p.drawEllipse(QPointF(-3, 2), 1.2, 1.2)
             p.drawEllipse(QPointF(3, -3), 1.2, 1.2)
-        elif icon == "heart":
+        elif icon in ("heart", "white_heart"):
             path = QPainterPath()
             path.moveTo(0, 6)
             path.cubicTo(QPointF(-9, 0), QPointF(-5, -8), QPointF(0, -3))
             path.cubicTo(QPointF(5, -8), QPointF(9, 0), QPointF(0, 6))
-            p.fillPath(path, C("#e0506a"))
+            if icon == "heart":
+                p.fillPath(path, C("#e0506a"))
+            else:                                                           # 白色情人節：白色愛心、粉紅邊
+                p.fillPath(path, C("#fbf6f0"))
+                p.setPen(QPen(C("#e890a8"), 1.2))
+                p.drawPath(path)
+        elif icon == "firework":                                            # 新年：金色與紅色的煙火
+            for k in range(10):
+                a = math.radians(k * 36)
+                p.setPen(QPen(C("#ffd24a" if k % 2 else "#ff6a5a"), 1.4, Qt.SolidLine, Qt.RoundCap))
+                p.drawLine(QPointF(math.cos(a) * 3, math.sin(a) * 3), QPointF(math.cos(a) * 8.5, math.sin(a) * 8.5))
+            p.setPen(Qt.NoPen)
+            p.setBrush(C("#fff0b0"))
+            p.drawEllipse(QPointF(0, 0), 1.8, 1.8)
+        elif icon == "balloon":                                             # 兒童節：紅色氣球
+            p.setPen(QPen(C("#c8c0b0"), 0.9))
+            p.drawLine(QPointF(0, 3), QPointF(1.5, 10))
+            p.setPen(Qt.NoPen)
+            p.setBrush(C("#e8483a"))
+            p.drawEllipse(QPointF(0, -3), 5.5, 6.8)
+            p.drawPolygon(QPolygonF([QPointF(-1.4, 4.2), QPointF(1.4, 4.2), QPointF(0, 2.6)]))
+            p.setBrush(C("#ffffff", 150))
+            p.drawEllipse(QPointF(-2, -5.5), 1.4, 2)
+        elif icon == "tie":                                                 # 父親節：深藍色領帶
+            p.setBrush(C("#2a4a7a"))
+            p.drawPolygon(QPolygonF([QPointF(-2.6, -9), QPointF(2.6, -9), QPointF(1.4, -5.5), QPointF(-1.4, -5.5)]))
+            p.drawPolygon(QPolygonF([QPointF(-1.6, -5), QPointF(1.6, -5), QPointF(4, 5), QPointF(0, 9), QPointF(-4, 5)]))
+            p.setPen(QPen(C("#8ab0e0"), 1))
+            for yy in (-1, 3):
+                p.drawLine(QPointF(-2.2, yy + 1.5), QPointF(2.2, yy - 1.5))
+            p.setPen(Qt.NoPen)
+        elif icon == "lantern":                                             # 春節：紅燈籠
+            p.setPen(QPen(C("#d8a83a"), 1))
+            p.drawLine(QPointF(0, -10), QPointF(0, -7))
+            p.drawLine(QPointF(0, 7), QPointF(0, 10))
+            p.setPen(Qt.NoPen)
+            p.setBrush(C("#d8302a"))
+            p.drawEllipse(QPointF(0, 0), 7.5, 6.5)
+            p.setBrush(C("#d8a83a"))
+            p.drawRect(QRectF(-3.5, -7.5, 7, 2))
+            p.drawRect(QRectF(-3.5, 5.5, 7, 2))
+            p.setPen(QPen(C("#a82020"), 0.8))
+            p.drawLine(QPointF(0, -6), QPointF(0, 6))
+            p.setPen(Qt.NoPen)
+        elif icon == "egg":                                                 # 復活節：彩蛋
+            path = QPainterPath()
+            path.addEllipse(QPointF(0, 0.5), 6, 8.5)
+            p.fillPath(path, C("#a8d8e8"))
+            p.save()
+            p.setClipPath(path)
+            p.fillRect(QRectF(-7, -2, 14, 3), C("#f4b8c8"))
+            p.setBrush(C("#f0d860"))
+            for dx in (-3, 0, 3):
+                p.drawEllipse(QPointF(dx, 4.5), 1.1, 1.1)
+            p.restore()
+        elif icon == "carnation":                                           # 母親節：康乃馨
+            p.setPen(QPen(C("#4a8a4a"), 1.4))
+            p.drawLine(QPointF(0, 0), QPointF(0, 10))
+            p.setPen(Qt.NoPen)
+            p.setBrush(C("#4a8a4a"))
+            p.drawPolygon(QPolygonF([QPointF(-3.5, 1), QPointF(3.5, 1), QPointF(0, 5)]))
+            for k, (dx, dy) in enumerate(((-4, -3), (4, -3), (0, -6), (-2.5, -1), (2.5, -1))):
+                p.setBrush(C("#e8607a" if k % 2 else "#f08aa0"))
+                p.drawEllipse(QPointF(dx, dy - 1), 3.6, 3)
+        elif icon == "leaf":                                                # 感恩節：楓葉
+            p.setBrush(C("#d8642a"))
+            pts = []
+            for k in range(10):
+                a = math.radians(-90 + k * 36)
+                r = 9 if k % 2 == 0 else 4
+                pts.append(QPointF(math.cos(a) * r, math.sin(a) * r * 0.95 - 1))
+            p.drawPolygon(QPolygonF(pts))
+            p.setPen(QPen(C("#8a3a1a"), 1))
+            p.drawLine(QPointF(0, 0), QPointF(0, 10))
+            p.setPen(Qt.NoPen)
+        elif icon == "bean":                                                # 國際咖啡日：咖啡豆
+            p.rotate(-30)
+            p.setBrush(C("#8a5530"))
+            p.drawEllipse(QPointF(0, 0), 5, 7.5)
+            p.setPen(QPen(C("#3a2214"), 1.2))
+            path = QPainterPath()
+            path.moveTo(0, -6.5)
+            path.cubicTo(QPointF(-2.5, -2), QPointF(2.5, 2), QPointF(0, 6.5))
+            p.setBrush(Qt.NoBrush)
+            p.drawPath(path)
+            p.setPen(Qt.NoPen)
         p.restore()
 
     def toast_now(self):
@@ -607,11 +704,11 @@ class OverlayRenderer:
         a = self.card_alpha
         if a <= 0.01:
             return
-        p.save()
-        p.setOpacity(a)
         s = self.shot
         if self.machine.g == 1 and (not s or not s.log):          # 第二杯還沒開始萃取：不畫空的卡片
             return
+        p.save()
+        p.setOpacity(a)
         r = self.chart_rect()
         p.setBrush(QBrush(C("#14110f", 225)))
         p.setPen(QPen(C("#ffffff", 40), 1))

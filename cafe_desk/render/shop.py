@@ -5,17 +5,18 @@ import time
 
 from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import (QPen, QFont, QFontMetricsF, QPainterPath, QImage, QPainter, QLinearGradient, QPolygonF,
-                           QRadialGradient, QColor)
+                           QRadialGradient, QColor, QBrush)
 
 from ..cups import PAPER_SIZE, ICED_CUPS, paint_paper_body
 from .. import orders
 from ..drinks import DRINKS
 from .icons import drink_icon, ORIGIN_LOOK
+from .dessert_art import DESSERT_ART
 from ..machines import MACHINES
-from ..gfx import C, rrect, vgrad, hgrad
+from ..gfx import C, rrect, vgrad, hgrad, logical_size
 from .. import growth, decor, festivals, beans, ingredients
 from ..growth import MAX_LEVEL, level_name
-from ..i18n import T, money, retext
+from ..i18n import T, money, retext, lang as i18n_lang
 from ..layout import TOP_PAD, WIN_H, FLOOR
 from ..util import clamp, lerp
 
@@ -35,6 +36,8 @@ SIGN_DX, SIGN_W = 122, 62  # 座位小黑板：中心在 POS 左邊多遠、寬�
 COUNTER_CUP_K = 0.4         # 櫃檯上的杯子縮小成跟 POS 相稱的真實比例（紙杯跟刷卡機差不多高）
 PASS_K = 0.55               # 出餐架上等著的杯子縮小的比例
 COUNTER_TOP = 300           # 櫃檯畫面的檯面高度（場景座標）
+CASE_LOOK = {"croissant": (0.33, 70.5), "cake": (0.4, 74), "muffin": (0.37, 76), "cookie": (0.35, 78)}   # 櫥窗的甜點：(縮放, 寫實圖裡的底線 y)
+ROOM_BASE = "#1b1715"       # 櫃檯畫面最底層的不透明底色（店面圖層與佈置預覽）
 FLOAT_SEC = 1.6
 RESULT_SHOW = 15.0          # 營業模式：客人的評價在狀態列顯示幾秒（之後回到「等待客人點單…」）             # 收錢時金額往上飄的秒數
 DELIVERY_T = {"in": 0.7, "place": 0.9, "pickup": 0.9, "out": 0.65}   # 櫃檯交付各段的秒數（模擬時間；咖啡師在等，改了要重跑平衡模擬）
@@ -204,8 +207,131 @@ def paint_wreath(p, x, y, r=15):
     p.restore()
 
 
+def paint_balloon(p, x, y, col, tail_x, tail_y, r=9.0):
+    """一顆氣球（x、y＝球心）加一條垂到 tail_x、tail_y 的線"""
+    p.setPen(QPen(C("#d8d0c0", 200), 0.8))
+    p.setBrush(Qt.NoBrush)
+    line = QPainterPath()
+    line.moveTo(x, y + r * 1.2)
+    line.quadTo(x + (tail_x - x) * 0.3 + 4, (y + tail_y) / 2, tail_x, tail_y)
+    p.drawPath(line)
+    p.setPen(Qt.NoPen)
+    p.setBrush(C(col))
+    p.drawEllipse(QPointF(x, y), r, r * 1.2)
+    p.drawPolygon(QPolygonF([QPointF(x - 2, y + r * 1.25), QPointF(x + 2, y + r * 1.25), QPointF(x, y + r * 1.05)]))
+    p.setBrush(C("#ffffff", 110))
+    p.drawEllipse(QPointF(x - r * 0.35, y - r * 0.45), r * 0.22, r * 0.34)
+
+
+def paint_gift(p, x, base, w, h, box, ribbon):
+    """禮物盒（x＝底中心）：盒子、十字緞帶、上面的蝴蝶結"""
+    p.setPen(Qt.NoPen)
+    p.fillPath(rrect(x - w / 2, base - h, x + w / 2, base, 1.5), vgrad(base - h, base, [(0, C(box)), (1, C(box).darker(125))]))
+    p.fillRect(QRectF(x - w / 2 - 1, base - h, w + 2, h * 0.24), C(box).lighter(108))
+    p.fillRect(QRectF(x - 1.6, base - h, 3.2, h), C(ribbon))
+    p.fillRect(QRectF(x - w / 2, base - h * 0.88, w, 2.4), C(ribbon))
+    p.setBrush(C(ribbon))
+    p.drawEllipse(QPointF(x - 3.4, base - h - 2.4), 3.4, 2.4)
+    p.drawEllipse(QPointF(x + 3.4, base - h - 2.4), 3.4, 2.4)
+
+
+def paint_coffee_bean(p, x, y, s=1.0, ang=0.0, col="#7a4a28"):
+    """一顆咖啡豆（中線是深色的弧）"""
+    p.save()
+    p.translate(x, y)
+    p.rotate(ang)
+    p.setPen(Qt.NoPen)
+    p.setBrush(C(col))
+    p.drawEllipse(QPointF(0, 0), 3.4 * s, 4.8 * s)
+    p.setPen(QPen(C("#2a1810"), 0.9 * s))
+    p.setBrush(Qt.NoBrush)
+    path = QPainterPath()
+    path.moveTo(0, -4.2 * s)
+    path.cubicTo(QPointF(-1.8 * s, -1.4 * s), QPointF(1.8 * s, 1.4 * s), QPointF(0, 4.2 * s))
+    p.drawPath(path)
+    p.restore()
+
+
+def paint_flags(p, x0, x1, y, sag, cols, n=14, size=9.0):
+    """三角旗串：一條垂弧，上面掛 n 面三角旗（顏色輪流用 cols）"""
+    _swag(p, x0, x1, y, sag, QPen(C("#d8d0c0", 180), 1))
+    p.setPen(Qt.NoPen)
+    for k in range(n):
+        ax, ay = _swag_pt(x0, x1, y, sag, (k + 0.15) / n)
+        bx, by = _swag_pt(x0, x1, y, sag, (k + 0.85) / n)
+        p.setBrush(C(cols[k % len(cols)]))
+        p.drawPolygon(QPolygonF([QPointF(ax, ay), QPointF(bx, by), QPointF((ax + bx) / 2, (ay + by) / 2 + size * 1.3)]))
+
+
+def paint_lantern(p, x, y, s=1.0, glow=0.8):
+    """紅燈籠（x、y＝中心）：金色上下蓋、直紋、下面的流蘇；glow 是外面一圈光暈的亮度"""
+    if glow:
+        g = QRadialGradient(x, y, 34 * s)
+        g.setColorAt(0, C("#ff9a5a", int(110 * glow)))
+        g.setColorAt(1, C("#ff9a5a", 0))
+        p.setBrush(g)
+        p.drawEllipse(QPointF(x, y), 34 * s, 34 * s)
+    p.setBrush(C("#d8302a"))
+    p.drawEllipse(QPointF(x, y), 15 * s, 12.5 * s)
+    p.setPen(QPen(C("#a82020"), 1))
+    p.setBrush(Qt.NoBrush)
+    for k in (-0.55, 0, 0.55):
+        p.drawEllipse(QPointF(x, y), 15 * s * abs(k) + 0.5, 12.5 * s)
+    p.setPen(Qt.NoPen)
+    p.fillRect(QRectF(x - 7 * s, y - 14.5 * s, 14 * s, 3.5 * s), C("#d8a83a"))
+    p.fillRect(QRectF(x - 7 * s, y + 11 * s, 14 * s, 3.5 * s), C("#d8a83a"))
+    p.setPen(QPen(C("#d83a2a"), 1.2))
+    for dx in (-2.5, 0, 2.5):
+        p.drawLine(QPointF(x + dx * s, y + 14.5 * s), QPointF(x + dx * s, y + 24 * s))
+    p.setPen(Qt.NoPen)
+
+
+def paint_egg(p, x, y, s, col, band):
+    """一顆彩蛋（x、y＝中心）：底色、中間一條彩帶、幾個小點"""
+    path = QPainterPath()
+    path.addEllipse(QPointF(x, y), 4.6 * s, 6 * s)
+    p.fillPath(path, C(col))
+    p.save()
+    p.setClipPath(path)
+    p.fillRect(QRectF(x - 5 * s, y - 1 * s, 10 * s, 2.4 * s), C(band))
+    p.setBrush(C("#ffffff", 200))
+    for dx in (-2.2, 0.4, 2.8):
+        p.drawEllipse(QPointF(x + dx * s, y + 3.5 * s), 0.8 * s, 0.8 * s)
+    p.restore()
+
+
+def paint_carnation(p, x, y, r, col):
+    """一朵康乃馨（俯視的圓花頭，花瓣邊緣是一圈小圓）"""
+    p.setBrush(C(col).darker(112))
+    p.drawEllipse(QPointF(x, y), r, r * 0.85)
+    p.setBrush(C(col))
+    for k in range(8):
+        a = math.radians(k * 45)
+        p.drawEllipse(QPointF(x + math.cos(a) * r * 0.55, y + math.sin(a) * r * 0.45), r * 0.42, r * 0.38)
+    p.setBrush(C(col).lighter(118))
+    p.drawEllipse(QPointF(x, y - r * 0.1), r * 0.4, r * 0.32)
+
+
+def paint_maple_leaf(p, x, y, s, col, ang=0.0):
+    """一片楓葉（五個尖角）"""
+    p.save()
+    p.translate(x, y)
+    p.rotate(ang)
+    pts = []
+    for k in range(10):
+        a = math.radians(-90 + k * 36)
+        r = (6.5 if k % 2 == 0 else 2.8) * s
+        pts.append(QPointF(math.cos(a) * r, math.sin(a) * r))
+    p.setBrush(C(col))
+    p.drawPolygon(QPolygonF(pts))
+    p.fillRect(QRectF(-0.4 * s, 0, 0.8 * s, 6 * s), C(col).darker(140))
+    p.restore()
+
+
 def paint_festival_wall(p, key, W, bt, top):
-    """節日裝飾（牆上與後檯）：情人節＝愛心彩帶、玫瑰；萬聖節＝南瓜燈、蝙蝠、蜘蛛網；聖誕節＝聖誕樹、燈串、花圈"""
+    """節日裝飾（牆上與後檯）：新年＝金色彩帶、窗外煙火、金銀氣球；情人節＝愛心彩帶、玫瑰；白色情人節＝白粉愛心彩帶、禮物盒；
+    兒童節＝彩色三角旗、一束氣球；父親節＝藍色三角旗掛小領帶、謝卡；國際咖啡日＝麻布色旗串掛咖啡豆、咖啡豆麻袋；
+    萬聖節＝南瓜燈、蝙蝠、蜘蛛網；聖誕節＝聖誕樹、燈串、花圈"""
     p.save()
     p.setPen(Qt.NoPen)
     t = time.perf_counter()
@@ -226,6 +352,169 @@ def paint_festival_wall(p, key, W, bt, top):
             p.setBrush(C("#ffffff", 60))
             p.drawEllipse(QPointF(80 + dx - 1.5, bt - dy - 1.5), 1.8, 1.8)
         p.fillPath(rrect(72, bt - 12, 88, bt, 3), vgrad(bt - 12, bt, [(0, C("#f2ece0")), (1, C("#c8c0b0"))]))
+    elif key == "newyear":
+        _swag(p, x0, x1, -TOP_PAD + 6, 18, QPen(C("#c9a35a"), 2.4))
+        for k in range(1, 16):                                                                     # 金色與紅色的彩球
+            lx, ly = _swag_pt(x0, x1, -TOP_PAD + 6, 18, k / 16)
+            p.setBrush(C("#e8c25a" if k % 2 else "#d83a3a"))
+            p.drawEllipse(QPointF(lx, ly + 6), 4.2, 4.2)
+            p.setBrush(C("#ffffff", 120))
+            p.drawEllipse(QPointF(lx - 1.4, ly + 4.6), 1.2, 1.2)
+        p.save()
+        p.setClipRect(QRectF(20, -90, 98, 298))                                                     # 窗外的煙火：一朵朵輪流綻放
+        for k, (fx, fy, col) in enumerate(((48, -40, "#ffd24a"), (92, 10, "#ff6a8a"), (60, 80, "#7ad0ff"), (96, 140, "#ffd24a"))):
+            ph = (t * 0.5 + k * 0.27) % 1.0
+            r = 6 + ph * 22
+            a = int(255 * (1 - ph))
+            p.setPen(QPen(C(col, a), 1.4, Qt.SolidLine, Qt.RoundCap))
+            for j in range(12):
+                ang = math.radians(j * 30 + k * 7)
+                p.drawLine(QPointF(fx + math.cos(ang) * r * 0.55, fy + math.sin(ang) * r * 0.55),
+                           QPointF(fx + math.cos(ang) * r, fy + math.sin(ang) * r))
+        p.setPen(Qt.NoPen)
+        p.restore()
+        for k, (bx, by, col) in enumerate(((66, bt - 64, "#e8c25a"), (82, bt - 76, "#d8dadc"), (98, bt - 62, "#e8c25a"))):
+            paint_balloon(p, bx, by + 2 * math.sin(t * 1.5 + k), col, 82, bt - 4, 9)
+        p.fillPath(rrect(76, bt - 6, 88, bt, 2), C("#3a3028"))
+    elif key == "white_day":
+        for off in (0, 7):
+            _swag(p, x0, x1, -TOP_PAD + 8 + off, 20, QPen(C("#f0e4e8", 200 - off * 8), 1.6))
+        for k in range(1, 13):
+            hx, hy = _swag_pt(x0, x1, -TOP_PAD + 8, 20, k / 13)
+            paint_heart(p, hx, hy + 6, 5.2, "#fbf6f0" if k % 2 else "#f4b8c8")
+        paint_gift(p, 70, bt, 26, 20, "#f8f4ee", "#e890a8")
+        paint_gift(p, 96, bt, 18, 14, "#f4b8c8", "#fbf6f0")
+    elif key == "children":
+        paint_flags(p, x0, x1, -TOP_PAD + 6, 18, ("#e8483a", "#f0b830", "#4ab0e0", "#5ac06a", "#b06ad8"), 16)
+        for k, (bx, by, col) in enumerate(((60, bt - 70, "#e8483a"), (80, bt - 86, "#4ab0e0"), (100, bt - 72, "#f0b830"),
+                                           (72, bt - 104, "#5ac06a"), (92, bt - 100, "#b06ad8"))):
+            paint_balloon(p, bx, by + 2.5 * math.sin(t * 1.4 + k * 1.1), col, 80, bt - 2, 9)
+        p.fillPath(rrect(74, bt - 6, 86, bt, 2), C("#e8483a"))
+    elif key == "father":
+        paint_flags(p, x0, x1, -TOP_PAD + 6, 18, ("#2a4a7a", "#8ab0e0", "#f2ece0"), 14)
+        for k in range(1, 7):                                                                      # 彩帶上掛的小領帶
+            lx, ly = _swag_pt(x0, x1, -TOP_PAD + 6, 18, k / 7)
+            p.setBrush(C("#c8483a" if k % 2 else "#2a4a7a"))
+            p.drawPolygon(QPolygonF([QPointF(lx - 2, ly + 2), QPointF(lx + 2, ly + 2), QPointF(lx + 1, ly + 5), QPointF(lx - 1, ly + 5)]))
+            p.drawPolygon(QPolygonF([QPointF(lx - 1.2, ly + 5), QPointF(lx + 1.2, ly + 5), QPointF(lx + 3.4, ly + 16),
+                                     QPointF(lx, ly + 19), QPointF(lx - 3.4, ly + 16)]))
+        p.fillPath(rrect(64, bt - 30, 96, bt, 2), C("#f4efe2"))                                    # 立在後檯的謝卡
+        p.fillPath(rrect(66, bt - 28, 94, bt - 2, 1.5), C("#2a4a7a"))
+        stache = QPainterPath()                                                                    # 卡片上的鬍子與小愛心
+        stache.moveTo(80, bt - 15)
+        stache.cubicTo(QPointF(76, bt - 20), QPointF(70, bt - 18), QPointF(68, bt - 13))
+        stache.cubicTo(QPointF(72, bt - 14), QPointF(76, bt - 11), QPointF(80, bt - 13))
+        stache.cubicTo(QPointF(84, bt - 11), QPointF(88, bt - 14), QPointF(92, bt - 13))
+        stache.cubicTo(QPointF(90, bt - 18), QPointF(84, bt - 20), QPointF(80, bt - 15))
+        p.fillPath(stache, C("#f4efe2"))
+        paint_heart(p, 80, bt - 23, 2.6, "#e8483a")
+        p.setPen(Qt.NoPen)
+    elif key == "coffee_day":
+        paint_flags(p, x0, x1, -TOP_PAD + 6, 18, ("#c8a878", "#8a6440", "#e8dcc4"), 14)
+        for k in range(1, 14):                                                                     # 旗串之間掛的咖啡豆
+            lx, ly = _swag_pt(x0, x1, -TOP_PAD + 6, 18, (k + 0.5) / 14)
+            paint_coffee_bean(p, lx, ly + 18, 1.1, 20 * math.sin(t + k))
+        sack = QPainterPath()                                                                      # 後檯的咖啡豆麻袋
+        sack.moveTo(60, bt)
+        sack.lineTo(62, bt - 30)
+        sack.quadTo(80, bt - 38, 98, bt - 30)
+        sack.lineTo(100, bt)
+        sack.closeSubpath()
+        p.fillPath(sack, vgrad(bt - 38, bt, [(0, C("#c8a878")), (1, C("#9a7a50"))]))
+        p.setPen(QPen(C("#7a5a34", 120), 0.8))
+        for yy in range(int(bt - 28), int(bt), 4):
+            p.drawLine(QPointF(63, yy), QPointF(97, yy))
+        p.setPen(Qt.NoPen)
+        p.fillRect(QRectF(72, bt - 22, 16, 10), C("#6a4a2e"))
+        for k, (bx, by, a) in enumerate(((70, bt - 32, 20), (78, bt - 35, -30), (86, bt - 33, 50), (92, bt - 30, -10),
+                                         (104, bt - 3, 70), (110, bt - 2, -20))):
+            paint_coffee_bean(p, bx, by, 0.9, a)
+    elif key == "spring_festival":
+        for lx, ly in ((176, 44), (W - 52, 44)):                                                   # 兩盞紅燈籠
+            p.setPen(QPen(C("#111111"), 1))
+            p.drawLine(QPointF(lx, -TOP_PAD), QPointF(lx, ly - 15))
+            p.setPen(Qt.NoPen)
+            paint_lantern(p, lx, ly + 1.5 * math.sin(t * 1.2 + lx), 1.0, 0.75 + 0.25 * math.sin(t * 2 + lx))
+        _swag(p, x0, x1, -TOP_PAD + 6, 16, QPen(C("#d8302a"), 2.4))
+        for k in range(1, 16):                                                                     # 紅金相間的小鞭炮
+            lx, ly = _swag_pt(x0, x1, -TOP_PAD + 6, 16, k / 16)
+            p.fillPath(rrect(lx - 2.2, ly + 2, lx + 2.2, ly + 12, 1), C("#d8302a" if k % 2 else "#e8b83a"))
+        p.save()                                                                                   # 左邊燈籠下面倒貼的「福」
+        p.translate(176, 100)
+        p.rotate(45)
+        p.fillRect(QRectF(-15, -15, 30, 30), C("#d8302a"))
+        p.setPen(QPen(C("#e8b83a"), 1.2))
+        p.setBrush(Qt.NoBrush)
+        p.drawRect(QRectF(-12.5, -12.5, 25, 25))
+        p.rotate(135)
+        f = QFont("Microsoft JhengHei")
+        f.setPixelSize(19)
+        f.setBold(True)
+        p.setFont(f)
+        p.setPen(C("#1a1210"))
+        p.drawText(QRectF(-15, -15, 30, 30), Qt.AlignCenter, "福")
+        p.restore()
+        p.setPen(Qt.NoPen)
+    elif key == "easter":
+        _swag(p, x0, x1, -TOP_PAD + 6, 18, QPen(C("#f2ece0", 180), 1))
+        cols = (("#a8d8e8", "#f4b8c8"), ("#f4b8c8", "#f0d860"), ("#f0d860", "#b8e0a8"), ("#d8c0f0", "#a8d8e8"), ("#b8e0a8", "#f4b8c8"))
+        for k in range(1, 15):                                                                     # 粉彩彩蛋串
+            lx, ly = _swag_pt(x0, x1, -TOP_PAD + 6, 18, k / 15)
+            paint_egg(p, lx, ly + 8, 1.15, *cols[k % len(cols)])
+        bx = 78                                                                                    # 後檯的白兔與一籃彩蛋
+        p.setBrush(C("#f4f0e8"))
+        p.drawEllipse(QPointF(bx - 8, bt - 13), 12, 11)
+        p.drawEllipse(QPointF(bx - 2, bt - 28), 8, 7.5)
+        for dx, a in ((-4, -12), (2, 8)):
+            p.save()
+            p.translate(bx + dx, bt - 34)
+            p.rotate(a)
+            p.setBrush(C("#f4f0e8"))
+            p.drawEllipse(QPointF(0, -8), 2.8, 8)
+            p.setBrush(C("#f4b8c8"))
+            p.drawEllipse(QPointF(0, -8), 1.3, 5.5)
+            p.restore()
+        p.setBrush(C("#3a2a1e"))
+        p.drawEllipse(QPointF(bx + 1.5, bt - 29), 1.1, 1.1)
+        p.setBrush(C("#f4b8c8"))
+        p.drawEllipse(QPointF(bx + 5.2, bt - 27), 1.2, 1)
+        p.setBrush(C("#ffffff"))
+        p.drawEllipse(QPointF(bx - 19, bt - 9), 3.4, 3.4)                                          # 尾巴
+        for k, ex in enumerate((100, 108, 116)):
+            paint_egg(p, ex, bt - 11 - (k % 2) * 2, 1.05, *cols[k])
+        p.fillPath(rrect(94, bt - 10, 122, bt, 3), vgrad(bt - 10, bt, [(0, C("#c8a070")), (1, C("#8a6440"))]))
+    elif key == "mother":
+        _swag(p, x0, x1, -TOP_PAD + 8, 20, QPen(C("#f0a0b4", 210), 2.4))
+        for k in range(1, 13):                                                                     # 粉紅緞帶上的康乃馨
+            lx, ly = _swag_pt(x0, x1, -TOP_PAD + 8, 20, k / 13)
+            paint_carnation(p, lx, ly + 3, 5, "#e8607a" if k % 2 else "#f4a0b4")
+        p.setPen(QPen(C("#4a8a4a"), 1.4))                                                         # 後檯的康乃馨花束
+        for dx, h in ((-10, 40), (-4, 48), (3, 44), (9, 38), (0, 34)):
+            p.drawLine(QPointF(80 + dx * 0.3, bt - 18), QPointF(80 + dx, bt - h))
+        p.setPen(Qt.NoPen)
+        for dx, h, col in ((-10, 40, "#e8607a"), (-4, 48, "#f4a0b4"), (3, 44, "#d8405a"), (9, 38, "#f4a0b4"), (0, 34, "#e8607a")):
+            paint_carnation(p, 80 + dx, bt - h, 5.2, col)
+        p.fillPath(rrect(72, bt - 20, 88, bt, 4), vgrad(bt - 20, bt, [(0, C("#f8f2ec")), (1, C("#d8ccc4"))]))
+        p.fillRect(QRectF(72, bt - 13, 16, 3), C("#f0a0b4"))
+    elif key == "thanksgiving":
+        _swag(p, x0, x1, -TOP_PAD + 6, 18, QPen(C("#6a4a2e"), 1.6))
+        for k in range(1, 18):                                                                     # 秋天的楓葉串
+            lx, ly = _swag_pt(x0, x1, -TOP_PAD + 6, 18, k / 18)
+            paint_maple_leaf(p, lx, ly + 7, 1.25, ("#d8642a", "#c83a2a", "#e8a838", "#b8562a")[k % 4], (k * 47) % 60 - 30)
+        p.setPen(QPen(C("#d8b060"), 1.4))                                                         # 後檯的麥穗束
+        for dx in (-8, -4, 0, 4, 8):
+            p.drawLine(QPointF(70 + dx * 0.4, bt - 2), QPointF(70 + dx * 1.4, bt - 46))
+        p.setPen(Qt.NoPen)
+        p.setBrush(C("#e0b860"))
+        for dx in (-8, -4, 0, 4, 8):
+            for j in range(4):
+                p.drawEllipse(QPointF(70 + dx * 1.4 - 1.2 + (j % 2) * 2.4, bt - 46 + j * 3.4), 1.6, 2.6)
+        p.fillRect(QRectF(66, bt - 20, 9, 3), C("#8a4a2a"))
+        for gx, col, r in ((96, "#e8862a", 9), (112, "#e8c060", 6.5)):                             # 小南瓜
+            p.setBrush(C(col))
+            for dx in (-r * 0.45, 0, r * 0.45):
+                p.drawEllipse(QPointF(gx + dx, bt - r * 0.8), r * 0.6, r * 0.8)
+            p.fillRect(QRectF(gx - 1, bt - r * 1.75, 2, r * 0.4), C("#5a6a2a"))
     elif key == "halloween":
         paint_cobweb(p, 0, -TOP_PAD, 54)
         for k, (bx, by, s) in enumerate(((330, -112, 1.0), (470, -122, 0.8), (700, -108, 1.1), (860, -120, 0.9))):
@@ -267,12 +556,117 @@ def paint_festival_wall(p, key, W, bt, top):
 
 
 def paint_festival_front(p, key, W, top):
-    """節日裝飾（前櫃檯檯面）：情人節＝愛心小卡、萬聖節＝南瓜糖果碗、聖誕節＝薑餅人與小聖誕樹"""
+    """節日裝飾（前櫃檯檯面）：新年＝派對帽與彩色紙片；情人節＝愛心小卡；白色情人節＝馬卡龍；兒童節＝棒棒糖罐；
+    父親節＝藍色禮物盒；國際咖啡日＝一杯拉花咖啡與散落的豆子；萬聖節＝南瓜糖果碗；聖誕節＝薑餅人與小聖誕樹"""
     p.save()
     p.setPen(Qt.NoPen)
-    if key == "valentine":
+    if key == "newyear":
+        hat = QPainterPath()
+        hat.addPolygon(QPolygonF([QPointF(26, top), QPointF(46, top), QPointF(36, top - 26)]))
+        p.fillPath(hat, vgrad(top - 26, top, [(0, C("#e8c25a")), (1, C("#b8923a"))]))
+        p.setPen(QPen(C("#d83a3a"), 1.6))
+        for k in range(3):
+            y = top - 6 - k * 7
+            p.drawLine(QPointF(36 - (top - y) * 0.38 + 1, y), QPointF(36 + (top - y) * 0.38 - 1, y - 2))
+        p.setPen(Qt.NoPen)
+        p.setBrush(C("#f4efe2"))
+        p.drawEllipse(QPointF(36, top - 27), 2.6, 2.6)
+        for k in range(14):                                                                        # 彩色紙片
+            p.setBrush(C(("#e8c25a", "#d83a3a", "#4ab0e0", "#f4efe2")[k % 4]))
+            cx = 54 + (k * 37) % 70
+            p.drawRect(QRectF(cx, top - 2 - (k * 13) % 4, 2.6, 1.6))
+    elif key == "white_day":
+        for k, (mx, col) in enumerate(((30, "#f4b8c8"), (44, "#fbf6f0"), (58, "#c8e4d0"), (37, "#e8d0f0"), (51, "#f4b8c8"))):
+            y = top - 4 if k < 3 else top - 11
+            p.setBrush(C(col).darker(108))
+            p.drawEllipse(QPointF(mx, y), 6, 2.6)
+            p.setBrush(C("#fbf6f0"))
+            p.drawRect(QRectF(mx - 5, y - 2.2, 10, 1.4))
+            p.setBrush(C(col))
+            p.drawEllipse(QPointF(mx, y - 3), 6, 2.6)
+    elif key == "children":
+        p.fillPath(rrect(28, top - 22, 48, top, 3), C("#dcecf4", 150))                              # 玻璃罐
+        for k, (dx, h, col) in enumerate(((-6, 34, "#e8483a"), (0, 40, "#4ab0e0"), (6, 32, "#f0b830"), (-2, 28, "#b06ad8"))):
+            p.fillRect(QRectF(38 + dx * 0.6 - 0.7, top - h + 5, 1.4, h - 8), C("#f4efe2"))
+            p.setBrush(C(col))
+            p.drawEllipse(QPointF(38 + dx, top - h + 4), 5, 5)
+            p.setPen(QPen(C("#ffffff", 170), 1))
+            p.setBrush(Qt.NoBrush)
+            p.drawArc(QRectF(38 + dx - 3, top - h + 1, 6, 6), 0, 270 * 16)
+            p.setPen(Qt.NoPen)
+        p.fillRect(QRectF(29, top - 12, 18, 10), C("#f0b8c0", 120))
+    elif key == "father":
+        paint_gift(p, 38, top, 22, 16, "#2a4a7a", "#e8c25a")
+        paint_gift(p, 60, top, 14, 10, "#8ab0e0", "#f4efe2")
+    elif key == "coffee_day":
+        p.setBrush(C("#000000", 60))
+        p.drawEllipse(QPointF(42, top - 1), 15, 2.6)
+        p.setBrush(C("#f4efe2"))
+        p.drawEllipse(QPointF(42, top - 1.6), 14, 2.6)                                             # 杯盤
+        cup = QPainterPath()
+        cup.moveTo(32, top - 16)
+        cup.lineTo(52, top - 16)
+        cup.quadTo(51, top - 3, 42, top - 3)
+        cup.quadTo(33, top - 3, 32, top - 16)
+        p.fillPath(cup, C("#fbf8f2"))
+        p.setPen(QPen(C("#fbf8f2"), 2))
+        p.setBrush(Qt.NoBrush)
+        p.drawArc(QRectF(49, top - 14, 7, 7), -90 * 16, 180 * 16)
+        p.setPen(Qt.NoPen)
+        p.setBrush(C("#a86a3a"))
+        p.drawEllipse(QPointF(42, top - 16), 9.5, 1.8)
+        paint_heart(p, 42, top - 16.2, 2.4, "#f4e8d4")
+        for k, (bx, a) in enumerate(((64, 30), (72, -40), (80, 70), (69, -80), (88, 10))):
+            paint_coffee_bean(p, bx, top - 3 - (k % 2) * 1.5, 0.75, a)
+    elif key == "valentine":
         for hx, hy, s, col in ((26, top - 6, 5, "#e83a5a"), (40, top - 14, 4, "#ff8aa8"), (52, top - 5, 4.4, "#d83a4a")):
             paint_heart(p, hx, hy, s, col)
+    elif key == "spring_festival":
+        for k, ox in enumerate((32, 50)):                                                          # 一對橘子
+            p.setBrush(C("#e8862a"))
+            p.drawEllipse(QPointF(ox, top - 7), 8, 7)
+            p.setBrush(C("#ffffff", 70))
+            p.drawEllipse(QPointF(ox - 3, top - 10), 2, 1.6)
+            p.setBrush(C("#3a7a3a"))
+            p.drawEllipse(QPointF(ox + 2, top - 14), 3, 1.4)
+        p.save()                                                                                   # 紅包
+        p.translate(72, top - 9)
+        p.rotate(-12)
+        p.fillPath(rrect(-6, -9, 6, 9, 1), C("#d8302a"))
+        p.setBrush(C("#e8b83a"))
+        p.drawEllipse(QPointF(0, -1), 2.6, 2.6)
+        p.restore()
+    elif key == "easter":
+        nest = QPainterPath()                                                                      # 鳥巢裡的三顆彩蛋
+        nest.moveTo(24, top - 8)
+        nest.quadTo(42, top + 2, 60, top - 8)
+        nest.lineTo(58, top)
+        nest.lineTo(26, top)
+        nest.closeSubpath()
+        for k, (ex, col, band) in enumerate(((34, "#a8d8e8", "#f4b8c8"), (42, "#f0d860", "#b8e0a8"), (50, "#d8c0f0", "#f0d860"))):
+            paint_egg(p, ex, top - 12 - (k % 2) * 2, 1.1, col, band)
+        p.fillPath(nest, C("#a8844a"))
+        p.setPen(QPen(C("#7a5a2a"), 0.8))
+        for k in range(5):
+            p.drawLine(QPointF(26 + k * 7, top - 6), QPointF(30 + k * 7, top - 1))
+        p.setPen(Qt.NoPen)
+    elif key == "mother":
+        p.fillPath(rrect(26, top - 22, 48, top, 2), C("#fbf6f0"))                                  # 立著的卡片
+        paint_heart(p, 37, top - 12, 5, "#e8607a")
+        p.setPen(QPen(C("#4a8a4a"), 1.2))
+        p.drawLine(QPointF(62, top), QPointF(64, top - 18))
+        p.setPen(Qt.NoPen)
+        paint_carnation(p, 64, top - 20, 4.6, "#e8607a")
+    elif key == "thanksgiving":
+        p.fillPath(rrect(26, top - 12, 58, top, 4), vgrad(top - 12, top, [(0, C("#b88a52")), (1, C("#7a5634"))]))   # 一籃蘋果
+        for k, (ax, ay, col) in enumerate(((32, 15, "#c83a2a"), (42, 17, "#d84a2a"), (52, 15, "#a8b83a"), (37, 21, "#d84a2a"), (47, 21, "#c83a2a"))):
+            p.setBrush(C(col))
+            p.drawEllipse(QPointF(ax, top - ay + 4), 5.4, 5)
+            p.fillRect(QRectF(ax - 0.5, top - ay - 2, 1, 2.6), C("#5a3a1a"))
+        p.setPen(QPen(C("#8a6440"), 0.8))
+        for k in range(4):
+            p.drawLine(QPointF(28 + k * 8, top - 10), QPointF(28 + k * 8, top - 1))
+        p.setPen(Qt.NoPen)
     elif key == "halloween":
         paint_pumpkin(p, 36, top, 0.7)
         p.setBrush(C("#4a2a6a"))
@@ -296,27 +690,61 @@ def paint_festival_front(p, key, W, top):
     p.restore()
 
 
-RACK_KINDS = ("choc", "vanilla", "caramel", "pumpkin", "cream", "tonic", "cocoa", "oat", "soy", "almond")
+RACK_KINDS = ("choc", "vanilla", "caramel", "pumpkin", "cream", "tonic", "cocoa", "oat", "soy", "almond")   # 沒有庫存資料時（預覽）擺的
+RACK_FRIDGE = ("milk", "icecream")      # 鮮奶、冰淇淋放冰箱，不上配料架
+RACK_STEP = 14                          # 一件最少佔的寬度：一層放不下就往上加一層
+RACK_ROW_DY = 40                        # 上下兩層板子的間距
 
 
-def rack_positions(x0, x1):
-    """配料架上每一件的中心 x：[(kind, cx)]，由左到右平均排開"""
-    step = (x1 - x0 - 16) / len(RACK_KINDS)
-    return [(kind, x0 + 8 + step * (i + 0.5)) for i, kind in enumerate(RACK_KINDS)]
+def rack_kinds(stock):
+    """配料架上擺的食材：有庫存的（照商店食材的順序；冰箱裡的不算）"""
+    from ..ingredients import ITEMS
+    return tuple(k for k in ITEMS if k not in RACK_FRIDGE and stock.get(k, 0) > 0)
 
 
-def paint_ingredient_rack(p, x0, x1, y, items=True):
-    """配料架：一塊木板（y 是板子上緣），上面站著配料——巧克力醬、香草糖漿、焦糖醬、南瓜醬、鮮奶油、通寧水、可可粉、燕麥奶、豆奶、杏仁奶；
-    由左到右平均排開（營業模式咖啡機旁的出杯台上方、櫃檯畫面的後檯上方都用這個）"""
+def rack_rows(x0, x1, n):
+    """n 件要幾層（每層最多放得下幾件，平均分到各層）"""
+    cap = max(1, int((x1 - x0 - 16) // RACK_STEP))
+    return max(1, -(-n // cap))
+
+
+def rack_positions(x0, x1, y, kinds=RACK_KINDS):
+    """配料架上每一件的位置：[(kind, cx, 站的那條線)]；最下層在 y，放不下往上一層一層加，每層平均排開"""
+    rows = rack_rows(x0, x1, len(kinds))
+    out, i = [], 0
+    for r in range(rows):
+        cnt = (len(kinds) - i) // (rows - r)
+        step = (x1 - x0 - 16) / max(1, cnt)
+        out += [(kind, x0 + 8 + step * (j + 0.5), y - r * RACK_ROW_DY) for j, kind in enumerate(kinds[i:i + cnt])]
+        i += cnt
+    return out
+
+
+def paint_ingredient_rack(p, x0, x1, y, kinds=RACK_KINDS, gone=()):
+    """配料架：木板（y 是最下層板子上緣），上面站著有庫存的配料（醬料擠瓶、鮮奶油槍、通寧水、粉罐、植物奶…）；
+    一層放不下就往上加一層（營業模式咖啡機旁的出杯台上方、櫃檯畫面的後檯上方都用這個）；gone 裡的是正在用、不在架上的"""
     p.save()
     p.setPen(Qt.NoPen)
-    p.fillPath(rrect(x0, y, x1, y + 6, 2), vgrad(y, y + 6, [(0, C("#b98a5a")), (1, C("#6a4a2e"))]))
-    for bx in (x0 + 10, x1 - 14):
-        p.fillPath(rrect(bx, y + 6, bx + 4, y + 20, 1), C("#3a3632"))
-    if items:                                   # items＝False：只畫板子，配料由 paint_rack_items 每幀畫（被拿去用的那件不在架上）
-        for kind, cx in rack_positions(x0, x1):
-            _rack_item(p, kind, cx, y)
+    for r in range(rack_rows(x0, x1, len(kinds))):
+        yy = y - r * RACK_ROW_DY
+        p.fillPath(rrect(x0, yy, x1, yy + 6, 2), vgrad(yy, yy + 6, [(0, C("#b98a5a")), (1, C("#6a4a2e"))]))
+        for bx in (x0 + 10, x1 - 14):
+            p.fillPath(rrect(bx, yy + 6, bx + 4, yy + 20, 1), C("#3a3632"))
+    for kind, cx, base in rack_positions(x0, x1, y, kinds):
+        if kind not in gone:
+            _rack_item(p, kind, cx, base)
     p.restore()
+
+
+# 擠瓶的 (瓶身, 瓶蓋) 顏色：醬料與糖漿
+SQUEEZE_LOOK = {"choc": ("#4a2a18", "#d83a3a"), "vanilla": ("#eadab2", "#e8c84a"),
+                "caramel": ("#c8883a", "#8a4a18"), "pumpkin": ("#e8872a", "#4a6a2a"),
+                "ginger": ("#a8683a", "#c83a3a"), "rose": ("#d0607a", "#f4efe2"),
+                "hazelnut": ("#a8743e", "#5a3a1a"), "honey": ("#e8b030", "#f4efe2"),
+                "ginger_juice": ("#d9b45a", "#6a8a2a"), "brown_sugar": ("#4a2208", "#c8a060"),
+                "berry": ("#c0304a", "#5a1a3a"), "maple": ("#b8681c", "#c83a2a"), "white_choc": ("#efe2c4", "#8a5a3a"),
+                "longan": ("#6a2418", "#d8a83a"), "carrot_cake": ("#d8823a", "#4a8a3a"), "lavender": ("#9a7ab8", "#f4efe2"),
+                "apple": ("#c8742a", "#c83a2a")}
 
 
 def _rack_item(p, kind, cx, base):
@@ -325,10 +753,8 @@ def _rack_item(p, kind, cx, base):
     sh = QColor(0, 0, 0, 60)
     p.setBrush(sh)
     p.drawEllipse(QPointF(cx + 1, base), 7, 1.6)
-    if kind in ("choc", "vanilla", "caramel", "pumpkin", "ginger", "rose"):    # 擠瓶：瓶身加尖尖的瓶口
-        body, cap = {"choc": ("#4a2a18", "#d83a3a"), "vanilla": ("#eadab2", "#e8c84a"),
-                     "caramel": ("#c8883a", "#8a4a18"), "pumpkin": ("#e8872a", "#4a6a2a"),
-                     "ginger": ("#a8683a", "#c83a3a"), "rose": ("#d0607a", "#f4efe2")}[kind]
+    if kind in SQUEEZE_LOOK:                                                    # 擠瓶：瓶身加尖尖的瓶口
+        body, cap = SQUEEZE_LOOK[kind]
         p.fillPath(rrect(cx - 6, base - 20, cx + 6, base, 3), vgrad(base - 20, base, [(0, C(body)), (1, C(body).darker(135))]))
         p.fillRect(QRectF(cx - 4.5, base - 14, 9, 7), C("#f4efe2", 235))                  # 標籤
         p.fillRect(QRectF(cx - 3, base - 12, 6, 1.2), C(body).darker(150))
@@ -356,6 +782,32 @@ def _rack_item(p, kind, cx, base):
         p.fillPath(rrect(cx - 7, base - 15, cx + 7, base, 2.5), hgrad(cx - 7, cx + 7, [(0, C("#e8d8b8")), (0.5, C("#faf2de")), (1, C("#d0c0a0"))]))
         p.fillRect(QRectF(cx - 7, base - 10, 14, 4), C("#e8708a"))
         p.fillPath(rrect(cx - 7.5, base - 18, cx + 7.5, base - 14, 2), C("#c8506a"))
+    elif kind in ("matcha", "tea"):                                             # 抹茶粉、紅茶包：方形茶罐
+        body, lid = ("#5f8a2a", "#2f4a18") if kind == "matcha" else ("#8a2e1a", "#c8a04a")
+        p.fillPath(rrect(cx - 6, base - 18, cx + 6, base, 1.5), hgrad(cx - 6, cx + 6, [(0, C(body).darker(120)), (0.45, C(body).lighter(115)), (1, C(body).darker(130))]))
+        p.fillPath(rrect(cx - 6.5, base - 22, cx + 6.5, base - 17, 1.5), C(lid))
+        p.fillRect(QRectF(cx - 4, base - 13, 8, 6), C("#f4efe2", 230))
+        p.setBrush(C(body))
+        p.drawEllipse(QPointF(cx, base - 10), 1.8, 1.8)
+    elif kind == "lemon":                                                       # 檸檬：兩顆
+        for dx, s in ((-2.5, 1.0), (3, 0.9)):
+            p.setBrush(QBrush(vgrad(base - 12, base, [(0, C("#f6e25a")), (1, C("#d8b828"))])))
+            p.drawEllipse(QPointF(cx + dx, base - 5.5 * s), 5.5 * s, 5 * s)
+            p.setBrush(C("#7a9a2a"))
+            p.drawEllipse(QPointF(cx + dx + 4.6 * s, base - 6 * s), 1.1, 0.9)
+        p.setBrush(C("#ffffff", 120))
+        p.drawEllipse(QPointF(cx - 4, base - 8), 1.6, 1)
+    elif kind in ("orange", "soda"):                                            # 柳橙汁、氣泡水：玻璃瓶
+        juice = kind == "orange"
+        neck = QPainterPath()
+        neck.addRect(QRectF(cx - 2, base - 28, 4, 10))
+        p.fillPath(neck, C("#e88a20" if juice else "#a8d0d8", 235))
+        p.fillPath(rrect(cx - 5.5, base - 20, cx + 5.5, base, 3.5),
+                   vgrad(base - 20, base, [(0, C("#f4a838" if juice else "#d8eef0", 235)), (1, C("#d0781a" if juice else "#9ac4cc", 235))]))
+        p.fillRect(QRectF(cx - 5, base - 13, 10, 6), C("#f4efe2", 235))
+        p.fillRect(QRectF(cx - 2.5, base - 11, 5, 1.4), C("#e07a20" if juice else "#3a8aa8"))
+        p.fillRect(QRectF(cx - 2.5, base - 30, 5, 2.4), C("#c9ced3"))
+        p.fillRect(QRectF(cx - 4.4, base - 18, 1.2, 14), C("#ffffff", 80))
     elif kind in ("cocoa", "cinnamon"):                                         # 可可粉、肉桂粉：有孔的鐵罐
         cin = kind == "cinnamon"
         p.fillPath(rrect(cx - 5.5, base - 16, cx + 5.5, base, 2), hgrad(cx - 5.5, cx + 5.5, [(0, C("#8a4a22" if cin else "#5a3a22")), (0.4, C("#b8703a" if cin else "#8a5a38")), (1, C("#6a3818" if cin else "#4a2c18"))]))
@@ -366,7 +818,7 @@ def _rack_item(p, kind, cx, base):
         p.fillRect(QRectF(cx - 4, base - 11, 8, 5), C("#f4efe2", 225))
     else:                                                                       # 植物奶：燕麥／豆奶／杏仁，三角屋頂的紙盒
         body, band = {"oat": ("#efe3cc", "#c8a560"), "soy": ("#f3ead2", "#7aa05a"), "almond": ("#ebe2d5", "#a8744a"),
-                      "milk": ("#f6f6f2", "#4a8ac8")}[kind]
+                      "milk": ("#f6f6f2", "#4a8ac8"), "coconut": ("#f6f1e6", "#6a4a2a")}[kind]
         p.fillPath(rrect(cx - 6.5, base - 22, cx + 6.5, base, 1.5), hgrad(cx - 6.5, cx + 6.5, [(0, C(body)), (0.6, C(body).lighter(105)), (1, C(body).darker(110))]))
         roof = QPainterPath()
         roof.addPolygon(QPolygonF([QPointF(cx - 6.5, base - 22), QPointF(cx + 6.5, base - 22), QPointF(cx + 4, base - 28), QPointF(cx - 4, base - 28)]))
@@ -489,6 +941,70 @@ def paint_painting(p, kind, x, y, w=PAINT_W, h=PAINT_H):
         p.drawEllipse(QPointF(ax + aw * 0.74, ay + ah * 0.55), aw * 0.07, ah * 0.09)
         p.drawLine(QPointF(ax + aw * 0.5, ay + ah * 0.32), QPointF(ax + aw * 0.54, ay + ah * 0.16))
         p.setPen(Qt.NoPen)
+    elif kind == "art_cherry":                                                  # 咖啡櫻桃：一根枝條、幾片葉子、成串的紅果實
+        p.fillRect(art, C("#e8e0cc"))
+        p.setPen(QPen(C("#5a3e26"), 1.4))
+        p.drawLine(QPointF(ax, ay + ah * 0.3), QPointF(ax + aw, ay + ah * 0.55))
+        p.setPen(Qt.NoPen)
+        p.setBrush(C("#4a7a3e"))
+        for lx, ly, ang in ((0.2, 0.18, -30), (0.62, 0.3, 20), (0.85, 0.7, 60)):
+            p.save()
+            p.translate(ax + aw * lx, ay + ah * ly)
+            p.rotate(ang)
+            p.drawEllipse(QPointF(0, 0), 7, 3)
+            p.restore()
+        for cx_, cy_ in ((0.32, 0.52), (0.4, 0.58), (0.36, 0.68), (0.55, 0.62), (0.62, 0.72), (0.7, 0.66)):
+            p.setBrush(C("#c42a2a"))
+            p.drawEllipse(QPointF(ax + aw * cx_, ay + ah * cy_), 3.2, 3.2)
+            p.setBrush(C("#ffffff", 120))
+            p.drawEllipse(QPointF(ax + aw * cx_ - 1, ay + ah * cy_ - 1), 0.9, 0.9)
+    elif kind == "art_moka":                                                    # 摩卡壺素描：米色紙、深褐色線稿
+        p.fillRect(art, C("#f2e8d2"))
+        cx = ax + aw / 2
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(C("#4a3626"), 1.1))
+        top_ = QPolygonF([QPointF(cx - 6, ay + 4), QPointF(cx + 6, ay + 4), QPointF(cx + 9, ay + ah * 0.48), QPointF(cx - 9, ay + ah * 0.48)])
+        bot = QPolygonF([QPointF(cx - 9, ay + ah * 0.54), QPointF(cx + 9, ay + ah * 0.54), QPointF(cx + 6, ay + ah - 3), QPointF(cx - 6, ay + ah - 3)])
+        p.drawPolygon(top_)
+        p.drawPolygon(bot)
+        p.drawLine(QPointF(cx - 10, ay + ah * 0.51), QPointF(cx + 10, ay + ah * 0.51))
+        p.drawLine(QPointF(cx - 6, ay + 4), QPointF(cx - 10, ay + 1))                   # 壺嘴
+        p.drawArc(QRectF(cx + 7, ay + 6, 8, 10), -90 * 16, 180 * 16)                     # 把手
+        p.drawLine(QPointF(cx, ay + 6), QPointF(cx, ay + ah * 0.44))
+        p.drawLine(QPointF(cx, ay + ah * 0.58), QPointF(cx, ay + ah - 6))
+        p.setPen(Qt.NoPen)
+    elif kind == "art_abstract":                                                # 抽象色塊：暖色系的圓與方塊
+        p.fillRect(art, C("#f0e6d4"))
+        p.fillRect(QRectF(ax, ay + ah * 0.55, aw * 0.55, ah * 0.45), C("#c8643a"))
+        p.fillRect(QRectF(ax + aw * 0.62, ay, aw * 0.38, ah * 0.6), C("#2e4a5a"))
+        p.setBrush(C("#e8b44a"))
+        p.drawEllipse(QPointF(ax + aw * 0.36, ay + ah * 0.36), ah * 0.24, ah * 0.24)
+        p.setPen(QPen(C("#2a1e16"), 1.2))
+        p.drawLine(QPointF(ax + aw * 0.1, ay + ah * 0.12), QPointF(ax + aw * 0.9, ay + ah * 0.92))
+        p.setPen(Qt.NoPen)
+    elif kind == "art_cat":                                                     # 窗邊的貓（挑戰限定）：窗框、藍天、趴著的橘貓
+        p.fillRect(art, vgrad(ay, ay + ah, [(0, C("#9ac8e8")), (1, C("#d8ecf4"))]))
+        p.fillRect(QRectF(ax + aw / 2 - 0.8, ay, 1.6, ah * 0.7), C("#f4ecdc"))
+        p.fillRect(QRectF(ax, ay + ah * 0.35, aw, 1.6), C("#f4ecdc"))
+        p.fillRect(QRectF(ax, ay + ah * 0.7, aw, ah * 0.3), C("#c8a070"))       # 窗台
+        cx, cy = ax + aw * 0.48, ay + ah * 0.66
+        p.setBrush(C("#e8923a"))
+        p.drawEllipse(QPointF(cx, cy), aw * 0.26, ah * 0.13)                     # 身體
+        p.drawEllipse(QPointF(cx - aw * 0.24, cy - ah * 0.06), ah * 0.13, ah * 0.12)   # 頭
+        hx, hy = cx - aw * 0.24, cy - ah * 0.06
+        for sx in (-1, 1):
+            ear = QPainterPath()
+            ear.addPolygon(QPolygonF([QPointF(hx + sx * 2.5, hy - 2), QPointF(hx + sx * 5.5, hy - 3.5), QPointF(hx + sx * 4, hy - 7.5)]))
+            p.fillPath(ear, C("#e8923a"))
+        p.setPen(QPen(C("#e8923a"), 2.2, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(cx + aw * 0.24, cy), QPointF(cx + aw * 0.34, cy + ah * 0.16))   # 尾巴垂下窗台
+        p.setPen(QPen(C("#b8662a"), 0.9))
+        for dx in (-0.05, 0.05, 0.14):
+            p.drawLine(QPointF(cx + aw * dx, cy - ah * 0.11), QPointF(cx + aw * dx, cy - ah * 0.03))
+        p.setPen(QPen(C("#3a2a1e"), 0.8))
+        p.drawLine(QPointF(hx - 2.6, hy), QPointF(hx - 1, hy))                   # 瞇著的眼睛
+        p.drawLine(QPointF(hx + 1, hy), QPointF(hx + 2.6, hy))
+        p.setPen(Qt.NoPen)
     else:                                                                       # art_photo：泛黃的老照片
         p.fillRect(art, vgrad(ay, ay + ah, [(0, C("#c8aa80")), (1, C("#8a6c48"))]))
         p.setBrush(C("#5a4430"))
@@ -502,7 +1018,7 @@ def paint_painting(p, kind, x, y, w=PAINT_W, h=PAINT_H):
 
 
 def paint_plant(p, kind, x, y):
-    """植物：plant_pot（小盆栽，x、y＝盆底中心）、plant_vase（乾燥花瓶，底中心）、plant_hang（吊蘭，x、y＝吊盆口中心）"""
+    """植物：吊盆（plant_hang、plant_ivy）的 x、y 是吊盆口中心，其他都是盆底中心"""
     p.save()
     p.setPen(Qt.NoPen)
     if kind == "plant_pot":
@@ -555,6 +1071,77 @@ def paint_plant(p, kind, x, y):
         pot.addPolygon(QPolygonF([QPointF(x - 11, y - 14), QPointF(x + 11, y - 14), QPointF(x + 8, y), QPointF(x - 8, y)]))
         p.fillPath(pot, vgrad(y - 14, y, [(0, C("#6a8aa8")), (1, C("#3a5a78"))]))
         p.fillRect(QRectF(x - 12, y - 16, 24, 3), C("#7a9ab8"))
+    elif kind == "plant_succulent":                                             # 多肉組盆：長方形木盆、三株蓮座
+        for dx, col, r in ((-9, "#7aa88a", 6), (0, "#9ab87a", 7.5), (9, "#8aa8b0", 6)):
+            p.setBrush(C(col))
+            for ang in range(0, 360, 45):
+                a = math.radians(ang)
+                p.drawEllipse(QPointF(x + dx + math.cos(a) * r * 0.45, y - 12 - abs(math.sin(a)) * r * 0.5), r * 0.42, r * 0.42)
+            p.setBrush(C(col).lighter(125))
+            p.drawEllipse(QPointF(x + dx, y - 13), r * 0.35, r * 0.35)
+        p.fillPath(rrect(x - 17, y - 10, x + 17, y, 1.5), vgrad(y - 10, y, [(0, C("#b08458")), (1, C("#7a5634"))]))
+        p.fillRect(QRectF(x - 17, y - 10, 34, 1.5), C("#c8a070"))
+    elif kind == "plant_olive":                                                 # 橄欖樹：細枝幹、銀綠色小葉子、白色高盆
+        p.setPen(QPen(C("#6a5440"), 1.4))
+        p.drawLine(QPointF(x, y - 16), QPointF(x, y - 38))
+        p.drawLine(QPointF(x, y - 28), QPointF(x - 7, y - 42))
+        p.drawLine(QPointF(x, y - 31), QPointF(x + 8, y - 44))
+        p.setPen(Qt.NoPen)
+        p.setBrush(C("#8aa07a"))
+        for lx, ly, ang in ((-9, 44, -40), (-5, 47, 20), (-10, 38, -70), (0, 46, 0), (4, 42, 50), (9, 47, 30),
+                            (11, 41, 70), (6, 37, -30), (-4, 36, 40), (2, 50, -10)):
+            p.save()
+            p.translate(x + lx, y - ly)
+            p.rotate(ang)
+            p.drawEllipse(QPointF(0, 0), 1.6, 3.6)
+            p.restore()
+        pot = QPainterPath()
+        pot.addPolygon(QPolygonF([QPointF(x - 9, y - 17), QPointF(x + 9, y - 17), QPointF(x + 7.5, y), QPointF(x - 7.5, y)]))
+        p.fillPath(pot, hgrad(x - 9, x + 9, [(0, C("#e8e4dc")), (0.5, C("#f8f6f0")), (1, C("#c8c2b6"))]))
+    elif kind == "plant_tulip":                                                 # 鬱金香：玻璃瓶、綠莖、粉紅花苞
+        for dx, h, ang in ((-6, 34, -14), (0, 40, 0), (6, 33, 14)):
+            tx, ty = x + dx * 1.6, y - h
+            p.setPen(QPen(C("#4a8a4a"), 1.2))
+            p.drawLine(QPointF(x + dx * 0.3, y - 18), QPointF(tx, ty))
+            p.setPen(Qt.NoPen)
+            p.save()
+            p.translate(tx, ty)
+            p.rotate(ang)
+            bud = QPainterPath()
+            bud.moveTo(-3.6, -1)
+            bud.quadTo(-4, 5, 0, 5)
+            bud.quadTo(4, 5, 3.6, -1)
+            bud.lineTo(2, -5)
+            bud.lineTo(0, -2)
+            bud.lineTo(-2, -5)
+            bud.closeSubpath()
+            p.fillPath(bud, C("#e8708a"))
+            p.restore()
+        p.setBrush(C("#4a8a4a"))
+        p.drawEllipse(QPointF(x - 5, y - 22), 2, 6)
+        p.fillPath(rrect(x - 6.5, y - 20, x + 6.5, y, 3), C("#cfe4ec", 150))
+        p.fillRect(QRectF(x - 5, y - 12, 10, 10), C("#a8d0e0", 90))              # 瓶裡的水
+        p.fillRect(QRectF(x - 5, y - 19, 1.5, 16), C("#ffffff", 120))
+    elif kind == "plant_ivy":                                                   # 黃金葛：籐編吊籃、長長垂下的心形葉
+        p.setPen(QPen(C("#111111"), 1))
+        p.drawLine(QPointF(x, y - 40), QPointF(x - 9, y - 4))
+        p.drawLine(QPointF(x, y - 40), QPointF(x + 9, y - 4))
+        p.setPen(Qt.NoPen)
+        for dx, ln in ((-9, 56), (-4, 42), (0, 30), (4, 62), (9, 38)):
+            for k in range(int(ln / 6)):
+                lx, ly = x + dx + math.sin(k * 0.9 + dx) * 2.5, y + 6 + k * 6
+                p.setBrush(C("#3f8a3a") if k % 2 else C("#6aa83e"))
+                p.drawPath(heart_path(lx, ly, 3.4))
+        bowl = QPainterPath()
+        bowl.moveTo(x - 10, y - 4)
+        bowl.lineTo(x + 10, y - 4)
+        bowl.quadTo(x + 9, y + 9, x, y + 10)
+        bowl.quadTo(x - 9, y + 9, x - 10, y - 4)
+        p.fillPath(bowl, vgrad(y - 4, y + 10, [(0, C("#d8b880")), (1, C("#a8844a"))]))
+        p.setPen(QPen(C("#8a6a3a"), 0.7))
+        for yy in (0, 4):
+            p.drawLine(QPointF(x - 9, y + yy), QPointF(x + 9, y + yy))
+        p.setPen(Qt.NoPen)
     else:                                                                       # plant_hang
         p.setPen(QPen(C("#111111"), 1))
         p.drawLine(QPointF(x - 7, y - 40), QPointF(x - 9, y - 4))
@@ -574,11 +1161,45 @@ def paint_plant(p, kind, x, y):
 
 
 def paint_lamps(p, kind, W):
-    """吊燈：pendant（暖黃球燈）、industrial（黑色圓罩）；從天花板垂下來，亮光往下打"""
+    """吊燈：pendant（暖黃球燈）、industrial（黑色圓罩）、lantern（白色紙燈籠）、edison（裸燈泡）；從天花板垂下來，亮光往下打"""
     p.save()
     p.setPen(Qt.NoPen)
     for x in LAMP_X:
-        if kind == "pendant":
+        if kind in ("lantern", "edison"):
+            cy = 60 if kind == "lantern" else 70
+            glow = QRadialGradient(x, cy, 64 if kind == "lantern" else 46)
+            glow.setColorAt(0, C("#ffe2b0", 100 if kind == "lantern" else 130))
+            glow.setColorAt(1, C("#ffe2b0", 0))
+            p.setBrush(glow)
+            p.drawEllipse(QPointF(x, cy), 64, 64)
+            p.setPen(QPen(C("#111111"), 1))
+            p.drawLine(QPointF(x, -TOP_PAD), QPointF(x, cy - (17 if kind == "lantern" else 9)))
+            p.setPen(Qt.NoPen)
+            if kind == "lantern":
+                p.setBrush(C("#fbf2e0"))
+                p.drawEllipse(QPointF(x, cy), 16, 16)
+                p.setPen(QPen(C("#d8c8a8"), 0.7))
+                p.setBrush(Qt.NoBrush)
+                for k in (-10, -5, 0, 5, 10):                              # 紙燈籠的竹骨
+                    w_ = math.sqrt(max(0.0, 256 - k * k))
+                    p.drawLine(QPointF(x - w_, cy + k), QPointF(x + w_, cy + k))
+                p.setPen(Qt.NoPen)
+                p.fillRect(QRectF(x - 4, cy - 17, 8, 2), C("#3a3028"))
+            else:
+                p.fillRect(QRectF(x - 3, cy - 10, 6, 5), C("#2a2420"))       # 燈座
+                p.setBrush(C("#ffe7b0", 150))
+                p.drawEllipse(QPointF(x, cy + 3), 7, 9)
+                p.setPen(QPen(C("#ff9a3a"), 1))
+                p.setBrush(Qt.NoBrush)
+                fil = QPainterPath()                                        # 發亮的燈絲
+                fil.moveTo(x - 3, cy + 6)
+                fil.lineTo(x - 1.5, cy)
+                fil.lineTo(x, cy + 4)
+                fil.lineTo(x + 1.5, cy)
+                fil.lineTo(x + 3, cy + 6)
+                p.drawPath(fil)
+                p.setPen(Qt.NoPen)
+        elif kind == "pendant":
             glow = QRadialGradient(x, 74, 58)
             glow.setColorAt(0, C("#ffd9a0", 110))
             glow.setColorAt(1, C("#ffd9a0", 0))
@@ -716,35 +1337,47 @@ def dessert_layout(stock, slots):
 
 
 def paint_dessert(p, kind, x, y):
-    """一個甜點（櫥窗與商店圖示共用）：x 是中心、y 是放在架子上的底線"""
-    p.setPen(Qt.NoPen)
-    if kind == "croissant":                                             # 可頌
-        p.setBrush(C("#c8883a"))
-        p.drawEllipse(QPointF(x, y - 6), 11, 6)
-        p.setPen(QPen(C("#8a5a22"), 0.8))
-        for dx in (-5, 0, 5):
-            p.drawLine(QPointF(x + dx - 1, y - 11), QPointF(x + dx + 1, y - 1))
+    """櫥窗裡的一個甜點：x 是中心、y 是放在架子上的底線。跟商店、圖鑑的甜點圖同一套寫實畫法（render/dessert_art.py），
+    縮小到櫥窗一格的大小（約 20 寬）、不墊盤子"""
+    k, base = CASE_LOOK.get(kind, CASE_LOOK["cookie"])
+    p.save()
+    p.translate(x, y)
+    p.scale(k, k)
+    p.translate(-50, -base)
+    DESSERT_ART.get(kind, DESSERT_ART["cookie"])(p)
+    p.restore()
+
+
+def paint_wall_pattern(p, pat, W, y0, y1, x0=0, gy=None):
+    """牆面裝潢的紋理（紅磚、白色地鐵磚、木牆板），畫在 x0～W、y0～y1；櫃檯畫面的牆與咖啡機畫面的背景共用。
+    磚縫對齊固定的格線（直縫對齊 x＝0、橫縫對齊 gy，預設 y0），咖啡機畫面換成櫃檯座標畫，磚的大小與位置就跟櫃檯畫面一樣"""
+    gy = y0 if gy is None else gy
+    if pat in ("brick", "subway"):
+        if pat == "brick":                                                              # 紅磚牆：一排一排錯開的磚縫
+            p.setPen(QPen(C("#000000", 80), 1))
+            bh, bw = 14, 34
+        else:                                                                           # 白色地鐵磚：細長的磚、淺灰色的縫
+            p.setPen(QPen(C("#8a8478", 110), 1))
+            bh, bw = 12, 32
+        n0 = math.ceil((y0 - gy) / bh)
+        n = n0
+        while gy + n * bh < y1:
+            by = gy + n * bh
+            p.drawLine(QPointF(x0, by), QPointF(W, by))
+            off = bw // 2 * (n % 2)
+            bx = math.floor((x0 - off) / bw) * bw + off
+            while bx < W:
+                p.drawLine(QPointF(bx, by), QPointF(bx, min(by + bh, y1)))
+                bx += bw
+            n += 1
         p.setPen(Qt.NoPen)
-    elif kind == "cake":                                                # 蛋糕：草莓鮮奶油
-        p.fillRect(QRectF(x - 9, y - 16, 18, 16), C("#f2e2c8"))
-        p.fillRect(QRectF(x - 9, y - 16, 18, 4), C("#b0505a"))
-        p.fillRect(QRectF(x - 9, y - 9, 18, 1.6), C("#e0a0a8"))
-        p.setBrush(C("#d23a4a"))
-        p.drawEllipse(QPointF(x, y - 18), 3, 3)
-    elif kind == "muffin":                                              # 馬芬
-        p.setBrush(C("#6a3a22"))
-        p.drawEllipse(QPointF(x, y - 12), 9, 7)
-        p.fillRect(QRectF(x - 7, y - 10, 14, 10), C("#d8a870"))
-        p.setPen(QPen(C("#b88850"), 0.7))
-        for dx in (-3.5, 0, 3.5):
-            p.drawLine(QPointF(x + dx, y - 10), QPointF(x + dx, y))
-        p.setPen(Qt.NoPen)
-    else:                                                               # 餅乾：巧克力豆
-        p.setBrush(C("#d9a65c"))
-        p.drawEllipse(QPointF(x, y - 5), 10, 5)
-        p.setBrush(C("#4a2a18"))
-        for dx, dy in ((-4, -6), (2, -4), (5, -7), (-1, -3)):
-            p.drawEllipse(QPointF(x + dx, y + dy), 1.4, 1.2)
+    elif pat == "panel":                                                                # 木牆板：直條的木板，亮線與暗縫
+        bx = math.floor(x0 / 26) * 26
+        while bx < W:
+            p.fillRect(QRectF(bx, y0, 1.2, y1 - y0), C("#000000", 90))
+            p.fillRect(QRectF(bx + 1.2, y0, 1, y1 - y0), C("#ffffff", 18))
+            bx += 26
+
 
 class ShopRenderer:
     # ───────────── 出杯台（咖啡機畫面，場景座標） ─────────────
@@ -766,8 +1399,6 @@ class ShopRenderer:
         """出杯台的吧台墊與上方的出餐架（背景圖層）"""
         if not self.side_on():
             return
-        x0 = self.machine.scene_w + self.machine.rack_gap
-        x1 = self.machine.scene_w + self.side_extra() - 6
         for g in range(1 + (self.machine.traits.groups > 1)):
             cx, base = self.side_spot(g)
             top = base - MAT_H                                          # 墊子上緣＝杯底（杯子站在墊子上）
@@ -777,18 +1408,22 @@ class ShopRenderer:
             for x in range(int(cx - 54), int(cx + 56), 6):
                 p.drawLine(QPointF(x, top + 1.5), QPointF(x + 1.5, base - 1.5))
             p.setPen(Qt.NoPen)
-        paint_ingredient_rack(p, x0, x1, SHELF_Y, items=False)          # 配料架的板子（配料每幀畫：做飲品要用到的會從架上拿走）
+        # 配料架（板子跟配料）每幀畫：層數跟著庫存變，做飲品要用到的會從架上拿走（paint_rack_items）
+
+    def rack_kinds(self):
+        """配料架上擺的食材（有庫存的）"""
+        return rack_kinds(self.stats.data["ing_stock"])
 
     def rack_in_use(self):
-        """現在做的飲品正在用的配料（配料架上的 kind）：醬料擠瓶、可可粉篩網、鮮奶油槍、焦糖醬瓶、通寧水、植物奶——這幾件從架上拿去用"""
+        """現在做的飲品正在用的配料（配料架上的 kind）：醬料擠瓶、粉罐、鮮奶油槍、焦糖醬瓶、通寧水、植物奶——這幾件從架上拿去用"""
         used = set()
         tw = getattr(self, "twin", None)
-        for ss in (self.session, tw.get("session") if tw else None):
+        for ss in (self.session, tw.session if tw else None):
             st = getattr(ss, "stage", None) if ss else None
             if st is None or getattr(ss, "waiting", False):
                 continue
             name = st.name
-            if name in ("cocoa", "whip", "caramel"):
+            if name in ("cocoa", "cinnamon", "whip", "caramel"):
                 used.add({"whip": "cream"}.get(name, name))
             elif name == "pour":
                 if st.vessel == "squeeze":
@@ -797,22 +1432,17 @@ class ShopRenderer:
                     used.add("tonic")
             if name in ("heat", "steam", "pour") and getattr(st, "vessel", "pitcher") not in ("squeeze", "tonic", "jigger"):
                 milk = getattr(getattr(ss, "dp", None), "milk_kind", None)
-                if milk in ("oat", "soy", "almond"):
+                if milk in ("oat", "soy", "almond", "coconut"):
                     used.add(milk)
-        return used & set(RACK_KINDS)
+        return used & set(self.rack_kinds())
 
     def paint_rack_items(self, p):
-        """營業模式咖啡機畫面的配料架上的配料（場景座標）：正在用的那件不在架上"""
+        """營業模式咖啡機畫面的配料架（場景座標）：有庫存的配料，正在用的那件不在架上"""
         if not self.side_on():
             return
         x0 = self.machine.scene_w + self.machine.rack_gap
         x1 = self.machine.scene_w + self.side_extra() - 6
-        gone = self.rack_in_use()
-        p.save()
-        for kind, cx in rack_positions(x0, x1):
-            if kind not in gone:
-                _rack_item(p, kind, cx, SHELF_Y)
-        p.restore()
+        paint_ingredient_rack(p, x0, x1, SHELF_Y, self.rack_kinds(), self.rack_in_use())
 
     def paint_pass_cups(self, p):
         """做好、還在等同一張單其他杯子的飲品：先放在櫃檯上（櫃檯畫面看得到，見 paint_ready_on_counter），咖啡機畫面不畫"""
@@ -836,12 +1466,11 @@ class ShopRenderer:
             x += counter_gap(c) / 2
 
     # ───────────── 做好的杯子 ─────────────
-    def take_cup(self, o):
-        """營業模式一杯做完：把杯子連同杯中的咖啡拍成一張圖（cup.paint_back → 液體 → paint_front），杯子收起來。
-        同一張單的杯子都好了，就排進櫃檯交付（pending_deliveries）；還沒好的放在出餐架上等"""
+    def cup_photo(self, ratio):
+        """目前這杯（杯子連同杯中的飲品、冰塊、水珠）拍成一張透明底的圖：(圖, 左上角的機身座標)。
+        營業模式送到櫃檯的杯子、圖鑑的飲品圖（tools/render_drink_photos.py）都用這張"""
         cup = self.cup
         x1, y1, x2, y2 = cup.TL - 14, cup.T - 46, cup.TR + 34, cup.B + 8
-        ratio = self.devicePixelRatioF() * self.scale_f
         img = QImage(int((x2 - x1) * ratio) + 1, int((y2 - y1) * ratio) + 1, QImage.Format_ARGB32_Premultiplied)
         img.setDevicePixelRatio(ratio)
         img.fill(Qt.transparent)
@@ -854,6 +1483,13 @@ class ShopRenderer:
         self.paint_condensation(q)
         cup.paint_front(q)
         q.end()
+        return img, (x1, y1)
+
+    def take_cup(self, o):
+        """營業模式一杯做完：把杯子連同杯中的咖啡拍成一張圖（cup.paint_back → 液體 → paint_front），杯子收起來。
+        同一張單的杯子都好了，就排進櫃檯交付（pending_deliveries）；還沒好的放在出餐架上等"""
+        cup = self.cup
+        img, (x1, y1) = self.cup_photo(self.devicePixelRatioF() * self.scale_f)
         self.ready.append({"img": img, "off": (x1 - cup.CX, y1 - cup.B), "top": cup.TR - cup.TL, "h": cup.B - cup.T,
                            "handle": cup.handle, "paper": cup.paper, "z": cup.z, "mark": cup.mark(), "iced": cup.kind in ICED_CUPS, "to_go": o.to_go,
                            "whip": self.topping.get("whip", 0) > 0.05,
@@ -1016,9 +1652,12 @@ class ShopRenderer:
         """今天要掛的節日裝飾（情人節、萬聖節、聖誕節的期間內；佈置分頁的「節日裝飾」可以關掉），沒有就是 None"""
         return festivals.festival() if self.cfg.get("festival_decor", True) else None
 
+    def decor_look_key(self):
+        return repr(self.cfg.get("decor")), len(self.stats.data["owned"])
+
     def decor_look(self):
         """(目前選用的裝潢, 套用後的配色)：設定檔 decor 改了或買了東西才重算"""
-        key = (repr(self.cfg.get("decor")), len(self.stats.data["owned"]))
+        key = self.decor_look_key()
         cache = getattr(self, "_decor_cache", None)
         if cache is None or cache[0] != key:
             sel = decor.selection(self.cfg.get("decor"), self.stats.data["owned"])
@@ -1031,13 +1670,7 @@ class ShopRenderer:
         sel, pal = self.decor_look()
         p.fillRect(QRectF(0, -TOP_PAD, W, top + TOP_PAD), vgrad(-TOP_PAD, top - 64, [          # 牆：跟操作畫面的背景同一套，
             (0, C(pal["wall"][0])), (1, C(pal["wall"][1]))]))                               # 越往下越暗，跟檯面分得開
-        if pal["wall_pat"] == "brick":                                                      # 紅磚牆：一排一排錯開的磚縫
-            p.setPen(QPen(C("#000000", 80), 1))
-            for i, by in enumerate(range(-TOP_PAD, top - 64, 14)):
-                p.drawLine(QPointF(0, by), QPointF(W, by))
-                for bx in range(17 * (i % 2), int(W), 34):
-                    p.drawLine(QPointF(bx, by), QPointF(bx, by + 14))
-            p.setPen(Qt.NoPen)
+        paint_wall_pattern(p, pal["wall_pat"], W, -TOP_PAD, top - 64)
         # 左邊的窗與百葉
         p.fillPath(rrect(14, -96, 124, 214, 3), C("#1a1410"))
         p.fillRect(QRectF(20, -90, 98, 298), vgrad(-90, 208, [(0, C("#1c2a3e")), (1, C("#3a4a5e"))]))
@@ -1091,7 +1724,7 @@ class ShopRenderer:
                                   rf, Qt.AlignRight | Qt.AlignVCenter)
             else:                                                           # 一杯飲品的圖＋品名
                 k = (top3[0][0] if top3 else "latte") if i == 1 else "iced_latte"
-                pm = drink_icon(k, 52, True, 2.0)
+                pm = drink_icon(k, 52, True, max(2.0, math.ceil(self.scale_f * self.devicePixelRatioF())), tile=False)  # 看板本身是深色的；照畫面解析度
                 p.drawPixmap(QRectF(bx + 8, by + 9, 52, 52), pm, QRectF(0, 0, pm.width(), pm.height()))
                 f = QFont(self.ui, 7)
                 f.setBold(True)
@@ -1114,33 +1747,69 @@ class ShopRenderer:
         p.restore()
         self.paint_back_gear(p, W, bt)
         self.paint_decor_wall(p, W, top, sel, bt)
-        fest = self.festival_decor_key()
-        if fest:
-            paint_festival_wall(p, fest, W, bt, top)
+
+    def room_key(self, W, sel):
+        """paint_room 畫出來的東西取決於這些：任何一項變了，快取的店面圖層才重畫"""
+        title, top3 = self.stats.top_drinks(3)
+        clock = time.localtime().tm_min if "art_clock" in sel["paintings"] else None   # 掛鐘每分鐘走一格
+        return (W, self.decor_look_key(), title, tuple(top3), i18n_lang(), self.showcase_machine().key,
+                tuple(self.back_gear_shown()), clock, self.rack_kinds())
+
+    def front_key(self, W):
+        """paint_counter_body（不含星等）＋ paint_decor_counter 取決於這些"""
+        return (W, self.decor_look_key(), i18n_lang(), tuple(self.dessert_stock().items()), tuple(self.bean_window_items()))
+
+    def cached_layer(self, p, slot, key, paint, base=None):
+        """櫃檯畫面不會動的部分：畫成跟畫面一樣大的透明圖層，key 沒變就直接貼上（每格省下整個店面的向量繪圖）。
+        只快取畫到主畫面（self._frame）的時候；佈置預覽、測試直接畫。
+        base：不透明的底色，整張圖層變成不透明、直接複製到畫面上（櫃檯畫面的店面是最底層，省掉清畫面與混色）"""
+        dev = p.device()
+        if dev is not getattr(self, "_frame", None):
+            paint(p)
+            return
+        t = p.worldTransform()
+        key = (key, dev.size().toTuple(), dev.devicePixelRatio(), t.m11(), t.m12(), t.m21(), t.m22(), t.dx(), t.dy(), base)
+        cache = self.__dict__.setdefault("_counter_layers", {})
+        hit = cache.get(slot)
+        if hit is None or hit[0] != key:
+            img = QImage(dev.size(), QImage.Format_ARGB32_Premultiplied)
+            img.setDevicePixelRatio(dev.devicePixelRatio())
+            img.fill(C(base) if base else Qt.transparent)
+            lp = QPainter(img)
+            lp.setRenderHints(p.renderHints())
+            lp.setWorldTransform(t)
+            lp.setPen(Qt.NoPen)
+            paint(lp)
+            lp.end()
+            cache[slot] = hit = (key, img)
+        p.save()
+        p.resetTransform()
+        if base:
+            p.setCompositionMode(QPainter.CompositionMode_Source)
+        p.drawImage(QPointF(0, 0), hit[1])
+        p.restore()
 
     def paint_decor_wall(self, p, W, top, sel, bt):
         """牆上與後檯的裝潢：掛畫、吊燈、霓虹招牌、植物（後檯的小盆栽、天花板的吊蘭）"""
         for (x, kind) in zip(PAINT_X, sel["paintings"]):
             paint_painting(p, kind, x, PAINT_Y)
-        if sel["lighting"] in ("pendant", "industrial"):
+        if sel["lighting"] in ("pendant", "industrial", "lantern", "edison"):
             paint_lamps(p, sel["lighting"], W)
         elif sel["lighting"] == "fairy":
             paint_fairy_lights(p, 150, W - 150, -96)
         elif sel["lighting"] == "neon_sign":
             paint_neon_sign(p, W - 150, 72)
-        if "plant_pot" in sel["plants"]:
-            paint_plant(p, "plant_pot", 48, bt)                              # 後檯左邊（窗下面）
-        if "plant_cactus" in sel["plants"]:
-            paint_plant(p, "plant_cactus", 100, bt)
-        if "plant_hang" in sel["plants"]:
-            paint_plant(p, "plant_hang", 146, -52)
+        for key, hang, i in decor.plant_spots(sel["plants"]):
+            if hang:
+                paint_plant(p, key, (146, W - 44)[i], -52)                   # 天花板的吊盆：窗邊、甜點櫃上方
+            elif i < 2:
+                paint_plant(p, key, (48, 100)[i], bt)                        # 後檯左邊（窗下面）
 
     def paint_decor_counter(self, p, W, top, sel):
-        """前櫃檯檯面上的裝潢：乾燥花瓶"""
-        if "plant_vase" in sel["plants"]:
-            paint_plant(p, "plant_vase", 66, top)
-        if "plant_fern" in sel["plants"]:
-            paint_plant(p, "plant_fern", 124, top)
+        """前櫃檯檯面左段的植物（位置 2、3）"""
+        for key, hang, i in decor.plant_spots(sel["plants"]):
+            if not hang and i >= 2:
+                paint_plant(p, key, (66, 124)[i - 2], top)
 
     def paint_back_drawers(self, p, x0, x1, y0, y1, pal):
         """後檯檯面下的收納抽屜（立面，下緣被前櫃檯擋住）：預設是暖木抽屜＋黃銅把手（使用者選的 A 方案），配色看「後檯櫃子」裝潢（pal 的 cab、cab_line、handle）"""
@@ -1163,23 +1832,39 @@ class ShopRenderer:
             return MACHINES[key]
         return self.machine
 
+    def gear_ratio(self):
+        """後檯的設備圖用幾倍解析度畫：擺上去最多 0.65 倍大，畫面上每個場景單位是 scale_f × dpr 個像素（4K 全螢幕約 3.7）。
+        取 0.5 一階，拖視窗大小時不用每一格都重畫"""
+        return min(4.0, max(1.0, math.ceil(self.scale_f * self.devicePixelRatioF() * 0.65 * 2) / 2))
+
     def showcase_image(self, m, tint=None):
-        """後檯的整組（獨立磨豆機、咖啡機、右邊的配料架）照咖啡機畫面的比例畫成的圖與機身範圍 (圖, QRect)；依機型、升級與烤漆顏色快取"""
-        key = (m.key, tuple(sorted(self.stats.data.get("owned", []))), tint)
+        """後檯的整組（獨立磨豆機、咖啡機、右邊的配料架）照咖啡機畫面的比例畫成的圖與機身範圍 (圖, QRect)；依機型、升級、烤漆顏色與架上的配料快取"""
+        ratio = self.gear_ratio()
+        key = (m.key, tuple(sorted(self.stats.data.get("owned", []))), tint, self.rack_kinds(), ratio)
         cache = getattr(self, "_showcase_cache", None)
         if cache is None or cache[0] != key:
             from .gear_icons import scene_image
-            res = scene_image(self, m)
+            res = scene_image(self, m, ratio)
             self._showcase_cache = cache = (key, res)
         return cache[1]
+
+    def showcase_map(self, m, W):
+        """咖啡機畫面的場景座標 → 櫃檯畫面的場景座標：櫃檯＝咖啡機畫面 × k ＋ (dx, dy)，回傳 (k, dx, dy)。
+        櫃檯畫面把 m 這組縮小 k 倍擺上後檯（showcase_place）；咖啡機畫面的抽屜反過來用，大小與位置都跟櫃檯畫面一樣"""
+        sel = self.decor_look()[0]
+        img, rect = self.showcase_place(m, sel, W, COUNTER_TOP - 64)
+        origin = self.showcase_image(m, decor.machine_tint(sel))[3]
+        k = rect.width() / max(1, logical_size(img)[0])
+        return k, rect.x() - origin.x() * k, rect.y() - origin.y() * k
 
     def showcase_place(self, m, sel, W, bt):
         """後檯那組（磨豆機、咖啡機、配料架）的圖與擺放的範圍 (圖, QRectF)：整組左緣在窗的右邊、右限在 POS 螢幕左邊，
         大小以機身高 118 以內為準（磨豆機、配料架照同一個比例縮，整組塞得進窗與 POS 之間）；站在後檯的桌面上（桌面是 bt～bt+10）"""
-        img, mach, ground = self.showcase_image(m, decor.machine_tint(sel))
+        img, mach, ground, _origin = self.showcase_image(m, decor.machine_tint(sel))
         left, right = 150, self.pos_x(W) - 75 - 14                        # POS 螢幕寬 150，再留一點
-        k = min(118 / max(1, mach.height()), 250 / max(1, mach.width()), (right - left) / max(1, img.width()))
-        return img, QRectF(left, bt + 0.5 - ground * k, img.width() * k, img.height() * k)
+        iw, ih = logical_size(img)
+        k = min(118 / max(1, mach.height()), 250 / max(1, mach.width()), (right - left) / max(1, iw))
+        return img, QRectF(left, bt + 0.5 - ground * k, iw * k, ih * k)
 
     def layout_preview(self, width, dpr=1.0):
         """櫃檯畫面整張畫成一張圖（紀錄視窗「佈置」分頁的預覽）：寬度 width 邏輯像素，圖本身依 dpr 產生"""
@@ -1188,7 +1873,7 @@ class ShopRenderer:
         k = width / W
         img = QImage(int(W * k * dpr), int(H * k * dpr), QImage.Format_ARGB32_Premultiplied)
         img.setDevicePixelRatio(dpr)
-        img.fill(C("#1b1715"))
+        img.fill(C(ROOM_BASE))
         p = QPainter(img)
         p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
@@ -1206,14 +1891,15 @@ class ShopRenderer:
     def back_gear_images(self, kinds):
         """後檯設備的圖 {key: 圖}（手沖旁邊一定有手沖磨豆機）：整組依 kinds 快取"""
         cache = getattr(self, "_back_gear_cache", None)
-        if cache is None or cache[0] != tuple(kinds):
+        ratio = self.gear_ratio()
+        if cache is None or cache[0] != (tuple(kinds), ratio):
             from .gear_icons import station_image
             imgs = {}
             for k in kinds:
-                imgs[k] = station_image(self, k)
+                imgs[k] = station_image(self, k, ratio)
                 if k == "pourover":
-                    imgs["grinder"] = station_image(self, "grinder")
-            self._back_gear_cache = cache = (tuple(kinds), imgs)
+                    imgs["grinder"] = station_image(self, "grinder", ratio)
+            self._back_gear_cache = cache = ((tuple(kinds), ratio), imgs)
         return cache[1]
 
     def paint_back_gear(self, p, W, bt):
@@ -1226,15 +1912,16 @@ class ShopRenderer:
         order = [k for k in ("pourover", "grinder", "colddrip", "moka", "siphon") if k in imgs]
         left, right = self.pos_x(W) - 40, W - 24
         gap = 12
-        k = min(0.62, (right - left - gap * (len(order) - 1)) / max(1, sum(imgs[o].width() for o in order)))
+        size = {o: logical_size(imgs[o]) for o in order}
+        k = min(0.62, (right - left - gap * (len(order) - 1)) / max(1, sum(size[o][0] for o in order)))
         hmax = 112
-        k = min(k, *(hmax / max(1, imgs[o].height()) for o in order))
+        k = min(k, *(hmax / max(1, size[o][1]) for o in order))
         x = right
         p.save()
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         for o in reversed(order):
             im = imgs[o]
-            w, h = im.width() * k, im.height() * k
+            w, h = size[o][0] * k, size[o][1] * k
             x -= w
             p.drawImage(QRectF(x, bt + 1 - h, w, h), im)
             x -= gap
@@ -1276,6 +1963,20 @@ class ShopRenderer:
             for i, fx in enumerate(range(0, int(W) + 22, 22)):
                 p.fillRect(QRectF(fx, WIN_H - 22, 22, 11), C(pal["floor"][i % 2]))
                 p.fillRect(QRectF(fx, WIN_H - 11, 22, 11), C(pal["floor"][(i + 1) % 2]))
+        elif pal["floor_pat"] == "herring":                                 # 人字拼：一左一右斜放的木板
+            p.setPen(QPen(C("#000000", 70), 1))
+            for i, fx in enumerate(range(0, int(W) + 22, 11)):
+                d = 11 if i % 2 else -11
+                p.drawLine(QPointF(fx, WIN_H - 22), QPointF(fx + d, WIN_H - 11))
+                p.drawLine(QPointF(fx, WIN_H - 11), QPointF(fx + d, WIN_H))
+        elif pal["floor_pat"] == "marble":                                  # 大理石地：方磚縫加淡淡的灰色紋路
+            p.setPen(QPen(C("#ffffff", 90), 1))
+            for x in range(0, int(W), 44):
+                p.drawLine(QPointF(x, WIN_H - 22), QPointF(x, WIN_H))
+            p.setPen(QPen(C("#6a6660", 70), 0.8))
+            for x in range(10, int(W), 44):
+                p.drawLine(QPointF(x, WIN_H - 18), QPointF(x + 14, WIN_H - 8))
+                p.drawLine(QPointF(x + 14, WIN_H - 8), QPointF(x + 24, WIN_H - 4))
         else:
             p.setPen(QPen(C("#000000", 50), 1))
             for x in range(0, int(W), 60):
@@ -1298,8 +1999,7 @@ class ShopRenderer:
         p.setFont(f)
         p.setPen(C(pal["logo"]))
         p.drawText(QRectF(x0 + 36, top + 30, 300, 30), Qt.AlignLeft | Qt.AlignVCenter, "CAFÉ DESK")
-        self.paint_shop_stars(p, x0 + 38, top + 66)
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.NoPen)                                                  # 店名下的星等在 paint_counter 另外畫（會隨評價變，不進快取）
         p.fillPath(rrect(x0 - 4, top, x1 + 4, top + 12, 2), vgrad(top, top + 12, [(0, C(pal["top"][0])), (1, C(pal["top"][1]))]))
         # 甜點玻璃櫃：檯面上的玻璃櫃＋前板的展示窗
         cx0, cx1 = self.case_left(W), x1 - 14
@@ -1374,11 +2074,17 @@ class ShopRenderer:
         top = COUNTER_TOP
         p.save()
         p.setPen(Qt.NoPen)
-        self.paint_room(p, W, top)                                          # 店面：牆、窗、菜單看板、層架、後檯
-        x0, cups_x = self.paint_counter_body(p, W, top)                     # 整排前櫃檯（右段是甜點櫃）
         sel = self.decor_look()[0]
-        self.paint_decor_counter(p, W, top, sel)
         fest = self.festival_decor_key()
+        # 店面與前櫃檯不會動，畫成快取圖層；節日裝飾（聖誕燈、煙火會動）、星等每格照畫
+        self.cached_layer(p, "room", self.room_key(W, sel), lambda q: self.paint_room(q, W, top), base=ROOM_BASE)   # 店面：牆、窗、菜單看板、層架、後檯
+        if fest:
+            paint_festival_wall(p, fest, W, top - 64, top)
+        self.cached_layer(p, "front", self.front_key(W), lambda q: (self.paint_counter_body(q, W, top),   # 整排前櫃檯（右段是甜點櫃）
+                                                                    self.paint_decor_counter(q, W, top, sel)))
+        x0, cups_x = self.counter_left(W), CUPS_X
+        self.paint_shop_stars(p, x0 + 38, top + 66)
+        p.setPen(Qt.NoPen)
         if fest:
             paint_festival_front(p, fest, W, top)
         set_cup_style(decor.cup_style(sel))                                 # 紙杯隔熱套與杯盤的圖案
@@ -1754,6 +2460,22 @@ def paint_paper_cup(p, x, base, size, z=(1.0, 1.0), mark="", dome=False):
                     wave.quadTo(x + k * 4.4 + 1.1, yy - 1.8, x + k * 4.4 + 2.2, yy)
                     wave.quadTo(x + k * 4.4 + 3.3, yy + 1.8, x + k * 4.4 + 4.4, yy)
                 p.drawPath(wave)
+        elif pat == "stars":
+            p.setPen(Qt.NoPen)
+            for r_, y in enumerate((s1 + (s2 - s1) * 0.3, s1 + (s2 - s1) * 0.72)):
+                for k in range(-3, 4):
+                    p.fillPath(star_path(x + k * 5.4 + (r_ % 2) * 2.7, y, 1.9), C(col))
+        elif pat == "leaf":
+            p.setPen(QPen(C(col), 0.8))
+            p.drawLine(QPointF(x - half(s2), mid), QPointF(x + half(s2), mid))
+            p.setPen(Qt.NoPen)
+            p.setBrush(C(col))
+            for k in range(-4, 5):
+                p.save()
+                p.translate(x + k * 3.6, mid)
+                p.rotate(-35 if k % 2 else 35 + 180)
+                p.drawEllipse(QPointF(0, -2.2), 1.1, 2.2)
+                p.restore()
         else:                                                               # brand：中間一個小店標（杯子加一圈金線）
             p.setPen(Qt.NoPen)
             p.setBrush(C(col))

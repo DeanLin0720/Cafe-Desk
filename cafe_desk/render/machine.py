@@ -32,7 +32,7 @@ class MachineRenderer:
         if not self.cupless():
             self.cup.paint_back(p)
         if self.twin_live() and not self.backflushing():   # 雙頭機第二杯：第一杯先送走（cup_away）時照樣畫
-            self.twin["cup"].paint_back(p)
+            self.twin.cup.paint_back(p)
         p.restore()
         if external:
             self.paint_grinder_static(p)
@@ -60,7 +60,7 @@ class MachineRenderer:
         if not self.cupless():
             self.cup.paint_front(p)
         if self.twin_live() and not self.backflushing():
-            self.twin["cup"].paint_front(p)
+            self.twin.cup.paint_front(p)
         with self.machine_tint(m):
             m.paint_front(self, p)
         p.restore()

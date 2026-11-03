@@ -7,6 +7,7 @@
   越倒越空就要傾斜得越多，跟真的倒東西一樣。
 面積用多邊形近似（曲線先轉成折線），座標以 painter 的 rotate(-tilt) 為準：tilt 越大，容器往逆時針倒。
 """
+import math
 from functools import lru_cache
 
 from PySide6.QtCore import QPointF, QRectF
@@ -16,6 +17,10 @@ MAX_TILT = 135.0              # 倒到最後最多傾斜幾度（再多就是整
 
 
 # ───────────── 內腔形狀（原點＝倒出口） ─────────────
+PITCHER_K = 1.6               # 拉花杯的放大倍數（形狀以 1 倍寫，畫把手、溫度標籤時也乘這個）；再大雙頭機倒第二杯時會超出視窗右緣
+PITCHER_W = 48 * PITCHER_K    # 拉花杯（含把手）從倒出口往右的寬度
+
+
 def pitcher():
     """蒸氣管用的拉花鋼杯"""
     body = QPainterPath()
@@ -26,7 +31,7 @@ def pitcher():
     body.lineTo(5, 41)
     body.cubicTo(QPointF(4, 30), QPointF(6, 14), QPointF(7, 6))
     body.closeSubpath()
-    return body
+    return QTransform().scale(PITCHER_K, PITCHER_K).map(body)
 
 
 def kettle():
@@ -224,8 +229,10 @@ def _below(pts, level):
 
 
 def _rotate(pts, tilt):
-    m = QTransform().rotate(-tilt)
-    return [(m.map(QPointF(x, y)).x(), m.map(QPointF(x, y)).y()) for x, y in pts]
+    """跟 QTransform().rotate(-tilt) 同一個旋轉，直接算（pour_tilt 每格要轉幾十次，逐點包 QPointF 太慢）"""
+    r = math.radians(-tilt)
+    c, s = math.cos(r), math.sin(r)
+    return [(x * c - y * s, x * s + y * c) for x, y in pts]
 
 
 def level_y(pts, content):

@@ -284,21 +284,29 @@ def test_unlock_table():
         [1, 1, 2, 3, 4, 5, 6, 7, 8, 9], "Lv.2–9 每一級剛好解鎖一樣"
 
 
-def test_level1_only_desk01_and_espresso(desk):
-    """Lv.1：選單反灰、設定視窗擋飲品、客人只點義式、只用 DESK·01"""
-    assert desk.shop_level() == 1
-    assert not desk.method_actions["pourover"].isEnabled() and "Lv.2" in desk.method_actions["pourover"].text()
-    assert not desk.machine_actions["lever"].isEnabled() and desk.machine_actions["desk01"].isEnabled()
-    desk.set_drink("pour_over")
-    assert desk.drink != "pour_over" and desk.method == "espresso" and "Lv.2" in desk.notice[0]
+def test_level1_practice_free_business_locked(desk):
+    """Lv.1：練習模式什麼都能用（選單不反灰、不寫解鎖條件）；營業模式客人只點義式、只用 DESK·01，
+    開營業時練習用的設備換回 Lv.1 就有的，打烊後還原"""
     from cafe_desk.drinks import method_of
+    assert desk.shop_level() == 1
+    assert desk.method_actions["pourover"].isEnabled() and "Lv.2" not in desk.method_actions["pourover"].text()
+    assert desk.machine_actions["lever"].isEnabled()
+    desk.set_machine("lever")
+    desk.set_drink("pour_over")
+    assert desk.drink == "pour_over" and desk.method == "pourover", "練習模式可以用還沒解鎖的手沖"
     assert all(method_of(k) == "espresso" for k in DRINKS if k not in desk.order_exclude())
     desk.set_order_mode(True)
+    assert (desk.method, desk.drink, desk.machine.key) == ("espresso", "espresso", "desk01"), "開營業：換回 Lv.1 的"
+    assert not desk.can_use_drink("pour_over") and "Lv.2" in desk.use_lock("pour_over")
+    assert not desk.method_actions["pourover"].isEnabled() and "Lv.2" in desk.method_actions["pourover"].text()
     for _ in range(5):
         desk.order = None
         desk.make_order()
         assert desk.machine.key == "desk01" and method_of(desk.order.drink) == "espresso"
         desk._switch_wait = None
+    desk.set_order_mode(False)
+    desk.step(0.05, 0.05)
+    assert (desk.machine.key, desk.drink) == ("lever", "pour_over"), "打烊後還原練習時的設定"
 
 
 def test_level_up_unlocks_and_notifies(desk):
@@ -313,15 +321,19 @@ def test_level_up_unlocks_and_notifies(desk):
     assert desk.method == "pourover"
 
 
-def test_locked_saved_setup_falls_back(qapp, cfg_path):
-    """設定檔存的是還沒解鎖的設備（例如重新遊玩後）：退回 DESK·01、義式"""
+@pytest.mark.parametrize("biz", [False, True])
+def test_locked_saved_setup(qapp, cfg_path, biz):
+    """設定檔存的是還沒解鎖的設備：練習模式照用；上次停在營業模式才退回 DESK·01、義式"""
     import json
     with open(cfg_path, "w", encoding="utf-8") as f:
-        json.dump({"schema": 3, "machine": "allinone", "drink": "siphon"}, f)
+        json.dump({"schema": 3, "machine": "allinone", "drink": "siphon", "order_mode": biz}, f)
     from cafe_desk.desk import CafeDesk
     w = CafeDesk()
     try:
-        assert w.machine.key == "desk01" and w.method == "espresso" and w.drink == "espresso"
+        if biz:
+            assert w.machine.key == "desk01" and w.method == "espresso" and w.drink == "espresso"
+        else:
+            assert w.machine.key == "allinone" and w.method == "siphon" and w.drink == "siphon"
     finally:
         w.timer.stop()
         w.stats.db.close()
@@ -331,9 +343,11 @@ def test_locked_saved_setup_falls_back(qapp, cfg_path):
 def test_drink_icons_and_book(desk):
     """每一種飲品都有圖（含節日限定）；圖鑑做過的是彩色、沒做過的是剪影，沒解鎖的寫幾級解鎖"""
     from PySide6.QtWidgets import QLabel
-    from cafe_desk.render.icons import RECIPES, drink_icon
+    from cafe_desk.render.icons import RECIPES, drink_icon, drink_photo
     from cafe_desk.records import RecordsDialog
     assert set(RECIPES) == set(DRINKS), "新飲品要在 render/icons.py 的 RECIPES 加上分層"
+    missing = [k for k in DRINKS if drink_photo(k) is None]
+    assert not missing, f"圖鑑的飲品照片要重拍（python tools/render_drink_photos.py {','.join(missing)}）"
     for k in DRINKS:
         assert not drink_icon(k, 64, True).isNull() and not drink_icon(k, 64, False).isNull()
     desk.stats.record({"drink": "latte", "title": "拿鐵", "score": 88, "comment": "", "order": True,
@@ -399,17 +413,23 @@ def test_no_welcome_for_existing_players(qapp, cfg_path):
 
 
 def test_drinks_unlock_by_barista_title(desk):
-    """新手只有濃縮、美式、熱拿鐵；晉升時通知解鎖了哪些；客人也只點解鎖的"""
+    """營業模式新手只有濃縮、美式、熱拿鐵…；晉升時通知解鎖了哪些；客人也只點解鎖的。練習模式全部能做"""
     assert desk.drink_open("espresso") and desk.drink_open("latte") and not desk.drink_open("cappuccino")
+    assert desk.drink_actions["cappuccino"].isEnabled(), "練習模式可以做還沒解鎖的飲品"
+    desk.set_drink("mocha")
+    assert desk.drink == "mocha"
+    desk.set_order_mode(True)
     assert "熟手" in desk.drink_lock("cappuccino") and not desk.drink_actions["cappuccino"].isEnabled()
+    assert desk.drink == "espresso", "開營業：還沒解鎖的摩卡換回濃縮"
     desk.set_drink("mocha")
     assert desk.drink != "mocha" and "職人" in desk.notice[0]
-    assert set(k for k in DRINKS if k not in desk.order_exclude()) == {"espresso", "americano", "latte"}
+    assert set(k for k in DRINKS if k not in desk.order_exclude()) == {"espresso", "americano", "latte", "vanilla_latte",
+                                                                       "hot_cocoa"}, "檸檬美式、蜂蜜牛奶的食材開局沒有庫存"
     desk.toasts.clear()
     desk.stats.data["total"] = 200                     # 直接到老手：熟手、老手的飲品一起通知
     desk.check_growth()
     text = " ".join(t[0] for t in desk.toasts)
-    assert "卡布奇諾" in text and "馥列白" in text and "摩卡" not in text
+    assert "卡布奇諾" in text and "馥列白" in text and "摩卡" not in text.replace("冰摩卡", "")   # 冰摩卡是老手的
     assert desk.drink_actions["cappuccino"].isEnabled() and not desk.drink_actions["mocha"].isEnabled()
     desk.set_drink("cappuccino")
     assert desk.drink == "cappuccino"
@@ -512,18 +532,95 @@ def test_flip_clock_only_in_business(desk, monkeypatch):
     assert desk._clock is None
 
 
-def test_window_is_16_9_with_size_choices(desk):
-    """視窗一律 16:9；大小選項是 960×540–1920×1080；舊版縮放換成最接近的"""
+def test_window_is_16_9_with_size_choices(desk, monkeypatch):
+    """視窗一律 16:9；大小預設是 960×540–3840×2160；舊版縮放換成最接近的"""
     from cafe_desk.desk import window_scale
     from cafe_desk.render.station import UNIFORM_W, WINDOW_SIZES
     from cafe_desk.layout import WIN_H, TOP_PAD
     assert abs(UNIFORM_W / (WIN_H + TOP_PAD) - 16 / 9) < 1e-9
+    monkeypatch.setattr(desk, "fit_scale", lambda v: v)        # 測試的螢幕很小，不縮到螢幕放得下
     for px in WINDOW_SIZES:
         desk.set_scale(px / UNIFORM_W)
         assert (desk.width(), desk.height()) == (px, px * 9 // 16)
     assert window_scale(None) * UNIFORM_W == 1280
     assert round(window_scale(1.0) * UNIFORM_W) == 960, "舊版 100%（800 寬）→ 960×540"
     assert round(window_scale(1.5) * UNIFORM_W) == 1280, "舊版 150%（1200 寬）→ 1280×720"
+
+
+def test_window_resizes_freely_and_stays_16_9(desk, qapp):
+    """視窗化拖邊框：任意寬度都照寬度縮放、高度跟著 16:9；最小 640 寬；寬度會存檔，下次開啟一樣大"""
+    from PySide6.QtCore import QSize
+    from cafe_desk.render.station import UNIFORM_W
+    from cafe_desk.host import MIN_W
+    desk.resize_to(QSize(1000, 700))
+    assert (desk.width(), desk.height()) == (1000, round(1000 * 9 / 16))
+    assert abs(desk.scale_f * UNIFORM_W - 1000) < 1e-6
+    desk.resize_to(QSize(300, 200))
+    assert desk.width() == MIN_W
+    desk.resize_to(QSize(777, 437))
+    desk.save_config()
+    assert desk.cfg["win_w"] == 777
+    assert desk.fit_scale(100) * UNIFORM_W <= qapp.primaryScreen().availableGeometry().width(), "比螢幕大的縮到放得下"
+    assert desk.fit_scale(0.01) * UNIFORM_W == MIN_W
+
+
+def test_size_menu_uses_physical_pixels(desk, monkeypatch):
+    """右鍵「大小」是螢幕實際的像素：Windows 顯示比例 150% 時選 1920×1080，邏輯寬是 1280（不會再乘一次顯示比例）"""
+    monkeypatch.setattr(desk, "fit_scale", lambda v: v)
+    monkeypatch.setattr(desk, "devicePixelRatioF", lambda: 1.5)
+    monkeypatch.setattr(desk, "screen_px", lambda: (3840, 2160))
+    desk.set_window_px(1920)
+    assert (desk.width(), desk.height()) == (1280, 720)
+    desk.fill_size_menu()
+    acts = desk.size_menu.actions()
+    assert "1920×1080" in acts[0].text(), "第一行寫目前的實際大小"
+    assert [a.text() for a in acts if a.isChecked()] == ["1920×1080"]
+
+
+def test_fullscreen_fits_16_9_and_restores(desk):
+    """全螢幕：蓋滿螢幕、畫面照 16:9 縮到放得下並置中；存檔存的是全螢幕前的大小；離開時回到原本的位置與大小"""
+    from cafe_desk.render.station import UNIFORM_W
+    before = (desk.scale_f, desk.host.geometry().topLeft())
+    desk.set_fullscreen(True)
+    host = desk.host
+    assert desk.fullscreen and host.fullscreen
+    hw, hh = host.width(), host.height()
+    assert desk.width() <= hw and desk.height() <= hh and (desk.width() == hw or desk.height() == hh), "縮到剛好放得下"
+    assert abs(desk.width() / desk.height() - 16 / 9) < 0.01
+    assert abs(desk.x() * 2 + desk.width() - hw) <= 1 and abs(desk.y() * 2 + desk.height() - hh) <= 1, "置中"
+    desk.save_config()
+    assert desk.cfg["win_w"] == round(before[0] * UNIFORM_W) and desk.cfg["fullscreen"] is True
+    assert (desk.cfg["x"], desk.cfg["y"]) == (before[1].x(), before[1].y())
+    desk.set_fullscreen(False)
+    assert not desk.fullscreen and desk.scale_f == before[0] and desk.host.geometry().topLeft() == before[1]
+
+
+def test_choosing_screen_resolution_goes_fullscreen(desk, monkeypatch):
+    """右鍵「大小」選的跟螢幕本身一樣大（或更大）：直接全螢幕；選小的會離開全螢幕"""
+    monkeypatch.setattr(desk, "screen_px", lambda: (1920, 1080))
+    monkeypatch.setattr(desk, "fit_scale", lambda v: v)
+    desk.set_window_px(1920)
+    assert desk.fullscreen
+    desk.set_window_px(1280)
+    assert not desk.fullscreen and desk.width() == 1280
+
+
+def test_sizing_rect_locks_16_9():
+    """WM_SIZING：拖哪一邊都鎖成 16:9，對面那一邊不動；不小於最小寬"""
+    from ctypes import wintypes
+    from cafe_desk.host import fit_sizing_rect
+    def drag(edge, l, t, r, b):
+        rc = wintypes.RECT(l, t, r, b)
+        fit_sizing_rect(rc, edge, 16, 39, 16 / 9, 640)
+        return rc.left, rc.top, rc.right, rc.bottom, (rc.right - rc.left - 16) / (rc.bottom - rc.top - 39)
+    l, t, r, b, ratio = drag(8, 100, 100, 100 + 1616, 100 + 400)      # 右下：照寬度
+    assert (l, t) == (100, 100) and abs(ratio - 16 / 9) < 0.01 and r - l - 16 == 1600
+    l, t, r, b, ratio = drag(3, 100, 100, 100 + 1016, 600)           # 上：照高度，下邊固定
+    assert (t, b) == (100, 600) and r - l - 16 == round(461 * 16 / 9), "高度不變、寬度照高度算"
+    l, t, r, b, ratio = drag(4, 100, 100, 2000, 1000)               # 左上：右下角固定
+    assert (r, b) == (2000, 1000) and abs(ratio - 16 / 9) < 0.01
+    l, t, r, b, ratio = drag(2, 0, 0, 100, 100)                      # 太小：最小寬
+    assert r - l - 16 == 640
 
 
 def _days(**kw):
@@ -620,3 +717,49 @@ def test_view_lock_saved_and_bad_value_ignored(desk):
     assert desk.cfg["view_lock"] == "machine"
     desk.set_view_lock("nonsense")
     assert desk.view_lock == "machine"
+
+
+def test_dragging_records_window_pauses_main_painting(desk, monkeypatch):
+    """拖動紀錄／商店／佈置視窗時主畫面暫停繪圖（大視窗一格要畫幾十毫秒，拖起來才順），停手後恢復；模擬照常推進"""
+    import time
+    desk.open_records("shop")
+    dlg = desk.store_dlg
+    dlg.move(dlg.x() + 40, dlg.y() + 30)
+    assert desk.other_dragging()
+    calls = []
+    monkeypatch.setattr(desk, "update", lambda *a: calls.append(1))
+    monkeypatch.setattr(desk, "isVisible", lambda: True)
+    t0 = desk.anim_t
+    desk.tick()
+    assert not calls and desk.anim_t >= t0, "暫停繪圖，模擬照常"
+    desk._drag_until = time.perf_counter() - 1
+    desk.tick()
+    assert calls, "停手後恢復"
+    dlg.close()
+
+
+def test_dragging_main_window_pauses_painting(desk):
+    """拖動主視窗本身也暫停繪圖；改大小（拖左邊／上邊框也會移動）時照常畫"""
+    from PySide6.QtGui import QResizeEvent
+    from PySide6.QtWidgets import QApplication
+    desk._drag_until = 0.0
+    desk.host.move(desk.host.x() + 30, desk.host.y() + 20)
+    assert desk.other_dragging()
+    QApplication.sendEvent(desk.host, QResizeEvent(desk.host.size(), desk.host.size()))
+    assert not desk.other_dragging()
+
+
+def test_windowed_machine_view_uses_cached_opaque_base(desk, monkeypatch):
+    """視窗化義式畫面：背景＋機器靜態圖層＋配料架合成一張底圖快取起來（4K 每張全畫面貼圖都很貴），架上的配料變了才重合成"""
+    desk.windowed = True
+    desk.counter_view = False
+    desk.grab()
+    base = desk.machine_base()
+    assert desk.machine_base() is base, "沒變就用快取"
+    calls = []
+    real = desk.paint_rack_items
+    monkeypatch.setattr(desk, "paint_rack_items", lambda p: (calls.append(1), real(p)))
+    desk.grab()
+    assert not calls, "配料架不用每格畫"
+    monkeypatch.setattr(desk, "rack_in_use", lambda: {"__changed__"})
+    assert desk.machine_base() is not base and calls, "架上的配料變了：重合成"

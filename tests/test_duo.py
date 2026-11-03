@@ -30,7 +30,7 @@ def test_pair_kind():
 
 def test_on_twin_swaps_and_restores(desk, unlocked):
     desk.set_machine("duo")
-    assert desk.twin is not None and desk.twin["cup"] is None
+    assert desk.twin is not None and desk.twin.cup is None
     cup, contents = desk.cup, desk.contents
     a_x = desk.cup_anchor()[0]
     with desk.on_twin():
@@ -39,9 +39,26 @@ def test_on_twin_swaps_and_restores(desk, unlocked):
         desk.reset_cup("latte")
         twin_cup = desk.cup
     assert desk.machine.g == 0 and desk.cup is cup and desk.contents is contents
-    assert desk.twin["cup"] is twin_cup, "在 on_twin 裡換的杯子留在 twin"
+    assert desk.twin.cup is twin_cup, "在 on_twin 裡換的杯子留在 twin"
     desk.set_machine("desk01")
     assert desk.twin is None, "單頭機沒有第二個沖煮頭"
+
+
+def test_head_fields_go_to_current_head(desk, unlocked):
+    """每杯各一份的欄位都是轉給 self.head 的 property：在 on_twin 裡改的是第二個沖煮頭，第一個不受影響"""
+    import inspect
+    from cafe_desk.head import HEAD_FIELDS
+    for k in HEAD_FIELDS:
+        assert isinstance(inspect.getattr_static(desk, k), property), k
+        assert k not in vars(desk), k
+    desk.set_machine("duo")
+    first = desk.head
+    with desk.on_twin():
+        assert desk.head is desk.twin and desk._in_twin
+        desk.wand_angle, desk.crema_h = 0.7, 3.0
+    assert desk.head is first and not desk._in_twin
+    assert (desk.twin.wand_angle, desk.twin.crema_h) == (0.7, 3.0)
+    assert (first.wand_angle, first.crema_h) == (0.0, 0.0)
 
 
 def test_single_cup_steams_while_brewing(desk, unlocked):
@@ -100,8 +117,8 @@ def test_business_prefers_duo_and_makes_two(desk, unlocked):
     assert o2.wait == o1.wait, "一起做的第二位開始做之後不再累計等待"
     cups = desk.stats.data["order_total"]
     assert cups == 2
-    assert desk.twin["contents"]["milk"] > 50 and desk.contents["milk"] > 50, "兩杯都倒好奶"
-    assert desk.cup_away and desk.twin["cup"] is None, "營業中做好的兩杯都送去收銀台"
+    assert desk.twin.contents["milk"] > 50 and desk.contents["milk"] > 50, "兩杯都倒好奶"
+    assert desk.cup_away and desk.twin.cup is None, "營業中做好的兩杯都送去收銀台"
     assert desk.delivery is None and not desk.pending_deliveries and desk.counter_view == desk.idle_counter(), "兩杯都交付了"
     assert desk.stats.unlocked("duo_pair")
 
@@ -252,7 +269,7 @@ def test_second_cup_still_drawn_after_first_leaves(desk, unlocked):
         n += 1
         assert n < 8000, "第一杯先送走、第二杯還在做"
     drawn = []
-    cup2 = desk.twin["cup"]
+    cup2 = desk.twin.cup
     orig = cup2.paint_back
     cup2.paint_back = lambda p: (drawn.append(1), orig(p))
     desk.bg_layer = None
@@ -343,7 +360,7 @@ def test_dual_wand_upgrade_lets_two_milk_drinks_pair(desk, unlocked):
             assert n < 12000
         assert both, "兩支蒸氣管同時打奶"
         assert o1.score > 0 and o2.score > 0 and desk.stats.data["order_total"] == before + 2
-        assert desk.twin["wand_angle"] == 0.0 and desk.wand_angle == 0.0
+        assert desk.twin.wand_angle == 0.0 and desk.wand_angle == 0.0
     finally:
         from cafe_desk import store as st
         st.apply_upgrades([])
@@ -359,7 +376,7 @@ def test_single_wand_still_animates_for_second_cup(desk, unlocked):
     while desk.busy():
         desk.step(0.05, 0.5)
         desk.update_order(0.05, 0, 0.5)
-        seen = max(seen, desk.twin["wand_angle"])
+        seen = max(seen, desk.twin.wand_angle)
         n += 1
         if n % 60 == 0:
             desk.host.grab()
@@ -427,7 +444,8 @@ def test_duo_layout_has_gaps_and_ingredient_rack(desk, unlocked, monkeypatch):
     desk.set_order_mode(True)
     x0 = desk.side_spot(0)[0]
     assert x0 - m.scene_w == m.side_gap and desk.side_spot(1)[0] - x0 == shop.SIDE_W2
-    assert desk.scene_dx() >= -1, "磨豆機不會被視窗切掉"
+    from cafe_desk.render.grinder import HOPPER_C
+    assert desk.scene_dx() + HOPPER_C[0][0] >= 0, "營業用磨豆機的豆倉（最左邊）不會被視窗切掉"
     racks = []
     orig = shop.paint_ingredient_rack
     monkeypatch.setattr(shop, "paint_ingredient_rack", lambda *a, **k: (racks.append(a[1:]), orig(*a, **k)))
@@ -471,11 +489,13 @@ def test_counter_back_scene_keeps_machine_view_proportions(desk, qapp):
     from cafe_desk.machines import MACHINES
     from cafe_desk.render import gear_icons
     from cafe_desk.render.shop import SHELF_Y, SIDE_W, SIDE_W2
+    from cafe_desk.gfx import logical_size
+    from PySide6.QtCore import QRectF
     for key in ("duo", "desk01", "allinone"):
         m = MACHINES[key]
-        img, mach, ground = gear_icons.scene_image(desk, m)
+        img, mach, ground, _origin = gear_icons.scene_image(desk, m)
         assert mach.y() < ground <= mach.y() + mach.height(), "站在桌上的線在機身範圍內（磨豆機底座比機身底低一點）"
-        assert img.rect().contains(mach) and mach.height() > 200
+        assert QRectF(0, 0, *logical_size(img)).contains(mach) and mach.height() > 200
         if m.traits.grinder == "external":
             assert mach.x() > 80, "磨豆機在機身左邊"
         side = SIDE_W + (SIDE_W2 if m.traits.groups > 1 else 0) + (m.side_gap - 66)
@@ -483,6 +503,9 @@ def test_counter_back_scene_keeps_machine_view_proportions(desk, qapp):
         assert img.height() < gear_icons.SCENE_H
     img = desk.showcase_image(MACHINES["duo"])[0]
     assert desk.showcase_image(MACHINES["duo"])[0] is img, "快取"
+    lo, hi = gear_icons.scene_image(desk, MACHINES["duo"]), gear_icons.scene_image(desk, MACHINES["duo"], 2.0)
+    assert hi[0].width() > lo[0].width() * 1.9 and hi[0].devicePixelRatio() == 2.0, "高解析度：像素加倍"
+    assert abs(logical_size(hi[0])[0] - logical_size(lo[0])[0]) < 6 and abs(hi[1].height() - lo[1].height()) < 6, "場景座標的大小不變"
 
 
 @pytest.mark.parametrize("key", ["desk01", "lever", "compact", "allinone", "duo"])
@@ -490,12 +513,13 @@ def test_every_showcase_machine_stands_on_the_back_counter(desk, qapp, key):
     """櫃檯畫面後檯：每一台咖啡機（與它的磨豆機）都站在桌面上（桌面 bt～bt+10），不浮在上面也不沉進抽屜，也不蓋到窗與 POS"""
     from cafe_desk.machines import MACHINES
     from cafe_desk.render import shop
+    from cafe_desk.gfx import logical_size
     m = MACHINES[key]
     W, bt = desk._scene_w, shop.COUNTER_TOP - 64
     sel = desk.decor_look()[0]
     img, rect = desk.showcase_place(m, sel, W, bt)
-    _img, mach, ground = desk.showcase_image(m)
-    k = rect.width() / img.width()
+    _img, mach, ground, _origin = desk.showcase_image(m)
+    k = rect.width() / logical_size(img)[0]
     machine_bottom = rect.top() + (mach.y() + mach.height() - 4) * k
     base_line = rect.top() + ground * k
     assert bt <= base_line <= bt + 10, "站在桌面上的那條線（磨豆機底座的底／沒有磨豆機的機身底）在桌面範圍內"
@@ -546,3 +570,32 @@ def test_two_cups_show_two_chart_and_art_cards(desk, unlocked, monkeypatch):
         if not desk.busy():
             break
     assert seen
+
+
+def test_pitcher_stays_in_window_when_pouring_second_cup(desk, unlocked):
+    """拉花杯（PITCHER_K 倍，含把手）在雙頭機倒第二杯（出杯台最右邊）時不超出視窗右緣"""
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QPainterPath, QPainterPathStroker, QTransform
+    from cafe_desk import vessels
+    k = vessels.PITCHER_K
+    handle = QPainterPath(QPointF(36, 9))                      # 跟 paint_pitcher 的把手一樣
+    handle.cubicTo(QPointF(47, 9), QPointF(48, 30), QPointF(38, 32))
+    st = QPainterPathStroker()
+    st.setWidth(3.5)
+    shape = vessels.pitcher().united(QTransform().scale(k, k).map(st.createStroke(handle)))
+    desk.set_machine("desk01")
+    o1, o2 = _business_pair(desk, "latte", "latte")
+    o1.size = o2.size = "L"
+    random.seed(4)
+    desk.make_order()
+    low, n = 1e9, 0
+    while desk.busy():
+        desk.step(0.05, 0.5)
+        for head in desk.heads:
+            v = head.session.vessel if head is not None and head.session else None
+            if v and v.get("kind") == "pitcher" and v.get("alpha", 1) > 0.3:
+                r = QTransform().translate(v["x"], v["y"]).rotate(-v["tilt"]).map(shape).boundingRect()
+                low = min(low, desk._scene_w - (desk.scene_dx() + r.right()))
+        n += 1
+        assert n < 8000
+    assert low < 1e9 and low >= 0, f"拉花杯超出視窗右緣 {-low:.1f}"

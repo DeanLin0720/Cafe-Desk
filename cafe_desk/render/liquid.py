@@ -15,7 +15,7 @@ from ..util import clamp, lerp
 class LiquidRenderer:
     def surface_y(self):
         y = self.cup.level_y(self.cup_volume())
-        if self.icecream and self.icecream["landed"]:          # 阿芙佳朵：濃縮落在冰淇淋頂端
+        if self.icecream and self.icecream["landed"] and not self.icecream.get("float"):   # 阿芙佳朵：濃縮落在冰淇淋頂端
             x, by, r, sy = self.affogato_ball()
             return min(y, by - r * sy)
         return y
@@ -77,7 +77,10 @@ class LiquidRenderer:
             return self.paint_brew_liquid(p)                 # 手沖台的咖啡（render/station.py）
         if c["water"] > 0 or c["milk"] > 0 or c["syrup"] > 0 or base_of(self.drink_kind()) in ("americano", "iced"):
             return self.paint_mixed_liquid(p)
-        return self.paint_liquid_espresso(p)
+        self.paint_liquid_espresso(p)
+        if self.topping.get("whip", 0.0) > 0.01:            # 康寶藍：濃縮上一圈鮮奶油
+            ly, cx, rx, ry = self.surface_geom()
+            self.paint_whip_dome(p, ly, cx, rx, ry)
 
     def paint_liquid_espresso(self, p):
         s = self.shot

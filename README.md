@@ -6,7 +6,7 @@
 
 - 五種沖煮方式，各有自己的畫面：義式咖啡機、手沖、冰滴、摩卡壺、虹吸壺（冰滴約 1 小時，依架好時記下的時間計算；關掉程式時不會執行，重開時依經過的時間算出進度）
 - 五台咖啡機（DESK·01 雙錶不鏽鋼機、復古拉桿機、小型單鍋爐機、內建磨豆的一體機、兩個沖煮頭的營業用雙頭機），各有特性影響萃取
-- 濃縮、美式、拿鐵、卡布奇諾、馥列白、摩卡、焦糖瑪奇朵、濃縮通寧、阿芙佳朵等 16 種義式飲品，加上手沖、冰滴、摩卡壺、虹吸；節日期間另有 3 款季節限定
+- 濃縮、美式、拿鐵、卡布奇諾、馥列白、摩卡、焦糖瑪奇朵、濃縮通寧、阿芙佳朵、黑糖髒髒拿鐵、咖啡漂浮等 28 種義式飲品，熱可可、抹茶拿鐵、奶茶、義式蘇打等 10 種不用咖啡的飲品，加上手沖、日式冰手沖、冰滴、摩卡壺、虹吸；節日期間（新年、春節、情人節、白色情人節、復活節、兒童節、母親節、父親節、國際咖啡日、萬聖節、感恩節、聖誕節）另有 12 款季節限定
 - 完整備粉流程（取把手 → 敲渣 → 磨豆 → 布粉 → 填壓 → 扣回）、打奶與拉花、豆子與養豆天數、清潔保養（每台咖啡機分開計算）
 - 三種模式：手動、自動（照目前的設定重複沖煮）、營業（客人點單付錢、排隊、有耐心，做好後在櫃檯取餐才評分）
 - 營業模式：出杯台與櫃檯店面、POS 結帳、內用／外帶、大中小杯、一張單好幾杯、座位、翻頁鐘
@@ -15,7 +15,9 @@
 - 陪伴功能：環境音（下雨天的咖啡廳、森林雨聲與遠雷）、播放自己的音樂、休息提醒、每天自動檢查新版本
 - 簡化的物理：倒的時候液面保持水平、越倒越空傾斜得越多，容器從杯子上方繞過；手沖的水珠受重力加速、細水柱斷成水滴
 - 紀錄與收集冊：每日紀錄、72 個成就（分級的有銅／銀／金，只算為客人做的杯子）、飲品、設備、食材與甜點圖鑑（含拉花收集）、遊戲說明
-- 16:9 視窗（1920×1080、1600×900、1280×720、960×540）；紙張風格的選單與視窗；繁體中文／English（金額跟著語言顯示新台幣或美金）
+- 店面裝潢：牆面、地板、櫃檯、看板、掛畫、植物、咖啡機配色等，用營業額或挑戰的章換，在佈置視窗預覽與擺放
+- 每日／每週挑戰與稱號、會回頭點「老樣子」的熟客、Lv.10 之後的星級評鑑
+- 16:9 視窗可以自由調整大小（拖邊框、Ctrl＋滾輪，或右鍵選 960×540 到 3840×2160），支援全螢幕（F11）與 4K；紙張風格的選單與視窗；繁體中文／English（金額跟著語言顯示新台幣或美金）
 
 <p align="center">
   <img src="docs/images/desk01.png" alt="Café Desk：做完一杯拿鐵，上方是萃取曲線與拉花卡片" width="480">
@@ -96,7 +98,7 @@
 - **店鋪等級 Lv.1–10**：依累積營業額升級（路邊小攤 → 夢想咖啡館），等級越高客人越多、越有耐心，出杯也更快。
 - **咖啡師稱號**：做越多杯越熟練（新手 → 大師），打奶、研磨、拉花的手感誤差越小；稱號越高，能做的飲品越多，升到「職人」後萃取的同時打奶。
 - **打烊日報**：關掉營業模式或跨過午夜時，滑出一張收據：服務人數、營業額、最佳一杯、跟上一個營業日比較、升級進度。
-- **設備解鎖**：一開始只有 DESK·01 與義式，店鋪升級後陸續解鎖手沖、其他咖啡機、摩卡壺、冰滴與虹吸壺。
+- **設備解鎖**：練習模式所有設備與飲品都能用；營業模式一開始只有 DESK·01 與義式，店鋪升級後陸續解鎖手沖、其他咖啡機、摩卡壺、冰滴與虹吸壺。
 - **商店**：用賺到的營業額買咖啡機與磨豆機升級（PID 溫控、精密刀盤、專業奶泡機、平刀盤、鬼齒刀盤…）和精品咖啡豆（藝妓、藍山、可娜），營業中也能買；花錢不會掉級。
 - **圖鑑**：紀錄與收集冊的「圖鑑」頁有每種飲品與設備的圖，還沒做過或沒解鎖的是剪影；「說明」頁寫各模式的差別與解鎖條件。
 - 營業時參數由咖啡師自己調，結束營業後還原你原本的咖啡機、飲品與參數；播放速度只影響手動與自動模式。
@@ -124,6 +126,8 @@ Windows 用 `pythonw` 不會多開一個主控台視窗；要看錯誤訊息時�
 | 左鍵點咖啡機或磨豆機 | 開始沖煮（手沖、冰滴、摩卡壺、虹吸壺的畫面點任何地方） |
 | 滑鼠停在機身上 | 顯示萃取曲線卡片（拿鐵類會同時顯示拉花）；透明擺件時狀態列也是這時才出現 |
 | 左鍵拖曳 | 移動位置（會記住） |
+| 拖邊框／Ctrl＋滾輪 | 調整視窗大小（鎖定 16:9，會記住；透明擺件用 Ctrl＋滾輪） |
+| F11／Esc | 切換全螢幕／離開全螢幕 |
 | 右鍵 | 選單：沖煮方式、咖啡機、飲品、拉花圖案、參數設定、豆子、清潔保養、紀錄與收集冊、模式（手動／自動／營業）、自動間隔、休息提醒、聲音（音量、環境音）、音樂、視窗化顯示、大小、Language、更新、關於… |
 | 系統匣圖示 | 單擊叫回咖啡機；右鍵有沖煮、模式（手動／自動／營業）、音樂、結束 |
 
@@ -190,7 +194,7 @@ A coffee machine desktop toy. A window holds an espresso machine, a grinder and 
 
 - Five brew methods, each with its own scene: espresso machine, pour-over, cold drip, moka pot and siphon (cold drip takes about an hour, measured from the time the tower was set up; nothing runs while the app is closed, and on the next launch the progress is worked out from the elapsed time)
 - Five machines (DESK·01 dual-gauge steel machine, vintage lever machine, compact single-boiler machine, all-in-one with built-in grinder, two-group café machine), each with traits that affect extraction
-- 16 espresso drinks including espresso, americano, latte, cappuccino, flat white, mocha, caramel macchiato, espresso tonic and affogato, plus pour-over, cold drip, moka pot and siphon, and 3 seasonal specials during festivals
+- 28 espresso drinks including espresso, americano, latte, cappuccino, flat white, mocha, caramel macchiato, espresso tonic, affogato, dirty brown sugar latte and coffee float, 10 coffee-free drinks such as hot cocoa, matcha latte, milk tea and Italian soda, plus pour-over, Japanese iced pour-over, cold drip, moka pot and siphon, and 12 seasonal specials during festivals (New Year, Lunar New Year, Valentine's Day, White Day, Easter, Children's Day, Mother's Day, Father's Day, International Coffee Day, Halloween, Thanksgiving, Christmas)
 - Full prep workflow (take the portafilter → knock out → grind → distribute → tamp → lock in), milk steaming and latte art, beans and rest days, cleaning and maintenance (tracked per machine)
 - Three modes: manual, auto (keeps brewing your current drink with your current settings) and business (customers order and pay, queue up and run out of patience, and rate the drink once they pick it up at the counter)
 - Business mode: a pass counter and a shop counter, POS checkout, for here / to go, small / medium / large cups, multi-drink orders, seats and a flip clock
@@ -199,7 +203,9 @@ A coffee machine desktop toy. A window holds an espresso machine, a grinder and 
 - Extras: ambience (a rainy-day café, forest rain with distant thunder), your own music, break reminders, a daily update check
 - Simple physics: liquid stays level while pouring and the vessel tips further as it empties, vessels go over the cup instead of through it, pour-over drips accelerate and a thin stream breaks into drops
 - Records and collection: daily records, 72 achievements (tiered sets in bronze / silver / gold, counting only cups made for customers), a book of drinks, equipment, ingredients and desserts (with latte art), and a game guide
-- A 16:9 window (1920×1080, 1600×900, 1280×720, 960×540); paper-style menus and windows; 繁體中文 / English (prices show in NT$ or US$ to match the language)
+- Shop decor: walls, floors, counters, menu boards, paintings, plants, machine colors and more, paid for with revenue or challenge stamps, previewed and arranged in the Layout window
+- Daily and weekly challenges with titles, regulars who come back for "the usual", and a star rating after Lv.10
+- A freely resizable 16:9 window (drag the edges, Ctrl+wheel, or pick 960×540 to 3840×2160 from the right-click menu) with fullscreen (F11) and 4K support; paper-style menus and windows; 繁體中文 / English (prices show in NT$ or US$ to match the language)
 
 <p align="center">
   <img src="docs/images/desk01_en.png" alt="Café Desk: a finished latte with the extraction curve and latte art cards above" width="480">
@@ -280,7 +286,7 @@ When the barista takes an order, the customer pays at the POS first (customers w
 - **Shop level 1–10**: grows with total revenue (Street Stall → Dream Café); higher levels bring more, and more patient, customers, and drinks come out faster.
 - **Barista titles**: the more cups made, the steadier the hands (Rookie → Master), with smaller errors in milk, grind and latte art; higher titles unlock more drinks, and an Artisan steams milk while the shot pulls.
 - **Closing report**: when business mode ends or the day rolls over, a receipt slides up with customers served, revenue, best cup, comparison with the last business day and level progress.
-- **Equipment unlocks**: you start with DESK·01 and espresso only; leveling up the shop unlocks pour-over, the other machines, moka pot, cold drip and siphon.
+- **Equipment unlocks**: practice mode can use every machine and drink; in business mode you start with DESK·01 and espresso only, and leveling up the shop unlocks pour-over, the other machines, moka pot, cold drip and siphon.
 - **Store**: spend your revenue on machine and grinder upgrades (PID kit, precision burrs, pro frother, flat burrs, ghost-tooth burrs…) and specialty beans (Geisha, Blue Mountain, Kona), even during business; spending never lowers your shop level.
 - **Collection book**: the Collection tab of the records window pictures every drink and piece of equipment, with silhouettes for what you haven't made or unlocked yet; the Guide tab explains the modes and unlocks.
 - The barista sets the parameters during business, and your own machine, drink and settings come back when business ends; playback speed only applies in manual and auto modes.
@@ -308,6 +314,8 @@ On Windows, `pythonw` avoids opening an extra console window, use `python` when 
 | Left-click the machine or grinder | Start brewing (anywhere in the pour-over, cold drip, moka pot and siphon scenes) |
 | Hover over the machine | Show the extraction curve card (with latte art for milk drinks); in transparent mode the status bar also appears only then |
 | Left-drag | Move the window (position is remembered) |
+| Drag the edges / Ctrl+wheel | Resize the window (locked to 16:9 and remembered; use Ctrl+wheel in transparent mode) |
+| F11 / Esc | Toggle fullscreen / leave fullscreen |
 | Right-click | Menu: brew method, machine, drinks, latte art, settings, beans, cleaning, records and collection, mode (manual / auto / business), auto interval, break reminder, sound (volume, ambience), music, windowed, size, Language, updates, About… |
 | Tray icon | Click to bring the machine back, right-click for brew, mode (manual / auto / business), music, quit |
 

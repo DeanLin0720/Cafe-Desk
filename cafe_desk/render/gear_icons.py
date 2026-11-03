@@ -11,19 +11,20 @@ from ..layout import WIN_H
 CANVAS_W = 680                  # 最寬的雙頭機（場景寬 660）也放得下
 
 
-def _render(fn):
-    img = QImage(CANVAS_W, WIN_H, QImage.Format_ARGB32_Premultiplied)
+def _render(fn, ratio=1.0):
+    img = QImage(round(CANVAS_W * ratio), round(WIN_H * ratio), QImage.Format_ARGB32_Premultiplied)
     img.fill(Qt.transparent)
     p = QPainter(img)
     p.setRenderHint(QPainter.Antialiasing)
+    p.scale(ratio, ratio)
     fn(p)
     p.end()
     return img
 
 
-def _bbox(img):
-    """不透明部分的範圍：先縮小 4 倍再掃描（快），再放大回來留一點邊"""
-    k = 4
+def _bbox(img, ratio=1.0):
+    """不透明部分的範圍（像素）：先縮小再掃描（快；高解析度的圖縮得更多），再放大回來留一點邊"""
+    k = max(4, round(4 * ratio))
     small = img.scaled(img.width() // k, img.height() // k)
     xs, ys = [], []
     for y in range(small.height()):
@@ -114,9 +115,15 @@ def machine_image(app, m):
 SCENE_W, SCENE_H, SCENE_DY = 1100, 480, 40      # scene_image 的畫布（場景座標往下移 SCENE_DY，留給比 0 還上面的部分）
 
 
-def scene_image(app, m):
+def _logical(r, ratio):
+    """像素範圍 → 場景座標（除以 ratio）"""
+    return QRectF(r.x() / ratio, r.y() / ratio, r.width() / ratio, r.height() / ratio)
+
+
+def scene_image(app, m, ratio=1.0):
     """櫃檯畫面後檯用：把咖啡機畫面的組成（獨立磨豆機、咖啡機、機器右邊出杯台上方的配料架）照原本的比例畫成一張圖，
-    裁掉空白；回傳 (圖, 咖啡機機身在圖裡的範圍 QRect, 站在桌上的那條線 y)，櫃檯畫面整張照同一個比例縮小，所以磨豆機、機身、配料架的大小比例跟咖啡機畫面一樣。
+    裁掉空白；回傳 (圖, 咖啡機機身在圖裡的範圍 QRectF, 站在桌上的那條線 y, 圖左上角在咖啡機畫面的場景座標 QPointF)，
+    圖以 ratio 倍解析度畫（devicePixelRatio＝ratio，放大顯示也清楚），其餘一律是場景座標（圖的邏輯大小見 gfx.logical_size），櫃檯畫面整張照同一個比例縮小，所以磨豆機、機身、配料架的大小比例跟咖啡機畫面一樣。
     站在桌上的線：有獨立磨豆機的是磨豆機底座的底（機身底座在畫面裡比它低一點，像在前面），沒有的是機身底"""
     from .shop import paint_ingredient_rack, SHELF_Y, SIDE_W, SIDE_W2
 
@@ -144,27 +151,32 @@ def scene_image(app, m):
             m.paint_static_scene(app, p)
             machine(p)
             side = SIDE_W + (SIDE_W2 if m.traits.groups > 1 else 0) + (m.side_gap - 66)
-            paint_ingredient_rack(p, m.scene_w + 6, m.scene_w + side - 6, SHELF_Y)
+            paint_ingredient_rack(p, m.scene_w + 6, m.scene_w + side - 6, SHELF_Y, app.rack_kinds())
         finally:
             app.machine, app.hopper, app._bean_cache = old
 
     def render(fn):
-        img = QImage(SCENE_W, SCENE_H, QImage.Format_ARGB32_Premultiplied)
+        img = QImage(round(SCENE_W * ratio), round(SCENE_H * ratio), QImage.Format_ARGB32_Premultiplied)
         img.fill(Qt.transparent)
         p = QPainter(img)
         p.setRenderHint(QPainter.Antialiasing)
+        p.scale(ratio, ratio)
         p.translate(0, SCENE_DY)
         fn(p)
         p.end()
         return img
     whole = render(full)
-    box = _bbox(whole)
-    mach = _bbox(render(machine)).translated(-box.topLeft())
+    px = _bbox(whole, ratio)
+    box = _logical(px, ratio)
+    mach = _logical(_bbox(render(machine), ratio), ratio).translated(-box.topLeft())
     if m.traits.grinder == "external":
         ground = 366 + SCENE_DY - box.y()                          # 磨豆機底座的底（render/grinder.py 的底座到 y＝366）
     else:
         ground = mach.y() + mach.height() - 4                       # _bbox 留的邊
-    return whole.copy(box), mach, ground
+    img = whole.copy(px)
+    img.setDevicePixelRatio(ratio)
+    return img, mach, ground, QPointF(box.x(), box.y() - SCENE_DY)
+
 
 
 def grinder_icon(app, w=150, h=110, locked=False, dpr=1.0, style="standard"):
@@ -190,13 +202,15 @@ def station_icon(app, kind, w=150, h=110, locked=False, dpr=1.0):
     return _thumb(_station_render(app, kind), w, h, locked, dpr)
 
 
-def station_image(app, kind):
-    """沖煮台器具的圖（裁掉空白、不縮小）；櫃檯畫面後檯擺新解鎖的設備用"""
-    img = _station_render(app, kind)
-    return img.copy(_bbox(img))
+def station_image(app, kind, ratio=1.0):
+    """沖煮台器具的圖（裁掉空白、不縮小）；櫃檯畫面後檯擺新解鎖的設備用。以 ratio 倍解析度畫（devicePixelRatio＝ratio）"""
+    img = _station_render(app, kind, ratio)
+    out = img.copy(_bbox(img, ratio))
+    out.setDevicePixelRatio(ratio)
+    return out
 
 
-def _station_render(app, kind):
+def _station_render(app, kind, ratio=1.0):
     def draw(p):
         old = app.method
         app.method = "pourover" if kind == "grinder" else kind
@@ -216,4 +230,4 @@ def _station_render(app, kind):
             app.paint_siphon_station(p, brew.idle_siphon(), None)
         else:                                       # 冰滴塔：畫成架好的樣子（空塔只有木架）
             app.paint_cold_tower(p, {"grounds": 1.0, "top": 0.85, "valve": 1.0}, None)
-    return _render(draw)
+    return _render(draw, ratio)

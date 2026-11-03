@@ -8,17 +8,18 @@ from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, fields
 
 from PySide6.QtCore import Qt, QTimer, QElapsedTimer, QPointF, QUrl
-from PySide6.QtGui import (QPainter, QPixmap, QImage, QAction, QActionGroup, QLinearGradient, QRadialGradient, QColor,
+from PySide6.QtGui import (QShortcut, QKeySequence, QPainter, QPixmap, QImage, QAction, QActionGroup, QLinearGradient, QRadialGradient, QColor,
                            QDesktopServices)
 from PySide6.QtWidgets import QApplication, QWidget, QMenu, QSystemTrayIcon, QFileDialog, QInputDialog
 
 from . import config, update, theme, music, vessels
 from .gfx import pick_family
-from .host import HostWindow
+from .head import BrewHead, HeadFields
+from .host import HostWindow, MIN_W
 from .cups import Cup, paper_kind, cup_fit
 from .drinks import (Session, DRINKS, DRINK_ORDER, DrinkParams, ICE_VOL, ART_CHOICES, ART_NEED,
                      MILK_KINDS, FESTIVAL_DRINKS, DRINK_KEYS, STATION_FAMILIES, is_milk, milk_plan, method_of, pair_kind, pair_compat, pair_shared_milk, base_of,
-                     shot_params, Together)
+                     shot_params, Together, has_shot)
 from . import orders, beans, maintenance, festivals, brew, growth, store, ingredients
 from .stats import Stats, ACHIEVEMENTS, TIER_OF, TIER_ICONS, tier_rank, db_path
 from .records import RecordsDialog
@@ -36,7 +37,7 @@ from .render.machine import MachineRenderer
 from .render.milk import MilkRenderer
 from .render.overlay import OverlayRenderer
 from .render.particles import ParticleSystem
-from .render.shop import ShopRenderer
+from .render.shop import ShopRenderer, paint_wall_pattern, COUNTER_TOP
 from .render.station import StationRenderer
 from .render.clock import ClockRenderer, CLOCK_DEFAULT
 from .render.station import UNIFORM_W, WINDOW_SIZES
@@ -52,20 +53,12 @@ FRAME_IDLE = 100       # 10 fps：只剩狀態列倒數與水溫微動
 FADE_T = 0.6           # 換咖啡機／沖煮方式時，舊畫面淡出的秒數
 SWITCH_PAUSE = 0.5     # 點單換了咖啡機／沖煮方式：漸變完再停這麼久才開始做
 FRAME_HIDDEN = 250     # 縮到系統匣：只推進模擬（自動模式照常）
+DRAG_HOLD = 0.3        # 拖動主視窗或紀錄／商店／佈置／設定／關於視窗時主畫面暫停繪圖，停手這麼久之後才恢復
 SIM_STEP = 0.05        # 模擬子步長（秒）：間隔拉長時切成多步，結果不受幀率影響
 LOG_STEP = 0.1         # 萃取曲線取樣間隔（沖煮時間，秒）
 WARMUP = 18.0          # 啟動時鍋爐比設定溫度低幾度，模擬預熱
 UPDATE_DELAY = 10.0    # 啟動後幾秒才檢查新版本（不跟啟動搶時間）
 UPDATE_RETRY = 3600.0  # 檢查失敗（沒網路）多久後再試；成功的話一天只查一次
-
-# 雙頭機第二個沖煮頭（第二杯）的狀態：這些每杯各一份，on_twin() 時跟 self.twin 對調，
-# 所以做第二杯、畫第二杯都可以直接沿用單杯的程式（self.cup、self.shot、self.session…）
-TWIN_FIELDS = ("session", "cup", "contents", "syrup_kind", "topping", "icecream", "ice", "condense", "mix_t",
-               "mix_clock", "shot", "stream", "last_flow", "drops", "splash", "ripples", "bubbles", "crema_h",
-               "film_h", "swirl", "pf_used", "workflow", "gauge", "gauge_v", "_log_clock", "_ripple_clock",
-               "last_drink", "shot_frac", "wand_angle",
-               "card_alpha", "art_alpha", "last_art", "last_milk", "art_show_until", "_art_cache")      # 兩杯各自的曲線卡片與拉花卡片
-
 
 def _inside(x, y, box):
     return box[0] <= x <= box[2] and box[1] <= y <= box[3]
@@ -76,7 +69,7 @@ VIEW_LOCKS = ("follow", "counter", "machine")      # 營業模式的畫面：跟
 
 class Pair:
     """雙頭機成對做兩杯的進度：a_pre（第一杯備粉）→ b_pre（第二杯備粉）→ brew（兩杯一起萃取，第一杯同時打兩杯份的奶）
-    → a_post（倒第一杯）→ b_post（倒第二杯）。a、b 是兩杯的 Session（b 平常存在 self.twin["session"]）"""
+    → a_post（倒第一杯）→ b_post（倒第二杯）。a、b 是兩杯的 Session（b 平常存在 self.twin.session）"""
 
     def __init__(self, a, b):
         self.a, self.b = a, b
@@ -101,10 +94,14 @@ def window_scale(old):
     return min(choices, key=lambda c: abs(c * UNIFORM_W - px))
 
 
-class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, ParticleSystem, OverlayRenderer,
+class CafeDesk(QWidget, HeadFields, MachineRenderer, GrinderRenderer, LiquidRenderer, ParticleSystem, OverlayRenderer,
                    MilkRenderer, StationRenderer, ShopRenderer, ClockRenderer):
     def __init__(self):
         super().__init__()
+        # 每杯各一份的狀態（self.cup、self.shot、self.session…）都在沖煮頭裡（head.py）：
+        # heads[0] 是第一個沖煮頭，heads[1] 是雙頭機的第二個（self.twin；單頭機是 None），self.head 是目前在用的
+        self.heads = [BrewHead(), None]
+        self.head = self.heads[0]
         self.cfg = self.load_config()
         names = {f.name for f in fields(Params)}
         self.params = Params(**{k: v for k, v in self.cfg.get("params", {}).items() if k in names})
@@ -114,9 +111,14 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.interval = self.cfg.get("interval", 60)
         self.speed = self.cfg.get("speed", 1.0)
         self.topmost = self.cfg.get("topmost", False)
+        self._drag_until = 0.0                            # 拖動其他視窗時主畫面暫停繪圖到這個時間（window_dragging）
+        self.fullscreen = False                           # 全螢幕（F11）；啟動時照 cfg["fullscreen"] 還原（見 show_window）
+        self._normal = None                               # 進全螢幕前的 (內容區左上角, scale_f)，離開時還原
         self.windowed = self.cfg.get("windowed", True)    # 視窗化（預設）：一般視窗（標題列、工作列、不透明背景）；關掉是透明桌面擺件
         # 這是使用者在手動／自動模式的偏好；營業模式一律視窗化（is_windowed()）
-        self.scale_f = window_scale(self.cfg.get("scale"))         # 16:9 視窗的大小（舊版的縮放換成最接近的一個）
+        win_w = self.cfg.get("win_w")                                # 16:9 視窗的寬（邏輯像素，可以是任意大小）
+        self.scale_f = (win_w / UNIFORM_W if isinstance(win_w, (int, float)) and win_w >= MIN_W
+                        else window_scale(self.cfg.get("scale")))      # 沒有的話：舊版的縮放換成最接近的預設大小
         self.light_mode = self.cfg.get("light_mode", "auto")
         self.chart_on = self.cfg.get("chart", True)
         self.clock_cfg = {k: v for k, v in dict(CLOCK_DEFAULT, **self.cfg.get("flip_clock", {})).items()
@@ -158,13 +160,13 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self._switch_wait = None                 # 點單換了咖啡機／沖煮方式後的等待：[訂單, 剩幾秒]
         self.session = None
         self.pair = None                         # 雙頭機成對做兩杯（Pair）
-        self.twin = None                         # 雙頭機第二個沖煮頭的狀態（new_twin；單頭機是 None）
-        self._in_twin = False                    # 正在 on_twin() 裡
+        self.twin = None                         # 雙頭機第二個沖煮頭（new_twin；單頭機是 None）
         self.stats = Stats()
         store.apply_upgrades(self.stats.data["owned"])      # 商店買過的咖啡機升級
-        if not self.machine_open(self.machine.key):          # 還沒解鎖的設備（例如重新遊玩後）：退回 Lv.1 的
+        biz = self.cfg.get("order_mode", False)          # 練習模式什麼都能用；上次停在營業模式時才退回已解鎖的
+        if biz and not self.machine_open(self.machine.key):
             self.machine = MACHINES[DEFAULT_MACHINE]
-        if not self.method_open(self.method) or not self.drink_open(self.drink):
+        if biz and (not self.method_open(self.method) or not self.drink_open(self.drink)):
             self.drink, self.method = "espresso", "espresso"
         self.toasts = []                         # 暫時取代狀態列的通知：(文字, 開始, 結束, 樣式 "trophy"／"info")
         self.notice = None                       # 狀態列的臨時提示：(文字, 結束時間)
@@ -255,6 +257,8 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
 
         # 畫面本身是子元件，放在外層承載視窗（host.py）裡；視窗化模式由 paint_window_backdrop 畫不透明背景
         self.setMouseTracking(True)
+        for key, fn in (("F11", self.toggle_fullscreen), ("Esc", lambda: self.set_fullscreen(False))):
+            QShortcut(QKeySequence(key), self, fn, context=Qt.WindowShortcut)   # F11 切換全螢幕、Esc 離開
         self.host = None
         self.apply_scale()
         scr = QApplication.primaryScreen().availableGeometry()
@@ -333,9 +337,10 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         return config.load()                 # 含舊版設定沿用與格式遷移（config.py）
 
     def save_config(self):
-        self.cfg.update(params=asdict(self.params), x=self.host.geometry().x(), y=self.host.geometry().y(), auto=self.auto,
+        pos = self._normal[0] if self.fullscreen else self.host.geometry().topLeft()
+        self.cfg.update(params=asdict(self.params), x=pos.x(), y=pos.y(), auto=self.auto,
                         interval=self.interval, speed=self.speed, topmost=self.topmost, windowed=self.windowed,
-                        scale=self.scale_f, sound=self.sound.user_on, volume=self.sound.master,
+                        scale=self.normal_scale(), win_w=round(self.normal_scale() * UNIFORM_W), fullscreen=self.fullscreen, sound=self.sound.user_on, volume=self.sound.master,
                         light_mode=self.light_mode, chart=self.chart_on, flip_clock=self.clock_cfg, showcase=self.showcase,
                         pf_used=self.pf_used, machine=self.machine.key, bean_bag=self.bag, bean_shelf=self.shelf, maintenance=self.maint_all,
                         drink=self.drink, drink_params=asdict(self.dp), order_mode=self.order_mode, lang=self.lang,
@@ -350,14 +355,18 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
     def build_host(self, x, y, show=True):
         """建立全新的外層視窗並把畫面搬進去（無邊框／視窗化、置頂切換都走這裡，避免殘留邊框）"""
         old = self.host
-        host = HostWindow(self, self.is_windowed(), self.topmost)
+        host = HostWindow(self, self.is_windowed(), self.topmost, self.fullscreen)
         if hasattr(self, "icon"):
             host.setWindowIcon(self.icon)
         self.setParent(host)
         self.move(0, 0)
-        host.setFixedSize(self.size())
-        host.setGeometry(x, y, self.width(), self.height())    # 以內容區域定位（不含標題列）
         self.host = host
+        if self.fullscreen:
+            host.setGeometry(self._fs_screen.geometry())       # 整個螢幕（含工作列）
+            self.fit_fullscreen(host.size())
+        else:
+            host.fit(self.size())
+            host.setGeometry(x, y, self.width(), self.height())    # 以內容區域定位（不含標題列）
         self.show()
         if old is not None:
             old.retired = True
@@ -365,7 +374,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
             old.close()
             old.deleteLater()
         if show:
-            host.show()
+            host.showFullScreen() if self.fullscreen else host.show()
             host.raise_()
             host.activateWindow()
 
@@ -398,13 +407,53 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.update()
 
     def show_window(self):
-        self.host.show()
+        if self.cfg.pop("fullscreen", False) and not self.fullscreen:   # 上次是全螢幕結束的：啟動時還原
+            self.set_fullscreen(True)
+        if self.fullscreen:
+            self.host.showFullScreen()
+        else:
+            self.host.show()
+
+    def toggle_fullscreen(self):
+        self.set_fullscreen(not self.fullscreen)
+
+    def set_fullscreen(self, v):
+        """全螢幕：無邊框蓋滿目前的螢幕（含工作列），畫面照 16:9 縮到放得下、置中；離開時回到原本的位置與大小。
+        外層視窗要換類型（無邊框／一般視窗），所以跟切換視窗化一樣整個重建"""
+        v = bool(v)
+        if v == self.fullscreen or self.host is None:
+            return
+        visible = self.host.isVisible()
+        if v:
+            self._normal = (self.host.geometry().topLeft(), self.scale_f)
+            self._fs_screen = self.host.screen() or QApplication.primaryScreen()
+            self.fullscreen = True
+            self.build_host(0, 0, show=visible)
+        else:
+            pos, self.scale_f = self._normal
+            self.fullscreen = False
+            self.apply_scale()
+            self.build_host(pos.x(), pos.y(), show=visible)
+        self.set_frame_interval(FRAME_ACTIVE)
+        self.save_config()
+
+    def fit_fullscreen(self, size):
+        """全螢幕：畫面照 16:9 縮到放得下整個螢幕、置中（多出來的是黑邊，host.paintEvent）"""
+        scale = min(size.width() / UNIFORM_W, size.height() / (WIN_H + TOP_PAD))
+        if abs(scale - self.scale_f) > 1e-9 or self.width() != round(UNIFORM_W * scale):
+            self.scale_f = scale
+            self.apply_scale()
+        self.move((size.width() - self.width()) // 2, (size.height() - self.height()) // 2)
+
+    def normal_scale(self):
+        """存檔用的視窗大小：全螢幕時存進全螢幕前的大小"""
+        return self._normal[1] if self.fullscreen and self._normal else self.scale_f
 
     def apply_scale(self):
         self._scene_w = self.scene_width()          # 視窗寬度（手沖／冰滴也跟咖啡機一樣寬）
         self.setFixedSize(round(self._scene_w * self.scale_f), round((WIN_H + TOP_PAD) * self.scale_f))
-        if self.host is not None:
-            self.host.setFixedSize(self.size())
+        if self.host is not None and not self.fullscreen:
+            self.host.fit(self.size())
         self.bg_layer = self.front_layer = None      # 下一次繪圖時重建
         self._frame = None
         self._bean_cache = None
@@ -427,7 +476,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         grp = QActionGroup(self.method_menu)
         self.method_actions = {}
         for key, name in brew.METHODS.items():
-            ok = self.method_open(key)
+            ok = self.can_use_method(key)
             act = self.method_menu.addAction(T(name) + ("" if ok else T("（Lv.{n} 解鎖）", n=growth.METHOD_LEVEL[key])))
             act.setCheckable(True)
             act.setEnabled(ok)
@@ -440,7 +489,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.machine_actions = {}
         for key, mach in MACHINES.items():
             ups = [T(n) for n in store.upgrade_names(key, self.stats.data["owned"])]
-            ok = self.machine_open(key)
+            ok = self.can_use_machine(key)
             act = self.machine_menu.addAction(T(mach.name) + (" ★" if ups else "")
                                               + ("" if ok else T("（Lv.{n} 解鎖）", n=growth.MACHINE_LEVEL[key])))
             act.setEnabled(ok)
@@ -465,9 +514,9 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
             name = T(DRINKS[key]["name"])
             if key == fd:
                 name = T("季節限定：{name}", name=name)
-            act = self.drink_menu.addAction(name + self.drink_lock(key))
+            act = self.drink_menu.addAction(name + self.use_lock(key))
             act.setCheckable(True)
-            act.setEnabled(self.drink_open(key))            # 依咖啡師稱號解鎖（沖煮台的飲品看店鋪等級）
+            act.setEnabled(self.can_use_drink(key))         # 練習模式全部能做；營業模式依咖啡師稱號（沖煮台的飲品看店鋪等級）
             act.setChecked(key == self.drink)
             act.triggered.connect(lambda _=False, k=key: self.set_drink(k))
             grp.addAction(act)
@@ -517,7 +566,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.sync_mode_actions()
 
         main = m                                            # 休息提醒到更新都收進「設定」子選單
-        m = main.addMenu(T("設定"))
+        m = main.addMenu("設定 / Setting")                  # 不翻譯：換了語言也找得到
         # 休息提醒：每隔一段時間提醒起來休息，咖啡師順便做一杯
         self.break_menu = m.addMenu(T("休息提醒"))
         grp = QActionGroup(self.break_menu)
@@ -587,8 +636,9 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         a.setCheckable(True)
         a.setChecked(self.chart_on)
         a.toggled.connect(lambda v: self.set_cfg("chart_on", v))
-        radio(T("大小"), [(px / UNIFORM_W, f"{px}×{px * 9 // 16}（{px * 100 // 1920}%）") for px in WINDOW_SIZES],
-              self.scale_f, self.set_scale)
+        self.size_menu = m.addMenu(T("大小"))
+        self.size_menu.aboutToShow.connect(self.fill_size_menu)
+        self.fill_size_menu()
         radio("Language", list(LANGS), self.lang, self.set_language)      # 不翻譯：看不懂目前語言也找得到
         a = m.addAction(T("視窗化顯示"))
         a.setCheckable(True)
@@ -671,6 +721,40 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.set_frame_interval(FRAME_ACTIVE)
 
     # ───────────── 音樂 ─────────────
+    def fill_size_menu(self):
+        """右鍵「大小」：每次打開時重建。選項是螢幕實際的像素（已扣掉 Windows 顯示比例），所以 1920×1080 在 150% 的螢幕上也是真的 1920 像素寬"""
+        sm = self.size_menu
+        sm.clear()
+        dpr = self.devicePixelRatioF()
+        now = (round(self.width() * dpr), round(self.height() * dpr))
+        sm.addAction(T("目前 {w}×{h}", w=now[0], h=now[1])).setEnabled(False)
+        sm.addSeparator()
+        a = sm.addAction(T("全螢幕") + "\tF11")
+        a.setCheckable(True)
+        a.setChecked(self.fullscreen)
+        a.toggled.connect(self.set_fullscreen)
+        sm.addSeparator()
+        grp = QActionGroup(sm)
+        for px in WINDOW_SIZES:
+            act = sm.addAction(f"{px}×{px * 9 // 16}")
+            act.setCheckable(True)
+            act.setChecked(abs(now[0] - px) <= 1 and not self.fullscreen)
+            act.triggered.connect(lambda _=False, v=px: self.set_window_px(v))
+            grp.addAction(act)
+
+    def set_window_px(self, px):
+        """視窗設成螢幕實際 px 像素寬（邏輯寬＝px ÷ 顯示比例）；跟螢幕本身一樣寬（或更寬）就直接全螢幕"""
+        if px >= self.screen_px()[0]:
+            self.set_fullscreen(True)
+            return
+        self.set_scale(px / self.devicePixelRatioF() / UNIFORM_W)
+
+    def screen_px(self):
+        """目前所在螢幕的實際解析度（像素）"""
+        scr = (self.host.screen() if self.host else None) or QApplication.primaryScreen()
+        g, dpr = scr.geometry(), scr.devicePixelRatio()
+        return round(g.width() * dpr), round(g.height() * dpr)
+
     def fill_music_menu(self):
         """右鍵「音樂」：每次打開時依目前狀態重建（正在播放、播放清單會變）"""
         mm = self.music_menu
@@ -1020,12 +1104,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.cold = None
         self.barista = Barista()
         self.pf_used = False
-        if not self.method_open(self.method):
-            self.set_method("espresso")
-        if not self.drink_open(self.drink):
-            self.set_drink("espresso")
-        if not self.machine_open(self.machine.key):
-            self.set_machine(DEFAULT_MACHINE)
+        self.leave_locked()
         self.reset_cup(self.drink)
         self.result = self.last_brew_res = self.report_card = None
         self.toasts.clear()
@@ -1059,6 +1138,30 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         """這杯飲品能做嗎：沖煮方式依店鋪等級、飲品依咖啡師稱號"""
         return self.method_open(method_of(key)) and \
             growth.rank_of(self.stats.data["total"]) >= growth.drink_rank(key)
+
+    def can_use_machine(self, key):
+        """現在能不能用這台咖啡機：練習模式（手動、自動）全部都能用，營業模式要依店鋪等級解鎖"""
+        return not self.business() or self.machine_open(key)
+
+    def can_use_method(self, method):
+        return not self.business() or self.method_open(method)
+
+    def can_use_drink(self, key):
+        """現在能不能做這杯：練習模式全部都能做，營業模式要解鎖（沖煮方式看店鋪等級、飲品看咖啡師稱號）"""
+        return not self.business() or self.drink_open(key)
+
+    def use_lock(self, key):
+        """選單上飲品名稱後面的解鎖說明：只有營業模式才寫（練習模式全部都能做）"""
+        return self.drink_lock(key) if self.business() else ""
+
+    def leave_locked(self):
+        """營業模式：目前的沖煮方式、飲品、咖啡機還沒解鎖的話，換回 Lv.1 就有的（開營業、重新遊玩時）"""
+        if not self.can_use_method(self.method):
+            self.set_method("espresso")
+        if not self.can_use_drink(self.drink):
+            self.set_drink("espresso")
+        if not self.can_use_machine(self.machine.key):
+            self.set_machine(DEFAULT_MACHINE)
 
     def drink_lock(self, key):
         """還沒解鎖時加在名稱後面的說明（已解鎖是空字串）"""
@@ -1288,8 +1391,9 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
             if key in cur:
                 cur.remove(key)
             else:
-                limit = decor.MAX_PAINTINGS if slot == "paintings" else decor.MAX_PLANTS
-                if len(cur) >= limit:
+                if slot == "plants" and decor.plant_full(cur, key):    # 檯面或吊盆的位置滿了：同類最早擺的換下來
+                    cur.remove(next(k for k in cur if (k in decor.HANGING) == (key in decor.HANGING)))
+                elif len(cur) >= (decor.MAX_PAINTINGS if slot == "paintings" else decor.MAX_PLANTS):
                     cur.pop(0)                                  # 位置滿了：最早擺的換下來
                 cur.append(key)
         else:
@@ -1378,7 +1482,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
             if rank >= growth.FESTIVAL_RANK > seen.get("rank", 0) and festivals.festival_drink():
                 names.append(T(DRINKS[festivals.festival_drink()]["name"]))
             if names:
-                self.toast(T("解鎖新飲品：{names}", names=T("、").join(names)))
+                self.toast(T("營業模式解鎖新飲品：{names}", names=T("、").join(names)))
             if rank >= growth.TOGETHER_RANK > seen.get("rank", 0):
                 self.toast(T("新技能：萃取的同時打奶（單鍋爐機除外），熱牛奶飲品快約三成"))
             self.build_menu()
@@ -1390,7 +1494,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
                 names += [T(MACHINES[key].name) if kind == "machine" else T(brew.METHODS[key])
                           for kind, key in growth.unlocked_at(k)]
             if names:
-                self.toast(T("解鎖新設備：{names}", names=T("、").join(names)))
+                self.toast(T("營業模式解鎖新設備：{names}", names=T("、").join(names)))
             self.build_menu()
             if self.settings_dlg is not None:
                 self.settings_dlg.refresh_locks()
@@ -1513,8 +1617,8 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         if hasattr(self, "reg_floats"):
             self.reg_floats = []
         self.order, self.queue, self.order_alpha = None, [], 0.0
+        self.head = self.heads[0]
         self.twin = None
-        self._in_twin = False
         self.machine.g = 0
         self.stream = [{"head": 0.0, "tail": 0.0} for _ in self.machine.spouts]
         self.wand_angle = 0.0
@@ -1542,6 +1646,12 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         opening = v and not self.order_mode
         was_windowed = self.is_windowed()
         self.order_mode = v
+        if opening:
+            self.leave_locked()                          # 練習時用的設備或飲品營業模式還沒解鎖：換回 Lv.1 的（打烊後還原）
+        if opening or closing:
+            self.build_menu()                            # 選單的反灰與解鎖說明跟著模式變
+            if self.settings_dlg is not None:
+                self.settings_dlg.refresh_locks()
         if self.is_windowed() != was_windowed:          # 營業一律視窗化；離開營業回到使用者的設定
             self.rebuild_host()
         if closing and self.stats.day()["orders"]:      # 打烊：今天有接過單就出日報
@@ -1601,9 +1711,56 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.save_config()
 
     def set_scale(self, v):
-        self.scale_f = v
+        if self.fullscreen:                          # 選了固定大小：先離開全螢幕
+            self.set_fullscreen(False)
+        self.scale_f = self.fit_scale(v)
         self.apply_scale()
+        self.keep_on_screen()
         self.save_config()
+
+    def fit_scale(self, v):
+        """縮放限制在最小寬 MIN_W 與目前螢幕放得下的大小之間（含標題列；選了比螢幕大的預設就縮到剛好）"""
+        lo = MIN_W / UNIFORM_W
+        if self.host is None:
+            return max(lo, v)
+        scr = (self.host.screen() or QApplication.primaryScreen()).availableGeometry()
+        fg, g = self.host.frameGeometry(), self.host.geometry()
+        fw, fh = fg.width() - g.width(), fg.height() - g.height()
+        hi = min(scr.width() - fw, (scr.height() - fh) * UNIFORM_W / (WIN_H + TOP_PAD)) / UNIFORM_W
+        return max(lo, min(v, hi))
+
+    def keep_on_screen(self):
+        """變大之後超出螢幕的話，整個視窗往回移到螢幕裡"""
+        if self.host is None:
+            return
+        scr = (self.host.screen() or QApplication.primaryScreen()).availableGeometry()
+        fg = self.host.frameGeometry()
+        dx = min(0, scr.right() - fg.right()) or max(0, scr.left() - fg.left())
+        dy = min(0, scr.bottom() - fg.bottom()) or max(0, scr.top() - fg.top())
+        if dx or dy:
+            self.host.move(self.host.pos().x() + dx, self.host.pos().y() + dy)
+
+    def resize_to(self, size):
+        """視窗化拖邊框改了大小（host.py 已把框鎖成 16:9）：照新的寬度縮放，存檔延後到停手後"""
+        if size.width() == self.width() and size.height() == self.height():
+            return
+        scale = max(MIN_W, size.width()) / UNIFORM_W
+        if round(scale * UNIFORM_W) != self.width():
+            self.scale_f = scale
+            self.apply_scale()
+        else:                                        # 寬度沒變、只有高度不對（例如被系統貼齊拉高）：拉回 16:9
+            self.host.fit(self.size())
+        if not hasattr(self, "_resize_save"):
+            self._resize_save = QTimer(self, singleShot=True, interval=500, timeout=self.save_config)
+        self._resize_save.start()
+
+    def wheelEvent(self, e):
+        """Ctrl＋滾輪：放大縮小視窗（桌面擺件沒有邊框可拖，也用這個）"""
+        if not (e.modifiers() & Qt.ControlModifier) or not e.angleDelta().y() or self.fullscreen:
+            e.ignore()
+            return
+        f = 1.1 if e.angleDelta().y() > 0 else 1 / 1.1
+        self.set_scale(self.scale_f * f)
 
     def quit_app(self):
         self.flush_unpaid()                          # 還沒結帳的杯子也寫進紀錄
@@ -1647,7 +1804,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         d = e.globalPosition().toPoint() - g0
         if abs(d.x()) + abs(d.y()) > 4:
             self._moved = True
-        if self._moved:
+        if self._moved and not self.fullscreen:      # 全螢幕不能拖
             self.host.move(p0 + d)
 
     def mouseReleaseEvent(self, e):
@@ -1746,7 +1903,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.set_frame_interval(FRAME_ACTIVE)
 
     def set_drink(self, key):
-        if not self.drink_open(key):
+        if not self.can_use_drink(key):
             m = method_of(key)
             if not self.method_open(m):
                 self.show_notice(T("{name}要店鋪 Lv.{n} 才解鎖", name=T(brew.METHODS[m]), n=growth.METHOD_LEVEL[m]))
@@ -1795,65 +1952,65 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         self.update()
 
     # ───────────── 雙頭機的第二杯 ─────────────
+    @property
+    def twin(self):
+        """雙頭機的第二個沖煮頭（BrewHead；單頭機是 None）"""
+        return self.heads[1]
+
+    @twin.setter
+    def twin(self, head):
+        self.heads[1] = head
+
+    @property
+    def _in_twin(self):
+        """正在 on_twin() 裡（目前的沖煮頭是第二個）"""
+        return self.head is not self.heads[0]
+
     def new_twin(self):
-        """第二個沖煮頭的狀態（TWIN_FIELDS；單頭機回傳 None）。cup 是 None＝第二個沖煮頭下面沒有杯子"""
+        """第二個沖煮頭的新狀態（單頭機回傳 None）。cup 是 None＝第二個沖煮頭下面沒有杯子；把手的粉餅與壓力錶延續上一份"""
         m = self.machine
         if m.traits.groups < 2:
             return None
-        old = self.twin or {}
-        return {"session": None, "cup": None, "contents": {"water": 0.0, "milk": 0.0, "foam": 0.0, "syrup": 0.0},
-                "syrup_kind": "choc", "topping": {}, "icecream": None, "ice": [], "condense": 0.0, "mix_t": 0.0,
-                "mix_clock": 0.0, "shot": None, "stream": [{"head": 0.0, "tail": 0.0} for _ in m.spouts],
-                "last_flow": 0.0, "drops": [], "splash": [], "ripples": [], "bubbles": [], "crema_h": 0.0,
-                "film_h": 0.0, "swirl": 0.0, "pf_used": old.get("pf_used", False), "workflow": None,
-                "gauge": old.get("gauge", 0.0), "gauge_v": old.get("gauge_v", 0.0), "_log_clock": 0.0,
-                "_ripple_clock": 0.0, "last_drink": self.drink, "shot_frac": 1.0, "wand_angle": 0.0,
-                "card_alpha": 0.0, "art_alpha": 0.0, "last_art": None, "last_milk": None, "art_show_until": 0.0,
-                "_art_cache": None}
+        return BrewHead(m.spouts, self.drink, old=self.twin)
 
     @contextmanager
     def on_twin(self):
-        """暫時換成第二個沖煮頭：每杯各一份的狀態跟 self.twin 對調、機器的 g 設成 1，離開時換回來。
+        """暫時換成第二個沖煮頭：self.head 換成 self.twin、機器的 g 設成 1，離開時換回來。
         單頭機（沒有 twin）或已經在裡面時什麼都不做"""
         tw = self.twin
         if tw is None or self._in_twin:
             yield
             return
-        keep = {k: getattr(self, k) for k in TWIN_FIELDS}
-        for k in TWIN_FIELDS:
-            setattr(self, k, tw[k])
-        self._in_twin = True
+        self.head = tw
         self.machine.g = 1
         try:
             yield
         finally:
-            for k in TWIN_FIELDS:
-                tw[k] = getattr(self, k)
-            for k, v in keep.items():
-                setattr(self, k, v)
+            self.head = self.heads[0]
             self.machine.g = 0
-            self._in_twin = False
 
     def twin_live(self):
         """第二個沖煮頭下面有杯子（要推進、要畫）"""
-        return self.twin is not None and self.twin["cup"] is not None
+        return self.twin is not None and self.twin.cup is not None
 
     def twin_get(self, key):
         """第二杯的某個狀態（不管現在有沒有換過去）"""
-        if self._in_twin:
-            return getattr(self, key)
-        return self.twin[key] if self.twin is not None else 0.0
+        return getattr(self.twin, key) if self.twin is not None else 0.0
 
     def on_focus(self):
         """狀態列、卡片、聲音看哪一杯：成對做兩杯、正在做第二杯時看第二杯"""
         return self.on_twin() if (self.pair is not None and self.pair.focus_b) else nullcontext()
 
-    def drop_icecream(self, grams, x, y):
-        """阿芙佳朵：冰淇淋球從勺子掉進杯裡（機身座標）"""
+    def drop_icecream(self, grams, x, y, floating=False):
+        """阿芙佳朵：冰淇淋球從勺子掉進杯裡（機身座標）；floating＝漂浮飲品：球停在液面上，大半露出來"""
         r = 23.0 * (grams / 70) ** (1 / 3)
         cup = self.cup
+        rest = cup.liquid_bottom - r * 0.78
+        if floating:
+            r *= 0.85                                    # 冰飲杯口比較窄：球小一點
+            rest = min(rest, self.liquid_surface_y() - r * 0.25)
         self.icecream = {"g": grams, "r": r, "x": x, "y": y, "vy": 0.0, "landed": False, "melt": 0.0,
-                         "rest": cup.liquid_bottom - r * 0.78, "rot": random.uniform(0, 6.28)}
+                         "rest": rest, "rot": random.uniform(0, 6.28), "float": floating}
         self.set_frame_interval(FRAME_ACTIVE)
 
     def apply_traits(self):
@@ -1918,7 +2075,9 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
 
     def brew_dose(self, drink, dp):
         """這杯要用多少豆子"""
-        if drink == "pour_over":
+        if not has_shot(drink):
+            return 0.0
+        if drink in ("pour_over", "iced_pour_over"):
             return dp.po_dose
         if drink == "moka_pot":
             return dp.mk_dose
@@ -2009,7 +2168,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         """這一杯要寫進紀錄的內容（營業模式先存在訂單上，結帳後才 save_cup）"""
         r, m, sh = self.result, ss.milk, self.shot
         cup = {"drink": ss.drink, "title": r.title or ss.drink, "score": r.score, "comment": r.comment,
-               "machine": self.machine.key if ss.family not in STATION_FAMILIES else None, "milk": ss.dp.milk_kind if (m is not None or ss.drink == "iced_latte") else None,
+               "machine": self.machine.key if ss.family not in STATION_FAMILIES else None, "milk": ss.dp.milk_kind if (m is not None or ss.drink == "iced_latte" or DRINKS[ss.drink].get("cold") == "cold_milk") else None,
                "origin": self.bag["origin"], "bean_age": sh.p.bean_age if sh else 0, "dose": sh.p.dose if sh else 0,
                "festival": DRINKS[ss.drink].get("festival")}
         if ss.family == "pourover":
@@ -2025,7 +2184,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
             o = ss.order
             cup.update(order=True, mods=len(o.mods), match=o.match, price=o.price, tip=o.tip,
                        wait=round(o.wait, 1) if o.patience > 0 else None, to_go=o.to_go, size=o.size,
-                       inspector=o.inspector, customer=o.name)
+                       inspector=o.inspector, customer=o.name, dessert=o.dessert or None)
         return cup
 
     def save_cup(self, cup):
@@ -2399,7 +2558,8 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
             self.reset_cup(q.drink, q.to_go, q.size)
             cup = self.cup
             m = self.machine
-            handoff = (m.mx + cup.TR + 24, m.my + cup.T - 76)    # 拉花杯倒完第一杯後停在第二杯右上方
+            right = self._scene_w - self.scene_dx() - vessels.PITCHER_W - 4     # 拉花杯（含把手）不超出視窗右緣
+            handoff = (min(m.mx + cup.TR + 24, right), m.my + cup.T - 76)    # 拉花杯倒完第一杯後停在第二杯右上方
             gb = milk_plan(q.drink, dq)[0] if pair_kind(q.drink, dq) == "milk" else 0.0
         ga = milk_plan(o.drink, dp)[0] if pair_kind(o.drink, dp) == "milk" else 0.0
         shared = pair_shared_milk(o.drink, dp, q.drink, dq) and not self.machine.traits.dual_wand   # 兩杯都是熱牛奶：一壺兩杯份（有第二支蒸氣管就各打各的）；否則各自做自己的
@@ -2629,9 +2789,17 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
             self.update_tray_tip()
             self.update_light()
             self.poll_update(time.perf_counter())
-        if self.isVisible():
+        if self.isVisible() and not self.other_dragging():
             self.update()
         self.set_frame_interval(self.wanted_interval())
+
+    def window_dragging(self):
+        """主視窗或紀錄／商店／佈置／設定／關於視窗正在被拖動：主畫面暫停繪圖（只推進模擬）。大視窗一格要畫幾十毫秒，
+        一直畫的話主執行緒跟不上滑鼠，拖起來會一頓一頓的；停手 DRAG_HOLD 秒後恢復"""
+        self._drag_until = time.perf_counter() + DRAG_HOLD
+
+    def other_dragging(self):
+        return time.perf_counter() < self._drag_until
 
     def tick_sounds(self):
         """跟著目前這杯的循環音效：幫浦、磨豆、蒸氣、水聲、爐火…"""
@@ -2729,7 +2897,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         # 鍋爐水溫（雙頭機兩杯一起萃取時兩邊的流量都算）
         flow = s.flow if (s and s.phase in ("brew", "tail")) else 0.0
         if self.twin_live():
-            s2 = self.twin["shot"]
+            s2 = self.twin.shot
             flow += s2.flow if (s2 and s2.phase in ("brew", "tail")) else 0.0
         if self.params.temp - self._last_set > 3:          # 設定水溫大幅調高：重新預熱
             self.warming = True
@@ -2933,9 +3101,9 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         names = {f.name for f in fields(Params)}
         self.params = Params(**{k: v for k, v in pre["params"].items() if k in names})
         self.sync_bag()
-        if pre.get("machine") in MACHINES and self.machine_open(pre["machine"]):
+        if pre.get("machine") in MACHINES and self.can_use_machine(pre["machine"]):
             self.set_machine(pre["machine"])
-        if pre.get("drink") in DRINKS and self.drink_open(pre["drink"]):
+        if pre.get("drink") in DRINKS and self.can_use_drink(pre["drink"]):
             self.set_drink(pre["drink"])
             if pre["drink"] in self.drink_actions:
                 self.drink_actions[pre["drink"]].setChecked(True)
@@ -3035,7 +3203,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         tw = self.twin if self.twin_live() else None    # 雙頭機第二杯的水滴、流柱
         if (self.busy() or self.drops or self.splash or self.ripples
                 or any(st["head"] > 0 for st in self.stream)
-                or (tw and (tw["drops"] or tw["splash"] or any(st["head"] > 0 for st in tw["stream"])))):
+                or (tw and (tw.drops or tw.splash or any(st["head"] > 0 for st in tw.stream)))):
             return FRAME_ACTIVE
         if self.drink_kind() == "espresso_tonic" and self.contents["water"] > 0:
             return FRAME_AMBIENT                   # 通寧水的氣泡一直往上冒
@@ -3074,7 +3242,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
     def paintEvent(self, _):
         dpr = self.devicePixelRatioF()
         espresso = self.method == "espresso"
-        tc = self.twin["cup"] if self.twin_live() else None
+        tc = self.twin.cup if self.twin_live() else None
         key = (dpr, self.machine.key, self.cup.kind, self.cup.z, self.cup.sized, self._scene_w, self.method,
                (tc.kind, tc.z, tc.sized) if tc else None, self.decor_look()[0]["machine"],   # 咖啡機烤漆顏色
                self.cupless())      # 大中小杯、依量縮小：同一種杯子也要重畫；最後一項是 cupless
@@ -3086,12 +3254,20 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         if self._frame is None or self._frame.width() != w or self._frame.height() != h:
             self._frame = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
             self._frame.setDevicePixelRatio(dpr)
-        self._frame.fill(Qt.transparent)
+        # 視窗化：畫面是不透明的，底圖直接「複製」進來（不用先清成透明、最後也不用跟背景混色，4K 一格省下好幾張全畫面的運算）。
+        # 櫃檯畫面的店面圖層本身就是不透明的整張（cached_layer 的 base），連背景都不用貼
+        opaque = self.is_windowed()
+        if not opaque:
+            self._frame.fill(Qt.transparent)
 
         s = self.scale_f
         fp = QPainter(self._frame)
         fp.setRenderHint(QPainter.Antialiasing)
         fp.setRenderHint(QPainter.SmoothPixmapTransform)
+        if opaque and not self.counter_view:             # 義式：背景＋機器靜態圖層＋配料架合成一張底圖（machine_base）
+            fp.setCompositionMode(QPainter.CompositionMode_Source)
+            fp.drawPixmap(0, 0, self.machine_base() if espresso else self.backdrop_pixmap())
+            fp.setCompositionMode(QPainter.CompositionMode_SourceOver)
         if self.counter_view:                    # 櫃檯畫面：不顯示咖啡機
             fp.scale(s, s)
             fp.translate(0, TOP_PAD)
@@ -3100,7 +3276,7 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
             fp.end()
             self.paint_overlays()
             return
-        if espresso:
+        if espresso and not opaque:
             fp.drawPixmap(QPointF(0, TOP_PAD * s), self.bg_layer)
         fp.scale(s, s)
         dx = self.scene_dx()                     # 咖啡機（沖煮台）在視窗正中間
@@ -3112,7 +3288,8 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
             self.paint_overlays()
             return
         self.paint_pass_cups(fp)               # 出餐架上等著的杯子
-        self.paint_rack_items(fp)              # 配料架上的配料（做飲品用到的從架上拿走）
+        if not opaque:
+            self.paint_rack_items(fp)          # 配料架上的配料（做飲品用到的從架上拿走）；視窗化時在 machine_base 裡
         if m.traits.grinder == "external":
             self.paint_grinder_dynamic(fp)
         with self.machine_tint(m):
@@ -3240,17 +3417,25 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         s = self.scale_f
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        if self.is_windowed():
-            self.paint_window_backdrop(p)
+        opaque = self.is_windowed()                  # 視窗化：畫面已經含背景、不透明，直接複製（不混色）
         k = self.fade_amount()
+        if opaque:
+            p.setCompositionMode(QPainter.CompositionMode_Source)
         if k is None:
             p.drawImage(0, 0, self._frame)
-        else:                                        # 換咖啡機／沖煮方式：舊畫面淡出、新畫面淡入
+        elif opaque:                                 # 換咖啡機／沖煮方式：新畫面疊在舊畫面上慢慢浮現
+            p.drawImage(0, 0, self._fade[0])
+            p.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            p.setOpacity(k)
+            p.drawImage(0, 0, self._frame)
+            p.setOpacity(1.0)
+        else:                                        # 透明擺件：舊畫面淡出、新畫面淡入
             p.setOpacity(1 - k)
             p.drawImage(0, 0, self._fade[0])
             p.setOpacity(k)
             p.drawImage(0, 0, self._frame)
             p.setOpacity(1.0)
+        p.setCompositionMode(QPainter.CompositionMode_SourceOver)
         p.scale(s, s)
         with self.on_focus():                        # 成對做兩杯、正在做第二杯：狀態列、卡片看第二杯
             if not self.counter_view:                # 櫃檯畫面不畫狀態列（客人點了什麼、評分都在 POS 上）
@@ -3287,11 +3472,50 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
         return pm
 
     def paint_window_backdrop(self, p):
-        """視窗化模式的背景：深色暖調漸層 + 檯面 + 暗角，取代桌面透出來的透明背景"""
-        w, h, s = self.width(), self.height(), self.scale_f
+        p.drawPixmap(0, 0, self.backdrop_pixmap())
+
+    def machine_base(self):
+        """視窗化義式畫面的底圖：背景 ＋ 機器的靜態圖層（bg_layer）＋ 配料架，合成一張不透明的圖直接複製到畫面上
+        （4K 每張全畫面貼圖約 3 ms，配料架上百個向量也不用每格畫）；任何一張換了、架上的配料變了才重合成"""
+        bd, bg = self.backdrop_pixmap(), self.bg_layer
+        rack = (self.side_on(), tuple(self.rack_kinds()), tuple(sorted(self.rack_in_use())))
+        cache = getattr(self, "_base_cache", None)
+        if cache is None or cache[0] is not bd or cache[1] is not bg or cache[2] != rack:
+            s = self.scale_f
+            pm = QPixmap(bd)
+            q = QPainter(pm)
+            q.setRenderHint(QPainter.Antialiasing)
+            q.setRenderHint(QPainter.SmoothPixmapTransform)
+            q.drawPixmap(QPointF(0, TOP_PAD * s), bg)
+            q.scale(s, s)
+            q.translate(self.scene_dx(), TOP_PAD)
+            self.paint_rack_items(q)
+            q.end()
+            self._base_cache = cache = (bd, bg, rack, pm)
+        return cache[3]
+
+    def backdrop_pixmap(self):
+        """視窗化模式的背景：深色暖調漸層 + 牆面紋理 + 檯面與下面的抽屜 + 暗角，取代桌面透出來的透明背景；
+        畫一次存成圖，視窗大小或裝潢變了才重畫（紋理有上千條線，不要每格畫）"""
         sel, pal = self.decor_look()                  # 牆面、後檯櫃子的裝潢也換到操作畫面的背景（預設款維持原本的顏色）
         wall = pal["wall"] if sel["wall"] != decor.DEFAULTS["wall"] else None
-        cab = pal["cab"] if sel["cabinet"] != decor.DEFAULTS["cabinet"] else None
+        dpr = self.devicePixelRatioF()
+        key = (self.width(), self.height(), self.scale_f, dpr, wall, pal["wall_pat"], pal["cab"], pal["cab_line"], pal["handle"],
+               self.machine.key, self.scene_dx())
+        cache = getattr(self, "_backdrop_cache", None)
+        if cache is None or cache[0] != key:
+            pm = QPixmap(round(self.width() * dpr), round(self.height() * dpr))
+            pm.setDevicePixelRatio(dpr)
+            q = QPainter(pm)
+            q.setRenderHint(QPainter.Antialiasing)
+            self.draw_window_backdrop(q, wall, pal)
+            q.end()
+            self._backdrop_cache = cache = (key, pm)
+        return cache[1]
+
+    def draw_window_backdrop(self, p, wall, pal):
+        w, h, s = self.width(), self.height(), self.scale_f
+        pat = pal["wall_pat"]
         g = QLinearGradient(0, 0, 0, h)
         if wall:
             g.setColorAt(0, QColor(wall[0]).darker(150))
@@ -3303,16 +3527,33 @@ class CafeDesk(QWidget, MachineRenderer, GrinderRenderer, LiquidRenderer, Partic
             g.setColorAt(1, QColor("#120f0e"))
         p.fillRect(self.rect(), g)
         counter = (TOP_PAD + FLOOR) * s               # 檯面：磨豆機在後、咖啡機較靠前（底部較低）
+        W = self._scene_w
+        k, ox, oy = self.showcase_map(self.machine, W)
+        if pat:                                       # 紅磚、地鐵磚、木牆板：跟櫃檯畫面的牆同一套紋理，換成櫃檯座標畫（跟咖啡機的比例、磚縫位置都一樣）
+            p.save()
+            p.scale(s, s)
+            p.translate(self.scene_dx(), TOP_PAD)
+            p.scale(1 / k, 1 / k)
+            p.translate(-ox, -oy)
+            dx = self.scene_dx()
+            paint_wall_pattern(p, pat, (w / s - dx) * k + ox, -TOP_PAD * k + oy, FLOOR * k + oy,
+                               x0=-dx * k + ox, gy=-TOP_PAD)
+            p.restore()
         c = QLinearGradient(0, counter, 0, h)
-        if cab:
-            c.setColorAt(0, QColor(cab[0]))
-            c.setColorAt(0.04, QColor(cab[0]).darker(115))
-            c.setColorAt(1, QColor(cab[1]).darker(150))
-        else:
-            c.setColorAt(0, QColor("#4a3a30"))
-            c.setColorAt(0.04, QColor("#3a2d25"))
-            c.setColorAt(1, QColor("#1e1814"))
+        c.setColorAt(0, QColor("#4a3a30"))
+        c.setColorAt(0.04, QColor("#3a2d25"))
+        c.setColorAt(1, QColor("#1e1814"))
         p.fillRect(0, int(counter), w, h - int(counter), c)
+        # 檯面下的抽屜：跟櫃檯畫面後檯同一套，大小與位置也一樣——櫃檯畫面把整組咖啡機縮小 k 倍擺上後檯，
+        # 這裡反過來把櫃檯畫面的座標換回咖啡機畫面，抽屜跟咖啡機的相對大小、位置（哪裡有縫、把手在哪）就跟櫃檯畫面一樣
+        p.save()
+        p.scale(s, s)
+        p.translate(self.scene_dx(), TOP_PAD)         # 咖啡機畫面的場景座標
+        p.scale(1 / k, 1 / k)
+        p.translate(-ox, -oy)                         # 櫃檯畫面的場景座標
+        bottom = (h / s - TOP_PAD) * k + oy
+        self.paint_back_drawers(p, self.counter_left(W), self.case_left(W) - 4, COUNTER_TOP - 54, max(bottom, COUNTER_TOP), pal)
+        p.restore()
         v = QRadialGradient(w / 2, h * 0.45, max(w, h) * 0.75)
         v.setColorAt(0.55, QColor(0, 0, 0, 0))
         v.setColorAt(1, QColor(0, 0, 0, 120))

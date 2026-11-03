@@ -73,3 +73,8 @@ def pick_family(cands, fallback):
             return f
     return fallback
 
+
+def logical_size(img):
+    """圖的邏輯大小（高解析度的圖 devicePixelRatio > 1，像素數要除回來）：(寬, 高)"""
+    r = img.devicePixelRatio()
+    return img.width() / r, img.height() / r

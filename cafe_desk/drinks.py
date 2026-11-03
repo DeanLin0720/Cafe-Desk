@@ -14,6 +14,11 @@ from . import vessels
 
 # base：流程與畫面家族（espresso／americano／iced：冰飲／milk：熱牛奶飲品）
 # shot：這杯濃縮的預設（ratio＝液重/粉量、grind＝研磨微調 µm、dose/basket＝指定粉量與粉碗、style＝評分基準）
+# 其他可選欄位（新飲品用資料描述做法，見 Session.__init__ 與 render/milk.py）：
+#   noshot＝不用濃縮（不磨豆、不萃取）；cold＝冰飲倒的冷液體（cold_milk／cold_water／tonic／soda／orange），
+#   cold_g＝倒多少（DrinkParams 欄位或 g）；prep＝先做的底（matcha 刷抹茶／tea 泡茶）；tint＝沒有濃縮時的底色；
+#   milk＝固定用這種奶；garnish＝漂在液面的水果片；float＝最後放一球浮在液面的冰淇淋；wall＝醬掛在杯壁的紋路；
+#   ice＝手沖直接沖在冰塊上（日式冰手沖）
 DRINKS = {
     "espresso": {"name": "濃縮", "cup": "espresso", "hot": True, "base": "espresso"},
     "ristretto": {"name": "Ristretto", "cup": "espresso", "hot": True, "base": "espresso",
@@ -36,8 +41,48 @@ DRINKS = {
     "caramel_macchiato": {"name": "焦糖瑪奇朵", "cup": "latte", "hot": True, "base": "milk"},
     "espresso_tonic": {"name": "濃縮通寧", "cup": "iced", "hot": False, "base": "iced"},
     "affogato": {"name": "阿芙佳朵", "cup": "affogato", "hot": True, "base": "affogato"},
+    # 咖啡延伸：沿用醬料、鮮奶油、冰塊的流程
+    "con_panna": {"name": "康寶藍", "cup": "espresso", "hot": True, "base": "espresso", "whip": True},
+    "vienna": {"name": "維也納咖啡", "cup": "americano", "hot": True, "base": "americano", "whip": True, "dust": "cocoa"},
+    "lemon_americano": {"name": "檸檬美式", "cup": "iced", "hot": False, "base": "iced", "cold": "cold_water",
+                        "garnish": "lemon"},
+    "orange_coffee": {"name": "柳橙咖啡", "cup": "iced", "hot": False, "base": "iced", "cold": "orange", "cold_g": "tonic_g"},
+    "vanilla_latte": {"name": "香草拿鐵", "cup": "latte", "hot": True, "base": "milk", "syrup": "vanilla", "syrup_g": 14.0},
+    "hazelnut_latte": {"name": "榛果拿鐵", "cup": "latte", "hot": True, "base": "milk", "syrup": "hazelnut", "syrup_g": 14.0},
+    "coconut_latte": {"name": "椰子拿鐵", "cup": "latte", "hot": True, "base": "milk", "milk": "coconut"},
+    "iced_vanilla_latte": {"name": "冰香草拿鐵", "cup": "iced", "hot": False, "base": "iced", "cold": "cold_milk",
+                           "syrup": "vanilla", "syrup_g": 14.0},
+    "iced_mocha": {"name": "冰摩卡", "cup": "iced", "hot": False, "base": "iced", "cold": "cold_milk",
+                   "syrup": "choc", "syrup_g": "choc_g", "whip": "opt", "dust": "cocoa"},
+    "iced_caramel_latte": {"name": "冰焦糖拿鐵", "cup": "iced", "hot": False, "base": "iced", "cold": "cold_milk",
+                           "syrup": "caramel", "syrup_g": 16.0},
+    "dirty_latte": {"name": "黑糖髒髒拿鐵", "cup": "iced", "hot": False, "base": "iced", "cold": "cold_milk",
+                    "syrup": "brown_sugar", "syrup_g": 20.0, "wall": True},
+    "coffee_float": {"name": "咖啡漂浮", "cup": "iced", "hot": False, "base": "iced", "cold": "cold_water", "float": True},
+    # 不用濃縮的飲品（咖啡機只用蒸氣管，或完全不用）
+    "hot_cocoa": {"name": "熱可可", "cup": "latte", "hot": True, "base": "milk", "noshot": True, "tint": "#5a2e18",
+                  "syrup": "choc", "syrup_g": "choc_g", "whip": True, "dust": "cocoa"},
+    "honey_milk": {"name": "蜂蜜牛奶", "cup": "latte", "hot": True, "base": "milk", "noshot": True,
+                   "syrup": "honey", "syrup_g": 16.0},
+    "ginger_milk": {"name": "薑汁牛奶", "cup": "latte", "hot": True, "base": "milk", "noshot": True,
+                    "syrup": "ginger_juice", "syrup_g": 14.0},
+    "matcha_latte": {"name": "抹茶拿鐵", "cup": "latte", "hot": True, "base": "milk", "noshot": True, "prep": "matcha",
+                     "tint": "#5f8a2a"},
+    "tea_latte": {"name": "紅茶拿鐵", "cup": "latte", "hot": True, "base": "milk", "noshot": True, "prep": "tea",
+                  "tint": "#7a2e10"},
+    "iced_matcha_latte": {"name": "冰抹茶拿鐵", "cup": "iced", "hot": False, "base": "iced", "noshot": True,
+                          "prep": "matcha", "tint": "#5f8a2a", "cold": "cold_milk"},
+    "milk_tea": {"name": "冰奶茶", "cup": "iced", "hot": False, "base": "iced", "noshot": True, "prep": "tea",
+                 "tint": "#7a2e10", "cold": "cold_milk", "cold_g": 100.0},
+    "brown_sugar_milk": {"name": "黑糖鮮奶", "cup": "iced", "hot": False, "base": "iced", "noshot": True,
+                         "cold": "cold_milk", "syrup": "brown_sugar", "syrup_g": 20.0, "wall": True},
+    "italian_soda": {"name": "義式蘇打", "cup": "iced", "hot": False, "base": "iced", "noshot": True,
+                     "cold": "soda", "cold_g": "tonic_g", "syrup": "berry", "syrup_g": 22.0},
+    "cocoa_float": {"name": "可可漂浮", "cup": "iced", "hot": False, "base": "iced", "noshot": True, "tint": "#5a2e18",
+                    "cold": "cold_milk", "syrup": "choc", "syrup_g": "choc_g", "float": True},
     # 手沖台（brew.py）：不用咖啡機萃取
     "pour_over": {"name": "手沖咖啡", "cup": "americano", "hot": True, "base": "pourover"},
+    "iced_pour_over": {"name": "日式冰手沖", "cup": "iced", "hot": False, "base": "pourover", "ice": True},
     "cold_drip": {"name": "冰滴咖啡", "cup": "iced", "hot": False, "base": "colddrip"},
     "moka_pot": {"name": "摩卡壺咖啡", "cup": "flat_white", "hot": True, "base": "moka"},
     "siphon": {"name": "虹吸咖啡", "cup": "americano", "hot": True, "base": "siphon"},
@@ -48,12 +93,36 @@ DRINKS = {
                           "syrup": "ginger", "syrup_g": 16.0, "whip": True, "dust": "cinnamon"},
     "rose_latte": {"name": "玫瑰拿鐵", "cup": "latte", "hot": True, "base": "milk", "festival": "valentine",
                    "syrup": "rose", "syrup_g": 14.0},
+    "maple_latte": {"name": "楓糖拿鐵", "cup": "latte", "hot": True, "base": "milk", "festival": "newyear",
+                    "syrup": "maple", "syrup_g": 16.0, "whip": True},
+    "white_mocha": {"name": "白摩卡", "cup": "latte", "hot": True, "base": "milk", "festival": "white_day",
+                    "syrup": "white_choc", "syrup_g": 18.0, "whip": True},
+    "strawberry_milk": {"name": "草莓牛奶", "cup": "iced", "hot": False, "base": "iced", "festival": "children", "noshot": True,
+                        "cold": "cold_milk", "syrup": "berry", "syrup_g": 20.0},
+    "salted_caramel_latte": {"name": "海鹽焦糖拿鐵", "cup": "latte", "hot": True, "base": "milk", "festival": "father",
+                             "syrup": "caramel", "syrup_g": 16.0, "whip": True},
+    "honey_cinnamon_latte": {"name": "蜂蜜肉桂拿鐵", "cup": "latte", "hot": True, "base": "milk", "festival": "coffee_day",
+                             "syrup": "honey", "syrup_g": 16.0, "dust": "cinnamon"},
+    "longan_latte": {"name": "桂圓紅棗拿鐵", "cup": "latte", "hot": True, "base": "milk", "festival": "spring_festival",
+                     "syrup": "longan", "syrup_g": 18.0},
+    "carrot_cake_latte": {"name": "胡蘿蔔蛋糕拿鐵", "cup": "latte", "hot": True, "base": "milk", "festival": "easter",
+                          "syrup": "carrot_cake", "syrup_g": 16.0, "whip": True, "dust": "cinnamon"},
+    "lavender_latte": {"name": "薰衣草拿鐵", "cup": "latte", "hot": True, "base": "milk", "festival": "mother",
+                       "syrup": "lavender", "syrup_g": 14.0},
+    "apple_cinnamon_latte": {"name": "蘋果肉桂拿鐵", "cup": "latte", "hot": True, "base": "milk", "festival": "thanksgiving",
+                             "syrup": "apple", "syrup_g": 16.0, "whip": True, "dust": "cinnamon"},
 }
 FESTIVAL_DRINKS = tuple(k for k, v in DRINKS.items() if v.get("festival"))
 # 選單分組（None＝分隔線）
-DRINK_ORDER = ("espresso", "ristretto", "lungo", "doppio", None, "americano", "iced_americano", "espresso_tonic",
-               None, "latte", "cappuccino", "flat_white", "cortado", "macchiato", "mocha", "caramel_macchiato",
-               "iced_latte", None, "affogato", None, "pour_over", "cold_drip", "moka_pot", "siphon")
+DRINK_ORDER = ("espresso", "ristretto", "lungo", "doppio", "con_panna", None,
+               "americano", "vienna", "iced_americano", "lemon_americano", "espresso_tonic", "orange_coffee", None,
+               "latte", "cappuccino", "flat_white", "cortado", "macchiato", "mocha", "caramel_macchiato",
+               "vanilla_latte", "hazelnut_latte", "coconut_latte", None,
+               "iced_latte", "iced_vanilla_latte", "iced_mocha", "iced_caramel_latte", "dirty_latte", None,
+               "affogato", "coffee_float", None,
+               "hot_cocoa", "honey_milk", "ginger_milk", "matcha_latte", "tea_latte", "iced_matcha_latte", "milk_tea",
+               "brown_sugar_milk", "italian_soda", "cocoa_float", None,
+               "pour_over", "iced_pour_over", "cold_drip", "moka_pot", "siphon")
 STATION_FAMILIES = ("pourover", "colddrip", "moka", "siphon")      # 不用咖啡機、在獨立畫面做的飲品
 DRINK_KEYS = tuple(k for k in DRINK_ORDER if k)
 
@@ -68,6 +137,7 @@ MILK_KINDS = {
     "oat": {"name": "燕麥奶", "texture": 0.95, "foam": 0.94, "color": "#efe3cc", "prefix": "燕麥"},
     "soy": {"name": "豆奶", "texture": 0.88, "foam": 0.88, "color": "#f3ead2", "prefix": "豆奶"},
     "almond": {"name": "杏仁奶", "texture": 0.76, "foam": 0.7, "color": "#ebe2d5", "prefix": "杏仁"},
+    "coconut": {"name": "椰奶", "texture": 0.82, "foam": 0.78, "color": "#f6f1e6", "prefix": "椰奶"},
 }
 MILK_NAMES = {k: v["name"] for k, v in MILK_KINDS.items()}
 SYRUPS = {
@@ -76,7 +146,22 @@ SYRUPS = {
     "pumpkin": {"name": "南瓜香料醬", "color": "#d9822b", "label": "PUMPKIN"},
     "ginger": {"name": "薑餅糖漿", "color": "#8a4a20", "label": "GINGER"},
     "rose": {"name": "玫瑰糖漿", "color": "#d0607a", "label": "ROSE"},
+    "caramel": {"name": "焦糖醬", "color": "#b8691f", "label": "CARAMEL"},
+    "hazelnut": {"name": "榛果糖漿", "color": "#a8743e", "label": "HAZELNUT"},
+    "honey": {"name": "蜂蜜", "color": "#e0a428", "label": "HONEY"},
+    "ginger_juice": {"name": "薑汁糖漿", "color": "#d9b45a", "label": "GINGER"},
+    "brown_sugar": {"name": "黑糖漿", "color": "#4a2208", "label": "BROWN"},
+    "berry": {"name": "莓果糖漿", "color": "#c0304a", "label": "BERRY"},
+    "maple": {"name": "楓糖漿", "color": "#b8681c", "label": "MAPLE"},
+    "white_choc": {"name": "白巧克力醬", "color": "#efe2c4", "label": "WHITE"},
+    "longan": {"name": "桂圓紅棗糖漿", "color": "#6a2418", "label": "LONGAN"},
+    "carrot_cake": {"name": "胡蘿蔔蛋糕糖漿", "color": "#d8823a", "label": "CARROT"},
+    "lavender": {"name": "薰衣草糖漿", "color": "#9a7ab8", "label": "LAVENDER"},
+    "apple": {"name": "蘋果肉桂糖漿", "color": "#c8742a", "label": "APPLE"},
 }
+COLD_LOOK = {"soda": "#eef6f4", "orange": "#f0a030"}       # 冰飲倒的冷液體顏色（沒列的照舊）
+GARNISHES = {"lemon": ("#e8c832", "#fbf1b8")}             # 漂在液面的水果片：(果皮, 果肉)
+PREP_LABEL = {"matcha": "刷抹茶…", "tea": "泡茶中…"}
 # 撒在杯面上的粉：(顏色, 畫成小花)
 DUSTS = {"cocoa": "#5a321a", "cinnamon": "#8a4a22"}       # 撒粉的顏色
 
@@ -87,6 +172,47 @@ def whip_on(drink, dp):
     return w is True or (w == "opt" and dp.whip)
 ICE_VOL = 15.0             # 每顆冰塊佔的體積（g）
 FOAM_EXPANSION = 1.0       # 奶泡量 100% 時體積變兩倍
+
+
+def has_shot(drink):
+    """這杯有沒有濃縮（沒有＝不磨豆、不萃取：熱可可、抹茶拿鐵、奶茶…）"""
+    return not DRINKS.get(drink, {}).get("noshot")
+
+
+def cold_of(drink):
+    """冰飲倒進杯子的冷液體（cold_milk／cold_water／tonic／soda／orange）"""
+    spec = DRINKS.get(drink, {})
+    return spec.get("cold") or {"iced_latte": "cold_milk", "espresso_tonic": "tonic"}.get(drink, "cold_water")
+
+
+ICED_POUR_K = 0.6           # 日式冰手沖的熱水量（相對於手沖的粉水比）
+BASE_G = {"matcha": 40.0, "tea": 50.0}      # prep 的底：刷抹茶的熱水、泡茶的熱水（g）；冰奶茶的茶多一點
+TEA_ICED_G = 100.0
+
+
+def base_amount(drink):
+    """prep 的熱水量（g）"""
+    spec = DRINKS.get(drink, {})
+    prep = spec.get("prep")
+    if prep == "tea" and spec.get("base") == "iced":
+        return TEA_ICED_G
+    return BASE_G.get(prep, 0.0)
+
+
+def cold_amount(drink, dp):
+    """冰飲倒進去的冷液體（g）"""
+    g = DRINKS.get(drink, {}).get("cold_g")
+    if g is None:
+        g = {"cold_milk": "iced_milk_g", "tonic": "tonic_g"}.get(cold_of(drink), "iced_water_g")
+    return getattr(dp, g) if isinstance(g, str) else g
+
+
+def syrup_amount(drink, dp):
+    """這杯擠多少醬（g）"""
+    g = DRINKS.get(drink, {}).get("syrup_g")
+    if g is None:
+        return 0.0
+    return getattr(dp, g) if isinstance(g, str) else g
 
 
 def base_of(drink):
@@ -161,8 +287,10 @@ MILK_SPEC = {
     "mocha": ("mocha_milk_g", "foam", 30, 35),
     "caramel_macchiato": ("cm_milk_g", 35.0, 35, 30),
 }
-for _k in FESTIVAL_DRINKS:
+for _k in tuple(k for k in FESTIVAL_DRINKS if DRINKS[k]["base"] == "milk") + ("vanilla_latte", "hazelnut_latte", "coconut_latte", "honey_milk", "ginger_milk",
+                             "matcha_latte", "tea_latte"):
     MILK_SPEC[_k] = ("milk_g", "foam", 30, 35)
+MILK_SPEC["hot_cocoa"] = ("mocha_milk_g", 20.0, 20, 30)          # 熱可可：奶泡薄，上面還有鮮奶油
 
 
 def milk_plan(drink, dp):
@@ -245,8 +373,8 @@ def evaluate_milk(dp, traits, device, rnd=random, drink="latte", skill=1.0):
         art = {"macchiato": "dot", "caramel_macchiato": "mark"}.get(drink, "whip")
         wanted = "auto"
         art_q = clamp(texture + rnd.gauss(0, 0.07 * skill), 0.05, 1)
-    elif wanted == "auto" and drink == "rose_latte" and eff >= 0.42:
-        art = "heart"                              # 玫瑰拿鐵：情人節一律拉愛心
+    elif wanted == "auto" and drink in ("rose_latte", "lavender_latte") and eff >= 0.42:
+        art = "heart"                              # 玫瑰拿鐵、薰衣草拿鐵：情人節、母親節一律拉愛心
         art_q = clamp(eff + rnd.gauss(0, 0.07 * skill), 0.05, 1)
     elif wanted == "auto":
         if eff < 0.42:
@@ -309,13 +437,48 @@ def band_score(x, lo, hi, slope):
     return 100.0
 
 
+def score_noshot(drink, dp, milk=None, rnd=random):
+    """沒有濃縮的飲品：熱的看牛奶與拉花，冰的看冷飲與糖漿／茶底的比例"""
+    if milk is not None:
+        if milk.art == "whip":
+            return DrinkResult(drink, milk.milk_score, T("鮮奶油 · {comment}", comment=milk.comment), milk)
+        art = T(ART_NAMES[milk.art].split("（")[0])
+        art_c = milk.art_note or (T("拉花：{art}", art=art) if milk.art != "blob" else T("拉花沒成形"))
+        return DrinkResult(drink, milk.score, f"{art_c} · {milk.comment}", milk)
+    spec = DRINKS[drink]
+    cold = cold_amount(drink, dp)
+    sweet = syrup_amount(drink, dp) or base_amount(drink)
+    ratio = cold / max(1.0, sweet)
+    lo, hi = (4.0, 9.0) if spec.get("syrup") else {"matcha": (2.5, 5.0)}.get(spec.get("prep"), (0.7, 1.6))
+    rs = band_score(ratio, lo, hi, 12)
+    c = T("比例剛好" if rs > 90 else ("偏淡" if ratio > hi else "偏甜" if spec.get("syrup") else "偏濃"))
+    return DrinkResult(drink, 0.8 * rs + 20 * rnd.uniform(0.45, 1.0), c)
+
+
 def score_drink(drink, shot, dp, milk=None, comment_fn=None):
-    """飲品總分：濃縮為主，再依飲品加上比例、牛奶、拉花"""
+    """飲品總分：濃縮為主，再依飲品加上比例、牛奶、拉花（沒有濃縮的飲品見 score_noshot）"""
+    if shot is None:
+        return score_noshot(drink, dp, milk)
     base = shot.res.score
     shot_c = comment_fn(shot.res, shot.p, shot.style) if comment_fn else ""
     family = base_of(drink)
     if family == "espresso":
         return DrinkResult(drink, base, shot_c)
+    if drink in ("orange_coffee", "coffee_float", "lemon_americano"):
+        ratio = cold_amount(drink, dp) / max(1.0, shot.weight)
+        rs = band_score(ratio, 3.0, 5.0, 25)
+        c = T("比例剛好" if rs > 90 else ("偏淡" if ratio > 5 else "咖啡偏濃"))
+        return DrinkResult(drink, 0.7 * base + 0.3 * rs, f"{c} · {shot_c}")
+    if base_of(drink) == "iced" and cold_of(drink) == "cold_milk" and drink != "iced_latte":
+        ratio = cold_amount(drink, dp) / max(1.0, shot.weight)      # 冰香草拿鐵、冰摩卡…：跟冰拿鐵一樣看奶咖比例
+        rs = band_score(ratio, 3.0, 5.0, 25)
+        c = T("奶咖比例剛好" if rs > 90 else ("奶味偏重" if ratio > 5 else "咖啡偏濃"))
+        return DrinkResult(drink, 0.7 * base + 0.3 * rs, f"{c} · {shot_c}")
+    if drink == "vienna":
+        ratio = dp.water_g / max(1.0, shot.weight)
+        rs = band_score(ratio, 2.5, 4.5, 30)
+        c = T("比例剛好" if rs > 90 else ("偏淡" if ratio > 4.5 else "偏濃"))
+        return DrinkResult(drink, 0.75 * base + 0.25 * rs, T("鮮奶油 · {comment}", comment=f"{c} · {shot_c}"))
     if drink == "americano":
         ratio = dp.water_g / max(1.0, shot.weight)
         rs = band_score(ratio, 2.5, 4.5, 30)
@@ -380,6 +543,8 @@ def pair_compat(d1, dp1, d2, dp2, dual_wand=False):
     限制只有蒸氣管只有一支：兩杯都要打奶時，必須是一壺兩杯份共用的那一種（pair_kind 都是 milk、同一種奶）；
     有「雙打奶泡」升級（第二支蒸氣管，dual_wand）就沒有這個限制。只有一杯要打奶的，那杯自己打自己的"""
     if method_of(d1) != "espresso" or method_of(d2) != "espresso":
+        return False
+    if not has_shot(d1) or not has_shot(d2):           # 沒有濃縮的（熱可可、奶茶…）不配對：成對的停頓是以萃取為準
         return False
     if base_of(d1) == "milk" and base_of(d2) == "milk" and not dual_wand:
         return (pair_kind(d1, dp1) == pair_kind(d2, dp2) == "milk") and dp1.milk_kind == dp2.milk_kind
@@ -537,7 +702,12 @@ class PourStage(Stage):
     LABEL = {"water": "注入熱水…", "cold_water": "倒入冷水…", "cold_milk": "倒入冰牛奶…",
              "hot_milk": "注入牛奶融合…", "tonic": "倒入通寧水…", "choc": "擠入巧克力醬…",
              "vanilla": "加入香草糖漿…", "pumpkin": "加入南瓜香料醬…", "ginger": "加入薑餅糖漿…",
-             "rose": "加入玫瑰糖漿…", "brew": "倒進杯子…", "colddrip": "倒入冰滴咖啡…", "espresso": "倒入濃縮…"}
+             "rose": "加入玫瑰糖漿…", "brew": "倒進杯子…", "colddrip": "倒入冰滴咖啡…", "espresso": "倒入濃縮…",
+             "caramel": "擠入焦糖醬…", "hazelnut": "加入榛果糖漿…", "honey": "加入蜂蜜…",
+             "ginger_juice": "加入薑汁糖漿…", "brown_sugar": "黑糖漿掛杯壁…", "berry": "加入莓果糖漿…",
+             "matcha": "注入熱水…", "tea": "沖入熱水…", "soda": "倒入氣泡水…", "orange": "倒入柳橙汁…",
+             "maple": "加入楓糖漿…", "white_choc": "擠入白巧克力醬…", "longan": "加入桂圓紅棗糖漿…",
+             "carrot_cake": "加入胡蘿蔔蛋糕糖漿…", "lavender": "加入薰衣草糖漿…", "apple": "加入蘋果肉桂糖漿…"}
 
     def __init__(self, vessel, liquid, grams, rate, start=None, home=None, art=False, foam_vol=0.0,
                  label=None, art_label="拉花中…", content=None, attr="vessel", quick=False):
@@ -791,7 +961,8 @@ class SteamStage(Stage):
         self.phase = "approach" if self.device == "wand" else "run"
         if self.device == "wand":
             tip = (m.mx + m.wand_steam[0], m.my + m.wand_steam[1])
-            self.dock = (tip[0] - 16, tip[1] - 14)     # 拉花杯嘴位置：管口伸進杯中
+            k = vessels.PITCHER_K
+            self.dock = (tip[0] - 16 * k, tip[1] - 14 * k)     # 拉花杯嘴位置：管口伸進杯中
             start = (self.dock[0] + 50, self.dock[1] + 40)
             s.vessel = {"kind": "pitcher", "x": start[0], "y": start[1], "tilt": 0.0, "alpha": 0.0,
                         "fill": 1.0, "liquid": "hot_milk", "pour": 0.0}
@@ -891,6 +1062,9 @@ class ToolStage(Stage):
         "whip": ("whip", 3.2, (0.5, 2.7), "擠上鮮奶油…"),
         "caramel": ("caramel", 3.0, (0.5, 2.5), "淋上焦糖醬…"),
         "cinnamon": ("shaker", 2.4, (0.5, 1.9), "撒肉桂粉…"),
+        "matcha": ("shaker", 2.0, (0.4, 1.6), "篩入抹茶粉…"),
+        "whisk": ("whisk", 3.0, (0.4, 2.6), "刷抹茶…"),
+        "teabag": ("teabag", 4.2, (0.6, 3.6), "泡茶中…"),
     }
 
     def __init__(self, kind):
@@ -925,8 +1099,11 @@ def CocoaStage():
 
 
 class ScoopStage(Stage):
-    """阿芙佳朵：冰淇淋勺把一球香草冰淇淋放進杯裡（球掉落與融化由畫面端處理）"""
+    """阿芙佳朵：冰淇淋勺把一球香草冰淇淋放進杯裡（球掉落與融化由畫面端處理）；floating＝漂浮飲品，球浮在液面上"""
     name = "scoop"
+
+    def __init__(self, floating=False):
+        self.floating = floating
 
     def start(self, s):
         cup, m = s.app.cup, s.app.machine
@@ -950,7 +1127,8 @@ class ScoopStage(Stage):
             v["tilt"] = -70 * ease(k)                    # 勺口往下翻
             if k >= 0.6 and v["ball"]:
                 v["ball"] = False
-                s.app.drop_icecream(s.dp.scoop_g, v["x"] - s.app.machine.mx, v["y"] - s.app.machine.my + 6)
+                s.app.drop_icecream(s.dp.scoop_g, v["x"] - s.app.machine.mx, v["y"] - s.app.machine.my + 6,
+                                    floating=self.floating)
             if k >= 1 and s.app.icecream and s.app.icecream["landed"]:
                 self.phase, self.t = "exit", 0.0
                 self.exit_from = (v["x"], v["y"])
@@ -1018,33 +1196,42 @@ class Session:
             self._start_current()
             return
         stages = []
-        if t.steam_heatup and app.boiler.temp > self.params.temp + 3:
+        spec = DRINKS[drink]
+        shot = has_shot(drink)
+        if spec.get("milk"):                             # 椰子拿鐵：固定用椰奶
+            self.dp.milk_kind = spec["milk"]
+        if shot and t.steam_heatup and app.boiler.temp > self.params.temp + 3:
             stages.append(CoolStage())
-        if full_flow:
+        if full_flow and shot:
             stages.append(PrepStage())
-        if drink == "americano":
+        if drink in ("americano", "vienna"):
             stages.append(PourStage("kettle", "water", self.dp.water_g, 22.0))
+        prep = spec.get("prep")
+        if prep == "matcha":                             # 抹茶：篩粉 → 少量熱水 → 刷勻
+            stages += [ToolStage("matcha"), PourStage("kettle", "matcha", base_amount(drink), 16.0), ToolStage("whisk")]
+        elif prep == "tea":                              # 茶：沖熱水 → 茶包泡著（顏色越泡越深）
+            stages += [PourStage("kettle", "tea", base_amount(drink), 22.0), ToolStage("teabag")]
+        syrup = PourStage("squeeze", spec["syrup"], syrup_amount(drink, self.dp), 9.0) if spec.get("syrup") else None
         if family == "iced":
+            if syrup is not None:                        # 冰飲先擠醬再加冰（黑糖掛在杯壁上）
+                stages.append(syrup)
+                syrup = None
             stages.append(IceStage())
-            if drink == "iced_latte":
-                stages.append(PourStage("bottle", "cold_milk", self.dp.iced_milk_g, 24.0))
-            elif drink == "espresso_tonic":
-                stages.append(PourStage("tonic", "tonic", self.dp.tonic_g, 20.0))
-            else:
-                stages.append(PourStage("bottle", "cold_water", self.dp.iced_water_g, 24.0))
+            cold = cold_of(drink)
+            vessel = "tonic" if cold in ("tonic", "soda") else "bottle"
+            stages.append(PourStage(vessel, cold, cold_amount(drink, self.dp), 20.0 if vessel == "tonic" else 24.0))
         if drink == "affogato":
             stages.append(ScoopStage())
-        spec = DRINKS[drink]
-        if spec.get("syrup"):
-            g = spec["syrup_g"]
-            g = getattr(self.dp, g) if isinstance(g, str) else g
-            stages.append(PourStage("squeeze", spec["syrup"], g, 9.0))
+        if syrup is not None:
+            stages.append(syrup)
         if drink == "caramel_macchiato":
             stages.append(PourStage("squeeze", "vanilla", self.dp.vanilla_g, 8.0))
         jig = app.business()            # 營業模式：濃縮先萃取到量杯，照原本的順序倒進杯子
         brew = [BrewStage(jig)] + ([PourStage("jigger", "espresso", None, 60.0, start="jigger", attr="jigger",
                                              quick=True)]
                                    if jig else [])
+        if not shot:
+            brew = []
         milk_stages = []
         steam = []                      # 打奶（雙頭機跟萃取同時進行）
         if family == "milk":
@@ -1080,7 +1267,9 @@ class Session:
                 home = (fp[0], fp[1])
                 milk_stages.append(PourStage("jug", "hot_milk", grams, rate, start=home, home=home, **kw))
         together = (t.groups > 1 or app.together_open()) and steam and not t.steam_heatup
-        if drink == "caramel_macchiato" and together and jig:
+        if not shot:                                     # 沒有濃縮：只有打奶、倒奶
+            stages += steam + milk_stages
+        elif drink == "caramel_macchiato" and together and jig:
             # 營業模式：濃縮萃取到量杯的同時打奶，先倒牛奶，最後把量杯的濃縮倒在上面（照樣分層）
             self.brew_i = len(stages)
             stages.append(Together(brew[0], *steam))
@@ -1107,8 +1296,10 @@ class Session:
             stages.append(ToolStage("whip"))
             if spec.get("dust"):
                 stages.append(ToolStage(spec["dust"]))
-        elif spec.get("dust") and drink != "mocha":
+        elif spec.get("dust") and spec.get("whip") != "opt":      # 摩卡、冰摩卡：不擠鮮奶油就不撒粉
             stages.append(ToolStage(spec["dust"]))
+        if spec.get("float"):
+            stages.append(ScoopStage(floating=True))
         self.stages = stages
         self.i = 0
         self.done = False
@@ -1129,11 +1320,14 @@ class Session:
         """手沖：手沖流程 → 分享壺倒進杯子；冰滴：滴好了就加冰倒一杯，還沒架就先架冰滴塔"""
         from . import brew
         p = app.params
-        if drink == "pour_over":
+        if drink in ("pour_over", "iced_pour_over"):
             self.brew_res = brew.simulate_pourover(self.dp, p.roast, p.bean_age, p.origin)
+            if drink == "iced_pour_over":                # 日式冰手沖：熱水少四成沖得濃一點，倒在冰塊上稀釋
+                self.dp.po_ratio *= ICED_POUR_K
             beverage = self.dp.po_dose * (self.dp.po_ratio - brew.RETAIN_K)
             home = app.station_pos("server")
-            return [brew.PourOverStage(), PourStage("server", "brew", beverage, 22.0, start=home, home=home)]
+            ice = [IceStage()] if drink == "iced_pour_over" else []
+            return [brew.PourOverStage()] + ice + [PourStage("server", "brew", beverage, 22.0, start=home, home=home)]
         if drink == "moka_pot":
             self.brew_res = brew.simulate_moka(self.dp, p.roast, p.bean_age, p.origin)
             home = app.station_pos("moka")
@@ -1201,7 +1395,8 @@ class Session:
             return
         last_steam = is_milk(self.drink) and self.drink != "caramel_macchiato"
         self.boiler_mode = "steam" if (last_steam and self.app.machine.traits.steam_heatup) else "brew"
-        self.result = score_drink(self.drink, self.app.shot, self.dp, self.milk, shot_comment)
+        shot = self.app.shot if has_shot(self.drink) else None
+        self.result = score_drink(self.drink, shot, self.dp, self.milk, shot_comment)
 
     def add_liquid(self, liquid, grams, foam_vol=0.0):
         c = self.app.contents
@@ -1209,7 +1404,7 @@ class Session:
             sh = self.app.shot
             self.app.shot_frac = min(1.0, self.app.shot_frac + grams / max(0.1, sh.weight if sh else 1.0))
             return
-        if liquid in ("water", "cold_water", "tonic", "brew", "colddrip"):
+        if liquid in ("water", "cold_water", "tonic", "brew", "colddrip", "matcha", "tea", "soda", "orange"):
             c["water"] += grams
         elif liquid in ("cold_milk", "hot_milk"):
             c["milk"] += grams

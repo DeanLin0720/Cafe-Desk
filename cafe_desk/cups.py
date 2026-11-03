@@ -37,6 +37,21 @@ CUP_FIT = {
     "pour_over": {"M": 1.01}, "moka_pot": {"M": 0.73}, "siphon": {"M": 0.94}, "cold_drip": {"M": 0.59},
     "pumpkin_latte": {"S": 1.11, "M": 1.04, "L": 0.99}, "gingerbread_latte": {"S": 1.1, "M": 0.99, "L": 0.99},
     "rose_latte": {"S": 1.08, "M": 1.0, "L": 1.01},
+    "maple_latte": {"S": 1.09, "M": 1.02, "L": 0.99}, "white_mocha": {"S": 1.1, "M": 1.03, "L": 0.99},
+    "strawberry_milk": {"S": 0.86, "M": 0.82, "L": 0.79}, "salted_caramel_latte": {"S": 1.09, "M": 1.02, "L": 0.99},
+    "honey_cinnamon_latte": {"S": 1.09, "M": 1.02, "L": 0.99},
+    "longan_latte": {"S": 1.1, "M": 1.03, "L": 0.99}, "carrot_cake_latte": {"S": 1.09, "M": 1.02, "L": 0.99},
+    "lavender_latte": {"S": 1.08, "M": 1.01, "L": 0.98}, "apple_cinnamon_latte": {"S": 1.09, "M": 1.02, "L": 0.99},
+    # 1.7 的飲品（2026-10-30 量的；咖啡漂浮、可可漂浮跟阿芙佳朵一樣不調，冰淇淋球要有位置）
+    "con_panna": {"M": 0.54}, "vienna": {"S": 0.81, "M": 0.76, "L": 0.74},
+    "lemon_americano": {"S": 0.9, "M": 0.85, "L": 0.81}, "orange_coffee": {"M": 0.88},
+    "vanilla_latte": {"S": 1.08, "M": 1.01, "L": 0.98}, "hazelnut_latte": {"S": 1.08, "M": 1.01, "L": 0.98},
+    "coconut_latte": {"S": 0.96, "M": 0.91, "L": 0.9}, "iced_vanilla_latte": {"S": 1.0, "M": 0.93, "L": 0.88},
+    "iced_mocha": {"S": 1.01, "M": 0.95, "L": 0.92}, "iced_caramel_latte": {"S": 1.01, "M": 0.93, "L": 0.89},
+    "dirty_latte": {"M": 0.95}, "hot_cocoa": {"S": 0.77, "M": 0.77, "L": 0.77}, "honey_milk": {"M": 0.87},
+    "ginger_milk": {"M": 0.86}, "matcha_latte": {"S": 1.02, "M": 0.97, "L": 0.93}, "tea_latte": {"S": 1.08, "M": 1.01, "L": 0.96},
+    "iced_matcha_latte": {"S": 0.95, "M": 0.89, "L": 0.84}, "milk_tea": {"M": 0.93}, "brown_sugar_milk": {"M": 0.82},
+    "italian_soda": {"M": 0.83}, "iced_pour_over": {"M": 0.64},
 }
 
 

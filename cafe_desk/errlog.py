@@ -3,6 +3,8 @@
 打包時用 -w（沒有主控台），例外原本會無聲消失；這裡把它們寫進檔案，回報問題時附上這個檔就好。
     · sys.excepthook／threading.excepthook：Python 例外（包含 Qt slot 裡丟出的例外，程式會繼續執行）
     · qInstallMessageHandler：Qt 的 warning／critical／fatal 訊息（debug、info 不記）
+    · warnings.showwarning：Python 的警告
+用 python（有主控台）執行時，例外與 Qt critical／fatal 也印到主控台；警告（Qt warning、Python warnings）只記檔，不印出來。
     · faulthandler：原生程式當掉（segfault）時的 Python 呼叫堆疊
 檔案超過 LOG_MAX 時，舊的改名成 .log.1（只保留一份）。
 """
@@ -12,6 +14,7 @@ import os
 import sys
 import threading
 import traceback
+import warnings
 
 from PySide6.QtCore import QtMsgType, qInstallMessageHandler
 
@@ -28,8 +31,9 @@ def log_path():
     return base + ".log"
 
 
-def write(text):
-    """寫一筆紀錄（自帶時間）；寫不進去就算了，不能讓紀錄本身造成錯誤"""
+def write(text, console=True):
+    """寫一筆紀錄（自帶時間）；寫不進去就算了，不能讓紀錄本身造成錯誤。
+    console=False：只寫進紀錄檔，不印到主控台（警告）"""
     if _path is None:
         return
     stamp = datetime.datetime.now().isoformat(sep=" ", timespec="seconds")
@@ -38,7 +42,7 @@ def write(text):
             f.write(f"[{stamp}] {text.rstrip()}\n")
     except OSError:
         pass
-    if sys.stderr is not None:            # 用 python（有主控台）執行時，也印出來
+    if console and sys.stderr is not None:    # 用 python（有主控台）執行時，也印出來
         try:
             sys.stderr.write(text.rstrip() + "\n")
         except Exception:
@@ -79,7 +83,12 @@ def _qt_handler(mode, context, message):
     where = f" ({context.file}:{context.line})" if context.file else ""
     # 附上 Python 這一側的呼叫堆疊：Qt 的警告本身看不出是哪一行程式觸發的
     stack = "".join(traceback.format_stack(limit=8)[:-1])
-    write(f"{level}: {message}{where}\n{stack}")
+    write(f"{level}: {message}{where}\n{stack}", console=mode != QtMsgType.QtWarningMsg)   # 警告只記檔，不印到主控台
+
+
+def _showwarning(message, category, filename, lineno, file=None, line=None):
+    """Python 的 warnings（DeprecationWarning 等）：一樣只記檔，不印到主控台"""
+    write(f"{category.__name__}: {message} ({filename}:{lineno})", console=False)
 
 
 def install():
@@ -90,6 +99,7 @@ def install():
     sys.excepthook = _excepthook
     threading.excepthook = _thread_hook
     qInstallMessageHandler(_qt_handler)
+    warnings.showwarning = _showwarning
     try:
         _fault_file = open(_path, "a", encoding="utf-8")
         faulthandler.enable(_fault_file)

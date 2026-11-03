@@ -41,7 +41,8 @@ version_info = VSVersionInfo(
 a = Analysis(
     [os.path.join(ROOT, "main.py")],
     pathex=[ROOT],
-    datas=[(os.path.join(ROOT, "logo"), "logo")],
+    datas=[(os.path.join(ROOT, "logo"), "logo"),
+           (os.path.join(ROOT, "cafe_desk", "assets"), os.path.join("cafe_desk", "assets"))],   # 圖鑑的飲品照片
     hiddenimports=[],
     excludes=["tkinter", "pytest"],
     noarchive=False,

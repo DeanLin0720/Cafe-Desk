@@ -1,9 +1,11 @@
-"""玩法導覽：第一次開啟時自動跳出，之後從右鍵選單「玩法導覽…」隨時再看（完整說明在「紀錄與收集冊」的「說明」分頁）"""
+"""玩法導覽：第一次開啟時自動跳出，之後從右鍵選單「玩法導覽…」隨時再看（完整說明在「紀錄與收集冊」的「說明」分頁）
+
+右上角可以切換介面語言（`CafeDesk.set_language`，存進設定檔，之後都用這個語言），導覽當場換成新語言、停在同一頁。"""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 
 from . import theme, growth
-from .i18n import T
+from .i18n import T, LANGS
 
 
 def pages():
@@ -48,9 +50,25 @@ class IntroDialog(QDialog):
         lay.setContentsMargins(22, 18, 22, 14)
         lay.setSpacing(8)
 
+        top = QHBoxLayout()
         self.title = QLabel()
         self.title.setStyleSheet(f"font-size:17px; font-weight:bold; color:{theme.INK_DARK};")
-        lay.addWidget(self.title)
+        top.addWidget(self.title, 1)
+        self.lang_btns = {}
+        for code, name in LANGS:                    # 語言名稱刻意不翻譯（跟右鍵「Language」一樣）
+            b = QPushButton(name)
+            b.setCheckable(True)
+            b.setAutoDefault(False)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setStyleSheet(f"QPushButton {{ padding:3px 10px; border:1px solid {theme.LINE}; border-radius:4px; "
+                            f"background:{theme.SHEET}; color:{theme.MUTED}; }}"
+                            f"QPushButton:checked {{ background:{theme.ACCENT}; border-color:{theme.ACCENT_DARK}; "
+                            f"color:#ffffff; font-weight:bold; }}"
+                            f"QPushButton:hover:!checked {{ background:{theme.HOVER}; }}")
+            b.clicked.connect(lambda _=False, c=code: self.set_language(c))
+            top.addWidget(b, 0, Qt.AlignTop)
+            self.lang_btns[code] = b
+        lay.addLayout(top)
         self.body = QLabel()
         self.body.setWordWrap(True)
         self.body.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -60,11 +78,8 @@ class IntroDialog(QDialog):
         lay.addWidget(self.dots)
 
         row = QHBoxLayout()
-        self.skip = QPushButton(T("略過"))
-        self.skip.clicked.connect(self.close)
-        row.addWidget(self.skip)
         row.addStretch(1)
-        self.prev = QPushButton(T("上一頁"))
+        self.prev = QPushButton()
         self.prev.clicked.connect(lambda: self.go(-1))
         row.addWidget(self.prev)
         self.next = QPushButton()
@@ -72,6 +87,12 @@ class IntroDialog(QDialog):
         self.next.clicked.connect(lambda: self.go(1))
         row.addWidget(self.next)
         lay.addLayout(row)
+        self.show_page()
+
+    def set_language(self, code):
+        """切換介面語言（整個遊戲、存設定檔），導覽換成新語言、停在同一頁"""
+        self.app.set_language(code)
+        self.data = pages()
         self.show_page()
 
     def go(self, step):
@@ -82,6 +103,10 @@ class IntroDialog(QDialog):
         self.show_page()
 
     def show_page(self):
+        self.setWindowTitle(T("玩法導覽"))
+        self.prev.setText(T("上一頁"))
+        for code, b in self.lang_btns.items():
+            b.setChecked(code == self.app.lang)
         title, bullets = self.data[self.page]
         self.title.setText(title)
         self.body.setText("".join(
@@ -92,5 +117,4 @@ class IntroDialog(QDialog):
                                   for i in range(n)))
         last = self.page == n - 1
         self.prev.setEnabled(self.page > 0)
-        self.skip.setVisible(not last)
         self.next.setText(T("開始遊玩") if last else T("下一頁"))

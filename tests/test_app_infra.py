@@ -31,6 +31,20 @@ def test_excepthook_writes_traceback(cfg_path, monkeypatch):
     assert os.path.basename(path) == "cafe_desk.log"
 
 
+def test_warnings_go_to_log_not_console(cfg_path, monkeypatch, capsys):
+    path = errlog.log_path()
+    monkeypatch.setattr(errlog, "_path", path)
+    errlog._qt_handler(QtMsgType.QtWarningMsg, SimpleNamespace(file="", line=0), "字級是 -1")
+    errlog._showwarning(DeprecationWarning("舊寫法"), DeprecationWarning, "x.py", 7)
+    errlog._qt_handler(QtMsgType.QtCriticalMsg, SimpleNamespace(file="", line=0), "真的出事")
+    err = capsys.readouterr().err
+    assert "字級是 -1" not in err and "舊寫法" not in err, "警告不印到主控台"
+    assert "Qt critical: 真的出事" in err, "嚴重的照樣印"
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    assert "Qt warning: 字級是 -1" in text and "DeprecationWarning: 舊寫法 (x.py:7)" in text, "警告仍記進紀錄檔"
+
+
 def test_log_rotates(cfg_path, monkeypatch):
     path = errlog.log_path()
     with open(path, "w") as f:
@@ -134,3 +148,24 @@ def test_intro_dialog_pages(desk, qapp):
     assert dlg.page == len(dlg.data) - 1 and dlg.isVisible()
     dlg.next.click()                                    # 最後一頁的按鈕是「開始遊玩」：關閉
     assert not dlg.isVisible()
+
+
+def test_intro_language_switch(desk, qapp):
+    """玩法導覽右上角切換語言：當場換成英文、停在同一頁，存進設定檔；重新開也是英文"""
+    from cafe_desk import config, i18n
+    desk.open_intro()
+    dlg = desk.intro_dlg
+    dlg.next.click()
+    zh_title = dlg.title.text()
+    assert dlg.lang_btns["zh"].isChecked() and not dlg.lang_btns["en"].isChecked()
+    dlg.lang_btns["en"].click()
+    try:
+        assert desk.lang == "en" and dlg.page == 1 and dlg.title.text() != zh_title
+        assert dlg.lang_btns["en"].isChecked() and not dlg.lang_btns["zh"].isChecked()
+        assert dlg.next.text() == "Next" and dlg.windowTitle() == i18n.T("玩法導覽") != "玩法導覽"
+        assert config.load().get("lang") == "en", "存進設定檔，之後都用英文"
+        desk.open_intro()
+        assert desk.intro_dlg.lang_btns["en"].isChecked() and desk.intro_dlg.title.text() == "Welcome to Café Desk"
+    finally:
+        desk.set_language("zh")
+        desk.intro_dlg.close()

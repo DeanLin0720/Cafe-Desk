@@ -1,11 +1,13 @@
-"""圖鑑用的圖：飲品（側面看的一杯：杯型、分層、配料）、牛奶盒、咖啡豆袋；沒收集過的是灰色剪影
+"""圖鑑用的圖：飲品（側面看的一杯）、牛奶盒、咖啡豆袋；沒收集過的是灰色剪影
 
-不用圖檔：杯型取 cups.CUP_KINDS 的比例，液體分層與配料依飲品寫在 RECIPES。
+飲品圖是遊戲裡實際做出來的杯子（tools/render_drink_photos.py 拍的 cafe_desk/assets/drinks/*.png）；
+沒有照片的飲品退回用 RECIPES 畫的示意圖（杯型取 cups.CUP_KINDS 的比例，液體分層與配料依飲品寫在 RECIPES）。
 """
+import os
 import random
 
 from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QPen, QColor, QFont, QLinearGradient
+from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QPen, QColor, QFont, QLinearGradient, QImage
 
 from ..cups import CUP_KINDS
 from ..drinks import DRINKS, MILK_KINDS
@@ -38,6 +40,38 @@ RECIPES = {
     "pumpkin_latte": ([(0.58, "#d4925a"), (0.10, FOAM)], {"whip": True, "dust": "#a0582a"}),
     "gingerbread_latte": ([(0.58, "#b88360"), (0.10, FOAM)], {"whip": True, "dust": "#a0582a"}),
     "rose_latte": ([(0.60, "#e3aeb3"), (0.14, FOAM)], {}),
+    "maple_latte": ([(0.58, "#c89a6a"), (0.10, FOAM)], {"whip": True}),
+    "white_mocha": ([(0.58, "#e8d6b8"), (0.10, FOAM)], {"whip": True}),
+    "strawberry_milk": ([(0.12, "#c0304a"), (0.62, "#f4c4cc")], {"ice": True}),
+    "salted_caramel_latte": ([(0.58, "#c8925a"), (0.10, FOAM)], {"whip": True, "drizzle": "#c98a3a"}),
+    "honey_cinnamon_latte": ([(0.58, "#d8b07a"), (0.14, FOAM)], {"dust": "#a0582a"}),
+    "longan_latte": ([(0.60, "#b08068"), (0.14, FOAM)], {}),
+    "carrot_cake_latte": ([(0.58, "#d4986a"), (0.10, FOAM)], {"whip": True, "dust": "#a0582a"}),
+    "lavender_latte": ([(0.60, "#c8b0c8"), (0.14, FOAM)], {}),
+    "apple_cinnamon_latte": ([(0.58, "#d09a6a"), (0.10, FOAM)], {"whip": True, "dust": "#a0582a"}),
+    "con_panna": ([(0.40, COFFEE), (0.06, CREMA)], {"whip": True}),
+    "vienna": ([(0.66, "#4a2c18")], {"whip": True, "dust": "#5a3420"}),
+    "lemon_americano": ([(0.80, "#5b3a22")], {"ice": True, "lemon": True}),
+    "orange_coffee": ([(0.52, "#f0a030"), (0.26, "#6a3a1e")], {"ice": True}),
+    "vanilla_latte": ([(0.08, VANILLA), (0.48, MIX), (0.14, "#dcc4a6"), (0.10, FOAM)], {}),
+    "hazelnut_latte": ([(0.08, "#a8743e"), (0.48, "#c09068"), (0.14, "#dcc4a6"), (0.10, FOAM)], {}),
+    "coconut_latte": ([(0.50, "#cfae8a"), (0.18, "#e8dcc6"), (0.12, FOAM)], {}),
+    "iced_vanilla_latte": ([(0.08, VANILLA), (0.40, MILK), (0.28, "#a87a52")], {"ice": True}),
+    "iced_mocha": ([(0.10, CHOC), (0.44, "#b08860"), (0.20, "#7a4e2c")], {"ice": True, "whip": True, "dust": "#5a3420"}),
+    "iced_caramel_latte": ([(0.10, "#b8691f"), (0.40, MILK), (0.26, "#a87a52")], {"ice": True}),
+    "dirty_latte": ([(0.10, "#4a2208"), (0.44, MILK), (0.22, "#6a3e22")], {"ice": True, "streaks": "#4a2208"}),
+    "coffee_float": ([(0.74, "#5b3a22")], {"ice": True, "scoop": True}),
+    "hot_cocoa": ([(0.62, "#8a5a3c"), (0.06, FOAM)], {"whip": True, "dust": "#5a3420"}),
+    "honey_milk": ([(0.08, "#e0a428"), (0.58, "#f4e8cc"), (0.10, FOAM)], {}),
+    "ginger_milk": ([(0.08, "#d9b45a"), (0.58, "#f2e6c8"), (0.10, FOAM)], {}),
+    "matcha_latte": ([(0.56, "#9cb86a"), (0.10, "#c8d8a0"), (0.10, FOAM)], {}),
+    "tea_latte": ([(0.56, "#c09078"), (0.10, "#dcc4b0"), (0.10, FOAM)], {}),
+    "iced_matcha_latte": ([(0.30, "#7a9a3e"), (0.46, "#cfdcae")], {"ice": True}),
+    "milk_tea": ([(0.76, "#c8a088")], {"ice": True}),
+    "brown_sugar_milk": ([(0.10, "#4a2208"), (0.64, MILK)], {"ice": True, "streaks": "#4a2208"}),
+    "italian_soda": ([(0.12, "#c0304a"), (0.64, "#f0b8c0")], {"ice": True, "bubbles": True}),
+    "cocoa_float": ([(0.70, "#9a7258")], {"ice": True, "scoop": True}),
+    "iced_pour_over": ([(0.70, "#7a4824")], {"ice": True}),
 }
 MAX_H = max(d["h"] for d in CUP_KINDS.values())
 MAX_W = max(d["top"] for d in CUP_KINDS.values())
@@ -80,8 +114,75 @@ def _handle(p, g, kind):
     p.drawPath(path)
 
 
-def drink_icon(key, size=96, made=True, dpr=1.0):
-    """一杯飲品的側面圖；made=False 是灰色剪影加問號"""
+PHOTO_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "drinks")
+PHOTO_RATIO = 3.0          # 照片的解析度（機身座標的幾倍）
+PHOTO_SPAN = 150.0         # 圖鑑裡所有飲品照片共用的比例：機身座標這麼高剛好塞滿（最高的冰摩卡約 144）；杯子大小彼此相稱
+_photos = {}
+
+
+def drink_photo(key):
+    """遊戲裡實際做出來的那杯（QImage，透明底）；沒有照片時 None"""
+    if key not in _photos:
+        img = QImage(os.path.join(PHOTO_DIR, f"{key}.png"))
+        _photos[key] = None if img.isNull() else img
+    return _photos[key]
+
+
+def _photo_icon(img, size, made, dpr, tile):
+    """照片縮到 size×size（底部對齊、左右置中，所有飲品同一個比例）；made=False 是同一個輪廓的灰色剪影加問號。
+    tile＝墊一塊遊戲畫面的深色底（玻璃反光與白色牛奶是照深色背景畫的，放在紙上會看不見）"""
+    pm = QPixmap(int(size * dpr), int(size * dpr))
+    pm.setDevicePixelRatio(dpr)
+    pm.fill(Qt.transparent)
+    k = size / PHOTO_SPAN
+    w, h = img.width() / PHOTO_RATIO * k, img.height() / PHOTO_RATIO * k
+    if h > size or w > size:                          # 保險：比預期大的照片整張縮進來
+        f = size / max(w, h)
+        w, h = w * f, h * f
+    rect = QRectF((size - w) / 2, size - h, w, h)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setRenderHint(QPainter.SmoothPixmapTransform)
+    p.setPen(Qt.NoPen)
+    if tile:                                          # 沒做過的剪影也墊同一塊底，圖鑑排起來整齊
+        back = QLinearGradient(0, 0, 0, size)
+        back.setColorAt(0, QColor("#3a2c24"))
+        back.setColorAt(0.78, QColor("#2a1f1a"))
+        back.setColorAt(0.78, QColor("#4a3628"))           # 檯面
+        back.setColorAt(1, QColor("#3a2a20"))
+        p.setBrush(back)
+        p.drawRoundedRect(QRectF(0, 0, size, size), size * 0.1, size * 0.1)
+        k = 0.86                                          # 照片縮一點，四周留邊
+        w, h = w * k, h * k
+        rect = QRectF((size - w) / 2, size * 0.94 - h, w, h)
+    p.setBrush(QColor(0, 0, 0, 60 if tile else 28))   # 桌面上的影子
+    p.drawEllipse(QPointF(size / 2, rect.bottom() - h * 0.04), w * 0.3, 2.5)
+    if made:
+        p.drawImage(rect, img)
+    else:
+        sil = QImage(img.size(), QImage.Format_ARGB32_Premultiplied)
+        sil.fill(Qt.transparent)
+        q = QPainter(sil)
+        q.drawImage(0, 0, img)
+        q.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        q.fillRect(sil.rect(), QColor("#5e4c40" if tile else "#d4ccc2"))
+        q.end()
+        p.drawImage(rect, sil)
+        f = QFont()
+        f.setPointSizeF(size * 0.2)
+        f.setBold(True)
+        p.setFont(f)
+        p.setPen(QColor("#8c7868" if tile else "#f4efe8"))
+        p.drawText(QRectF(rect.left(), rect.top() + h * 0.3, w, h * 0.65), Qt.AlignCenter, "?")
+    p.end()
+    return pm
+
+
+def drink_icon(key, size=96, made=True, dpr=1.0, tile=True):
+    """一杯飲品的側面圖（有照片就用照片；tile＝照片墊深色底）；made=False 是灰色剪影加問號"""
+    img = drink_photo(key)
+    if img is not None:
+        return _photo_icon(img, size, made, dpr, tile)
     pm = QPixmap(int(size * dpr), int(size * dpr))
     pm.setDevicePixelRatio(dpr)
     pm.fill(Qt.transparent)
@@ -132,6 +233,19 @@ def drink_icon(key, size=96, made=True, dpr=1.0):
             p.setPen(QPen(QColor(255, 255, 255, 170), 0.8))
             p.drawRoundedRect(QRectF(-s / 2, -s / 2, s, s), s * 0.2, s * 0.2)
             p.restore()
+    if extra.get("streaks"):                                        # 黑糖掛杯壁的紋路
+        p.setPen(QPen(QColor(extra["streaks"]), max(1.2, size * 0.03), Qt.SolidLine, Qt.RoundCap))
+        for i in range(5):
+            x = tl + (tr - tl) * (0.15 + 0.17 * i)
+            p.drawLine(QPointF(x, t + h * 0.12), QPointF(x + (bl - tl) * 0.3, b - h * 0.2 * rnd.random()))
+    if extra.get("lemon"):                                          # 檸檬片
+        r = (tr - tl) * 0.18
+        c = QPointF(tr - r * 1.6, surface + r * 0.6)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#e8c832"))
+        p.drawEllipse(c, r * 0.6, r)
+        p.setBrush(QColor("#fbf1b8"))
+        p.drawEllipse(c, r * 0.48, r * 0.82)
     if extra.get("bubbles"):
         p.setPen(Qt.NoPen)
         p.setBrush(QColor(255, 255, 255, 170))
@@ -187,7 +301,7 @@ def drink_icon(key, size=96, made=True, dpr=1.0):
 # ───────────── 圖鑑的牛奶與豆子產地 ─────────────
 # 牛奶盒的色帶與標籤字（不放品牌，只寫種類）
 MILK_LOOK = {"dairy": ("#4f86c6", "MILK"), "oat": ("#c79a4e", "OAT"), "soy": ("#6f9e52", "SOY"),
-             "almond": ("#a8704a", "ALMOND")}
+             "almond": ("#a8704a", "ALMOND"), "coconut": ("#6a4a2a", "COCONUT")}
 # 豆袋標籤的顏色（依產地）；精品豆的標籤加金邊
 ORIGIN_LOOK = {"yirgacheffe": "#d9a441", "kenya": "#b8433a", "colombia": "#d0703a", "guatemala": "#3f7a5a",
                "house": "#8a6a4a", "brazil": "#3f8a4a", "sumatra": "#5a4a7a", "geisha": "#c9567a",
@@ -529,6 +643,24 @@ def decor_icon(key, size=64, dpr=1.0):
             for r in range(3):
                 for c in range(5):
                     p.fillRect(QRectF(4 + c * 12, 22 + r * 12, 12, 12), QColor((c0, c1)[(r + c) % 2]))
+        elif look.get("floor_pat") == "herring":
+            p.fillPath(_rr(4, 22, 60, 58, 3), vgrad(22, 58, c0, c1))
+            p.save()
+            p.setClipRect(QRectF(4, 22, 56, 36))
+            p.setPen(QPen(QColor(0, 0, 0, 90), 1))
+            for r in range(3):
+                for i, x in enumerate(range(4, 64, 8)):
+                    d = 8 if i % 2 else -8
+                    p.drawLine(QPointF(x, 22 + r * 12), QPointF(x + d, 34 + r * 12))
+            p.restore()
+        elif look.get("floor_pat") == "marble":
+            p.fillPath(_rr(4, 22, 60, 58, 3), vgrad(22, 58, c0, c1))
+            p.setPen(QPen(QColor(255, 255, 255, 120), 1))
+            p.drawLine(QPointF(32, 22), QPointF(32, 58))
+            p.drawLine(QPointF(4, 40), QPointF(60, 40))
+            p.setPen(QPen(QColor(90, 86, 80, 90), 0.8))
+            p.drawLine(QPointF(10, 26), QPointF(24, 36))
+            p.drawLine(QPointF(38, 44), QPointF(54, 54))
         else:
             p.fillPath(_rr(4, 22, 60, 58, 3), vgrad(22, 58, c0, c1))
             p.setPen(QPen(QColor(0, 0, 0, 60), 1))
@@ -543,6 +675,19 @@ def decor_icon(key, size=64, dpr=1.0):
                 p.drawLine(QPointF(4, y), QPointF(60, y))
                 for x in range(4 + 10 * (i % 2), 60, 20):
                     p.drawLine(QPointF(x, y), QPointF(x, y + 8))
+        elif look.get("wall_pat") == "subway":
+            p.save()
+            p.setClipPath(_rr(4, 8, 60, 58, 3))
+            p.setPen(QPen(QColor(120, 114, 104, 140), 1))
+            for i, y in enumerate(range(8, 58, 7)):
+                p.drawLine(QPointF(4, y), QPointF(60, y))
+                for x in range(4 + 8 * (i % 2), 60, 16):
+                    p.drawLine(QPointF(x, y), QPointF(x, y + 7))
+            p.restore()
+        elif look.get("wall_pat") == "panel":
+            p.setPen(QPen(QColor(0, 0, 0, 110), 1))
+            for x in range(13, 60, 9):
+                p.drawLine(QPointF(x, 8), QPointF(x, 58))
     elif slot == "board":
         frame = look.get("frame")
         if look.get("neon"):
@@ -624,6 +769,22 @@ def decor_icon(key, size=64, dpr=1.0):
             for r, y in enumerate((35, 42)):
                 for k in range(-3, 4):
                     p.drawPath(shop.heart_path(32 + k * 5.6 + (r % 2) * 2.8, y, 2.2))
+        elif pat == "stars":
+            p.setPen(Qt.NoPen)
+            for r, y in enumerate((35, 42)):
+                for k in range(-3, 4):
+                    p.fillPath(shop.star_path(32 + k * 5.6 + (r % 2) * 2.8, y, 2.3), QColor(col))
+        elif pat == "leaf":
+            p.setPen(QPen(QColor(col), 1))
+            p.drawLine(QPointF(20, 38), QPointF(44, 38))
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(col))
+            for k in range(-5, 6):
+                p.save()
+                p.translate(32 + k * 4, 38)
+                p.rotate(-35 if k % 2 else 215)
+                p.drawEllipse(QPointF(0, -2.8), 1.4, 2.8)
+                p.restore()
         elif pat == "waves":
             p.setBrush(Qt.NoBrush)
             p.setPen(QPen(QColor(col), 1.3))
@@ -649,7 +810,7 @@ def decor_icon(key, size=64, dpr=1.0):
     elif slot == "paintings":
         shop.paint_painting(p, key, 4, 10, 56, 44)
     else:                                                    # plants
-        shop.paint_plant(p, key, 32, 20 if key == "plant_hang" else 56)
+        shop.paint_plant(p, key, 32, {"plant_hang": 20, "plant_ivy": 10}.get(key, 56))
     p.end()
     return pm
 
@@ -663,26 +824,35 @@ def _poly(pts):
 
 
 def dessert_icon(key, size=64, dpr=1.0, ok=True):
-    """商店的甜點小圖：跟櫥窗裡是同一組畫法（shop.paint_dessert），放大畫在小盤子上"""
-    from . import shop
+    """商店、圖鑑、近期紀錄的甜點圖：跟飲品照片同一個風格（深色底塊、白瓷盤上的寫實甜點，render/dessert_art.py）；
+    ok＝False 是圖鑑還沒賣過的：同一個輪廓的深色剪影加問號（跟飲品圖鑑一樣）"""
+    from .dessert_art import paint_tile, paint_dessert_plated
     pm, p = _canvas(size, dpr)
-    k = size / 40
-    p.scale(k, k)
-    p.setRenderHint(QPainter.Antialiasing)
-    p.setPen(Qt.NoPen)
-    p.setBrush(QColor("#efe9dc"))
-    p.drawEllipse(QPointF(20, 33), 17, 4)
-    p.scale(1.45, 1.45)
-    shop.paint_dessert(p, key, 20 / 1.45, 32 / 1.45)
-    p.end()
-    if not ok:                                   # 圖鑑還沒賣過：灰色剪影
-        img = pm.toImage()
-        q = QPainter(img)
+    paint_tile(p, size)
+    art = QImage(int(size * dpr), int(size * dpr), QImage.Format_ARGB32_Premultiplied)
+    art.setDevicePixelRatio(dpr)
+    art.fill(Qt.transparent)
+    q = QPainter(art)
+    q.setRenderHint(QPainter.Antialiasing)
+    q.scale(size / 100, size / 100)
+    q.translate(50, 50)
+    q.scale(1.12, 1.12)                          # 甜點畫大一點，跟飲品照片一樣塞滿底塊
+    q.translate(-50, -54)
+    paint_dessert_plated(q, key)
+    if not ok:
+        q.resetTransform()
         q.setCompositionMode(QPainter.CompositionMode_SourceIn)
-        q.fillRect(img.rect(), GREY)
-        q.end()
-        pm = QPixmap.fromImage(img)
-        pm.setDevicePixelRatio(dpr)
+        q.fillRect(QRectF(0, 0, size, size), QColor("#5e4c40"))
+    q.end()
+    p.drawImage(QRectF(0, 0, size, size), art)
+    if not ok:
+        f = QFont()
+        f.setPointSizeF(size * 0.2)
+        f.setBold(True)
+        p.setFont(f)
+        p.setPen(QColor("#8c7868"))
+        p.drawText(QRectF(0, size * 0.25, size, size * 0.55), Qt.AlignCenter, "?")
+    p.end()
     return pm
 
 

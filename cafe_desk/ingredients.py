@@ -4,7 +4,7 @@
 庫存不夠的飲品客人不會點（`CafeDesk.order_exclude()`），客人要求換的植物奶沒有庫存也不會要求。
 手動、自動模式不消耗食材（照樣能隨便練習）。庫存是從簽章過的事件（`ing_buy`、`ing_use`）重算出來的，開局送 `START_STOCK`。
 """
-from .drinks import DRINKS, MILK_SPEC
+from .drinks import DRINKS, MILK_SPEC, cold_of
 
 # key：(名稱, 一包的份數, 一包的價格, 說明)。名稱與說明是繁中原文，顯示時才 T()
 ITEMS = {
@@ -23,6 +23,23 @@ ITEMS = {
     "pumpkin": ("南瓜醬", 15, 180, "萬聖節的南瓜香料拿鐵用"),
     "ginger": ("薑餅糖漿", 15, 160, "聖誕節的薑餅拿鐵用"),
     "rose": ("玫瑰糖漿", 15, 160, "情人節的玫瑰拿鐵用"),
+    "coconut": ("椰奶", 8, 140, "椰子拿鐵用，客人要求換椰奶時也用"),
+    "hazelnut": ("榛果糖漿", 20, 170, "榛果拿鐵用"),
+    "honey": ("蜂蜜", 20, 160, "蜂蜜牛奶用"),
+    "ginger_juice": ("薑汁糖漿", 20, 150, "薑汁牛奶用"),
+    "brown_sugar": ("黑糖漿", 20, 160, "黑糖鮮奶、黑糖髒髒拿鐵掛在杯壁上"),
+    "berry": ("莓果糖漿", 20, 170, "義式蘇打與兒童節的草莓牛奶用"),
+    "matcha": ("抹茶粉", 20, 220, "抹茶拿鐵、冰抹茶拿鐵用"),
+    "tea": ("紅茶包", 25, 150, "紅茶拿鐵、冰奶茶用"),
+    "lemon": ("檸檬", 10, 90, "檸檬美式切片用"),
+    "orange": ("柳橙汁", 8, 130, "柳橙咖啡用，一組 8 瓶"),
+    "soda": ("氣泡水", 8, 90, "義式蘇打用，一組 8 瓶"),
+    "maple": ("楓糖漿", 15, 170, "新年的楓糖拿鐵用"),
+    "white_choc": ("白巧克力醬", 15, 180, "白色情人節的白摩卡用"),
+    "longan": ("桂圓紅棗糖漿", 15, 170, "春節的桂圓紅棗拿鐵用"),
+    "carrot_cake": ("胡蘿蔔蛋糕糖漿", 15, 170, "復活節的胡蘿蔔蛋糕拿鐵用"),
+    "lavender": ("薰衣草糖漿", 15, 170, "母親節的薰衣草拿鐵用"),
+    "apple": ("蘋果肉桂糖漿", 15, 170, "感恩節的蘋果肉桂拿鐵用"),
 }
 # 甜點：跟食材一樣在商店買、庫存放在同一份 ing_stock（一份＝一個），擺在櫃檯右上的玻璃櫥窗裡。
 # key：(名稱, 一盤的份數, 一盤的進貨價, 說明)；單份售價見 DESSERT_PRICE
@@ -40,7 +57,7 @@ DESSERT_BUYER_TO_GO_P = 0.1    # 加購甜點的客人幾乎都內用
 ALL = {**ITEMS, **DESSERTS}    # 庫存、購買、自動補貨都認這個（食材分頁只列 ITEMS、甜點分頁只列 DESSERTS）
 START_STOCK = {"milk": 8, "cream": 5, "choc": 10, "vanilla": 10, "caramel": 10, "cocoa": 15, "icecream": 4, "tonic": 6}
 COMMON = ("milk", "oat", "soy", "almond", "cream", "choc", "vanilla", "caramel", "cocoa", "icecream", "tonic")   # 常態食材（節日的不算）
-MILK_ING = {"dairy": "milk", "oat": "oat", "soy": "soy", "almond": "almond"}      # 牛奶種類 → 食材
+MILK_ING = {"dairy": "milk", "oat": "oat", "soy": "soy", "almond": "almond", "coconut": "coconut"}      # 牛奶種類 → 食材
 
 
 def pack(key):
@@ -64,8 +81,8 @@ def needs(drink, mods=()):
 
     def add(key, n=1):
         out[key] = out.get(key, 0) + n
-    if drink in MILK_SPEC or drink == "iced_latte":
-        add(MILK_ING.get(m.get("milk", "dairy"), "milk"))
+    if drink in MILK_SPEC or drink == "iced_latte" or (spec.get("base") == "iced" and cold_of(drink) == "cold_milk"):
+        add(MILK_ING.get(spec.get("milk") or m.get("milk", "dairy"), "milk"))
     if spec.get("syrup"):
         add(spec["syrup"])
     if drink == "caramel_macchiato":
@@ -74,8 +91,16 @@ def needs(drink, mods=()):
     whip = bool(spec.get("whip")) and m.get("whip") != "no"
     if whip:
         add("cream")
-    if spec.get("dust") and (whip or drink != "mocha"):
+    if spec.get("dust") and (whip or spec.get("whip") != "opt"):
         add(spec["dust"])
+    if spec.get("prep"):
+        add(spec["prep"])
+    if spec.get("cold") in ("soda", "orange"):
+        add(spec["cold"])
+    if spec.get("garnish"):
+        add(spec["garnish"])
+    if spec.get("float"):
+        add("icecream")
     if drink == "cappuccino" and m.get("cocoa") != "no":
         add("cocoa")
     if drink == "affogato":
@@ -87,10 +112,12 @@ def needs(drink, mods=()):
 
 def drinks_using(key):
     """用到這種食材的飲品（植物奶：能換這種奶的奶類飲品）"""
-    from .orders import OAT_OK
+    from .orders import OAT_OK, COCONUT_OK
     plant = next((k for k, v in MILK_ING.items() if v == key and k != "dairy"), None)
     if plant:
-        return [d for d in DRINKS if d in OAT_OK and key in needs(d, [("milk", plant)])]
+        pool = COCONUT_OK if plant == "coconut" else OAT_OK
+        out = [d for d in DRINKS if d in pool and key in needs(d, [("milk", plant)])]
+        return out + [d for d in DRINKS if DRINKS[d].get("milk") == plant and d not in out]   # 椰子拿鐵本來就用椰奶
     return [d for d in DRINKS if key in needs(d)]
 
 

@@ -19,35 +19,38 @@ SLIDERS = [
     ("養豆天數", "bean_age", 1, 60, 1, "天"),
 ]
 
-MILK_DRINKS = ("latte", "cappuccino", "flat_white", "cortado", "macchiato", "mocha", "caramel_macchiato")
-ART_DRINKS = ("latte", "cappuccino", "flat_white", "cortado", "mocha")
-# (名稱, 欄位, 最小, 最大, 間隔, 單位, 適用飲品)
+MILK_DRINKS = ("latte", "cappuccino", "flat_white", "cortado", "macchiato", "mocha", "caramel_macchiato",
+               "hot_cocoa", "vanilla_latte", "hazelnut_latte", "coconut_latte", "honey_milk", "ginger_milk", "matcha_latte", "tea_latte")
+ART_DRINKS = ("latte", "cappuccino", "flat_white", "cortado", "mocha", "vanilla_latte", "hazelnut_latte", "coconut_latte", "honey_milk", "ginger_milk", "matcha_latte", "tea_latte")
+ICED_MILK = ("iced_latte", "iced_vanilla_latte", "iced_mocha", "iced_caramel_latte", "dirty_latte", "iced_matcha_latte", "brown_sugar_milk", "cocoa_float", "milk_tea")       # 冰的牛奶飲品（可以換植物奶）
+# (名稱, 欄位, 最小, 最大, 間隔, 單位, 適用飲品)；同一個欄位在別的飲品叫不同名字的寫在 SLIDER_NAME
+SLIDER_NAME = {("tonic_g", "orange_coffee"): "柳橙汁", ("tonic_g", "italian_soda"): "氣泡水"}
 DRINK_SLIDERS = [
-    ("牛奶量", "milk_g", 80, 200, 5, "g", ("latte",)),
-    ("奶泡量", "foam", 0, 80, 5, "%", ("latte",)),
+    ("牛奶量", "milk_g", 80, 200, 5, "g", ("latte", "vanilla_latte", "hazelnut_latte", "coconut_latte", "honey_milk", "ginger_milk", "matcha_latte", "tea_latte")),
+    ("奶泡量", "foam", 0, 80, 5, "%", ("latte", "vanilla_latte", "hazelnut_latte", "coconut_latte", "honey_milk", "ginger_milk", "matcha_latte", "tea_latte")),
     ("牛奶量", "capp_milk_g", 60, 140, 5, "g", ("cappuccino",)),
     ("奶泡量", "capp_foam", 30, 100, 5, "%", ("cappuccino",)),
     ("牛奶量", "flat_milk_g", 60, 140, 5, "g", ("flat_white",)),
     ("奶泡量", "flat_foam", 0, 40, 2, "%", ("flat_white",)),
     ("牛奶量", "cortado_milk_g", 20, 70, 2, "g", ("cortado",)),
     ("一匙奶泡", "mac_milk_g", 8, 30, 1, "g", ("macchiato",)),
-    ("牛奶量", "mocha_milk_g", 80, 180, 5, "g", ("mocha",)),
-    ("巧克力醬", "choc_g", 5, 40, 1, "g", ("mocha",)),
+    ("牛奶量", "mocha_milk_g", 80, 180, 5, "g", ("mocha", "hot_cocoa")),
+    ("巧克力醬", "choc_g", 5, 40, 1, "g", ("mocha", "hot_cocoa", "iced_mocha", "cocoa_float")),
     ("牛奶量", "cm_milk_g", 100, 180, 5, "g", ("caramel_macchiato",)),
     ("香草糖漿", "vanilla_g", 0, 25, 1, "g", ("caramel_macchiato",)),
     ("打奶溫度", "milk_temp", 40, 80, 1, "°C", MILK_DRINKS),
-    ("通寧水", "tonic_g", 80, 220, 5, "g", ("espresso_tonic",)),
-    ("冰淇淋", "scoop_g", 40, 120, 5, "g", ("affogato",)),
-    ("熱水量", "water_g", 60, 180, 5, "g", ("americano",)),
-    ("冷水量", "iced_water_g", 60, 200, 5, "g", ("iced_americano",)),
-    ("冰塊", "ice", 0, 8, 1, "顆", ("iced_latte", "iced_americano", "espresso_tonic", "cold_drip")),
-    ("牛奶量", "iced_milk_g", 80, 220, 5, "g", ("iced_latte",)),
-    ("粉量", "po_dose", 10, 25, 0.5, "g", ("pour_over",)),
-    ("粉水比 1:", "po_ratio", 12, 18, 0.5, "", ("pour_over",)),
-    ("研磨", "po_grind", 400, 1000, 10, "µm", ("pour_over",)),
-    ("水溫", "po_temp", 85, 100, 1, "°C", ("pour_over",)),
-    ("悶蒸", "po_bloom", 0, 90, 5, "秒", ("pour_over",)),
-    ("注水段數", "po_pulses", 1, 5, 1, "段", ("pour_over",)),
+    ("通寧水", "tonic_g", 80, 220, 5, "g", ("espresso_tonic", "orange_coffee", "italian_soda")),
+    ("冰淇淋", "scoop_g", 40, 120, 5, "g", ("affogato", "coffee_float", "cocoa_float")),
+    ("熱水量", "water_g", 60, 180, 5, "g", ("americano", "vienna")),
+    ("冷水量", "iced_water_g", 60, 200, 5, "g", ("iced_americano", "lemon_americano", "coffee_float")),
+    ("冰塊", "ice", 0, 8, 1, "顆", ("iced_latte", "iced_americano", "espresso_tonic", "cold_drip", "iced_vanilla_latte", "iced_mocha", "iced_caramel_latte", "dirty_latte", "iced_matcha_latte", "brown_sugar_milk", "cocoa_float", "lemon_americano", "orange_coffee", "coffee_float", "milk_tea", "italian_soda", "iced_pour_over")),
+    ("牛奶量", "iced_milk_g", 80, 220, 5, "g", ("iced_latte", "iced_vanilla_latte", "iced_mocha", "iced_caramel_latte", "dirty_latte", "iced_matcha_latte", "brown_sugar_milk", "cocoa_float")),
+    ("粉量", "po_dose", 10, 25, 0.5, "g", ("pour_over", "iced_pour_over")),
+    ("粉水比 1:", "po_ratio", 12, 18, 0.5, "", ("pour_over", "iced_pour_over")),
+    ("研磨", "po_grind", 400, 1000, 10, "µm", ("pour_over", "iced_pour_over")),
+    ("水溫", "po_temp", 85, 100, 1, "°C", ("pour_over", "iced_pour_over")),
+    ("悶蒸", "po_bloom", 0, 90, 5, "秒", ("pour_over", "iced_pour_over")),
+    ("注水段數", "po_pulses", 1, 5, 1, "段", ("pour_over", "iced_pour_over")),
     ("粉量", "cd_dose", 30, 80, 1, "g", ("cold_drip",)),
     ("粉水比 1:", "cd_ratio", 7, 14, 0.5, "", ("cold_drip",)),
     ("研磨", "cd_grind", 350, 900, 10, "µm", ("cold_drip",)),
@@ -69,6 +72,11 @@ def _note(text=""):
 
 
 class SettingsDialog(QDialog):
+    def moveEvent(self, e):
+        if self.isVisible():
+            self.app.window_dragging()              # 拖動時主畫面暫停繪圖，視窗才跟得上滑鼠
+        super().moveEvent(e)
+
     def __init__(self, app):
         super().__init__(None)
         self.app = app
@@ -146,6 +154,7 @@ class SettingsDialog(QDialog):
             grid.addWidget(sl, r + i, 1)
             grid.addWidget(val, r + i, 2)
             self.dsliders[attr] = (sl, val, lo, step, T(unit), drinks, lab)
+            lab.setProperty("name", label)
             sl.valueChanged.connect(lambda _v, a=attr: self.dchanged(a))
         r += len(DRINK_SLIDERS)
         self.cocoa = QCheckBox(T("撒可可粉"))
@@ -233,11 +242,11 @@ class SettingsDialog(QDialog):
         self.update_visibility()
 
     def refresh_locks(self):
-        """還沒解鎖的飲品（沖煮方式看店鋪等級、飲品看咖啡師稱號）：反灰並寫怎麼解鎖"""
+        """營業模式還沒解鎖的飲品（沖煮方式看店鋪等級、飲品看咖啡師稱號）：反灰並寫怎麼解鎖；練習模式全部能選"""
         model = self.drink.model()
         for i, key in enumerate(self.drink_keys):
-            model.item(i).setEnabled(self.app.drink_open(key))
-            self.drink.setItemText(i, T(DRINKS[key]["name"]) + self.app.drink_lock(key))
+            model.item(i).setEnabled(self.app.can_use_drink(key))
+            self.drink.setItemText(i, T(DRINKS[key]["name"]) + self.app.use_lock(key))
 
     def sync_drink(self):
         """選單換了飲品時同步下拉選單"""
@@ -257,10 +266,11 @@ class SettingsDialog(QDialog):
             on = d in drinks
             for wdg in (sl, val, lab):
                 wdg.setVisible(on)
+            lab.setText(T(SLIDER_NAME.get((a, d), lab.property("name"))))
         self.cocoa.setVisible(d == "cappuccino")
-        self.whip.setVisible(d == "mocha")
+        self.whip.setVisible(d in ("mocha", "iced_mocha"))
         for wdg in (self.milk_kind, self.milk_label, self.milk_hint):
-            wdg.setVisible(d in MILK_DRINKS or d == "iced_latte")
+            wdg.setVisible((d in MILK_DRINKS or d in ICED_MILK) and not DRINKS[d].get("milk"))
         art_on = d in ART_DRINKS and not whip_on(d, self.app.dp)     # 擠了鮮奶油就看不到拉花
         for wdg in (self.art, self.art_label, self.art_hint):
             wdg.setVisible(art_on)

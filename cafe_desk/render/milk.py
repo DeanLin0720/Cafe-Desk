@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import (QPainter, QImage, QColor, QPen, QBrush, QPainterPath, QPolygonF, QFont,
                            QRadialGradient)
 
-from ..drinks import ART_NAMES, MILK_KINDS, SYRUPS, DUSTS, base_of
+from ..drinks import ART_NAMES, MILK_KINDS, SYRUPS, DUSTS, COLD_LOOK, GARNISHES, DRINKS, base_of, has_shot, cold_of
 from ..i18n import T
 from ..gfx import mix, C, vgrad, hgrad, rrect
 from ..layout import ROAST_LOOK, TOP_PAD, liquid_look
@@ -31,6 +31,11 @@ COCOA = "#5a321a"
 TONIC = "#eef3e6"
 CREAM = "#fbf3df"
 CARAMEL = "#b8691f"
+MATCHA = "#6f9a30"
+TOOL_DUST = {"matcha": MATCHA}       # 篩網撒的粉（不在杯面上的：抹茶粉篩進杯底）
+# 沿用哪一種杯中畫法：新飲品跟舊飲品同一套（維也納＝美式加鮮奶油、檸檬美式＝冰美式加檸檬片…）
+PAINT_AS = {"vienna": "americano", "lemon_americano": "iced_americano", "coffee_float": "iced_americano",
+            "orange_coffee": "espresso_tonic", "italian_soda": "espresso_tonic"}
 
 
 def _ease(t):
@@ -359,7 +364,7 @@ class MilkRenderer:
             m = self.machine
             if random.random() < 14 * dt:
                 v = ss.vessel
-                x = (v["x"] - m.mx) + random.uniform(4, 32) if v else m.wand_steam[0]
+                x = (v["x"] - m.mx) + random.uniform(4, 32) * vessels.PITCHER_K if v else m.wand_steam[0]
                 y = (v["y"] - m.my) + 2 if v else m.wand_steam[1]
                 self.steam.append({"x": x, "y": y, "vx": random.uniform(-6, 6), "vy": random.uniform(-30, -18),
                                    "age": 0.0, "life": random.uniform(0.8, 1.4), "ph": random.random() * 6.28,
@@ -399,13 +404,45 @@ class MilkRenderer:
         return QPolygonF(arc(cup.CX, yb, brx, bry, math.pi, 0) + arc(cx, ly, rx, ry, 0, math.pi))
 
     def paint_mixed_liquid(self, p):
-        """美式、拿鐵、冰拿鐵的杯中液體"""
+        """美式、拿鐵、冰拿鐵的杯中液體；新飲品依 PAINT_AS 沿用舊飲品的畫法，再加上鮮奶油、杯壁的黑糖、水果片、漂浮的冰淇淋"""
         kind = self.drink_kind()
+        spec = DRINKS.get(kind, {})
+        c = self.contents
+        if self.cup_espresso() + c["water"] + c["milk"] + c["syrup"] <= 0.05:
+            return
+        self._paint_mixed(p, PAINT_AS.get(kind, kind), kind)
+        ly, cx, rx, ry = self.surface_geom()
+        if spec.get("wall"):
+            self.paint_wall_syrup(p, ly)
+        if spec.get("garnish"):
+            self.paint_garnish(p, spec["garnish"], ly, cx, rx)
+        ic = self.icecream
+        if ic and ic.get("float"):
+            x, y, r, sy = self.affogato_ball()
+            self.paint_scoop_ball(p, x, y, r, sy, ic, 0.0)
+        if spec.get("whip") and base_of(kind) != "milk":     # 熱牛奶飲品的鮮奶油在 _paint_mixed 裡畫（拉花之後）
+            self.paint_whip_dome(p, ly, cx, rx, ry)
+
+    def noshot_look(self, kind):
+        """沒有濃縮的飲品：(底的顏色, 底在液體裡的比例 0–1)；底是茶、抹茶（熱水）或巧克力醬；沒有底色（蜂蜜牛奶）時 None"""
+        spec = DRINKS.get(kind, {})
+        tint = spec.get("tint")
+        if not tint:
+            return None
+        c = self.contents
+        liquid = max(1.0, c["water"] + c["milk"] + c["syrup"])
+        if spec.get("prep") == "tea":
+            steep = self.topping.get("teabag", 0.0)
+            return mix(WATER, tint, 0.15 + 0.85 * steep), clamp(c["water"] / liquid * (0.3 + 0.7 * steep), 0, 1)
+        if spec.get("prep") == "matcha":
+            return tint, clamp(c["water"] / liquid * 2.2, 0, 1)
+        return tint, clamp(c["syrup"] / liquid * 3.5, 0, 1)
+
+    def _paint_mixed(self, p, kind, real):
+        """kind：沿用哪一種飲品的畫法；real：實際的飲品"""
         c, s = self.contents, self.shot
         e = self.cup_espresso()
         liquid = e + c["water"] + c["milk"] + c["syrup"]
-        if liquid <= 0.05:
-            return
         ly, cx, rx, ry = self.surface_geom()
         yb = self.cup.liquid_bottom
         body = self.body_polygon(ly, rx, ry, cx)
@@ -432,6 +469,16 @@ class MilkRenderer:
             return
 
         if kind == "espresso_tonic":
+            cold = cold_of(real)
+            if cold == "orange":                                  # 柳橙咖啡：不透明的柳橙汁、沒有氣泡
+                return self.paint_tonic(p, ly, cx, rx, ry, yb, body, e, c["water"], look,
+                                        water=COLD_LOOK["orange"], alpha=(225, 238), bubbles=False)
+            if cold == "soda":                                    # 義式蘇打：氣泡水被糖漿染色
+                k = clamp(c["syrup"] / max(1.0, c["water"] + c["syrup"]) * 4, 0, 0.75)
+                self.paint_tonic(p, ly, cx, rx, ry, yb, body, e, c["water"], look,
+                                 water=mix(COLD_LOOK["soda"], SYRUPS[self.syrup_kind]["color"], k),
+                                 alpha=(int(70 + 120 * k), int(90 + 130 * k)))
+                return self.paint_syrup_layer(p, e)
             return self.paint_tonic(p, ly, cx, rx, ry, yb, body, e, c["water"], look)
 
         if kind == "iced_americano":
@@ -475,8 +522,11 @@ class MilkRenderer:
             self.paint_crema_surface(p, ly, cx, rx, ry, scale=0.6 * (1 - 0.5 * mk))
             return
 
-        if kind == "iced_latte":
+        if kind == "iced_latte" or (base_of(kind) == "iced" and cold_of(kind) == "cold_milk"):
             milk_c = self.milk_col()
+            nl = self.noshot_look(real) if not has_shot(real) else None
+            if nl is not None:                                    # 抹茶、奶茶、可可：牛奶被底染色
+                milk_c = mix(milk_c, nl[0], clamp(0.25 + 0.75 * nl[1], 0, 0.85))
             total = max(1.0, liquid)
             ef = e / total
             mk = clamp(self.mix_t / 50.0, 0, 1)
@@ -512,6 +562,8 @@ class MilkRenderer:
             top_col = mix(look["crema"], tan, mk) if ef > 0.01 else mix(milk_c, "#ffffff", 0.4)
             p.setBrush(C(top_col, 245))
             p.drawEllipse(QPointF(cx, ly), rx, ry)
+            if kind != "iced_latte" and c["syrup"] > 0 and not DRINKS[real].get("tint"):
+                self.paint_syrup_layer(p, e, mixed=clamp(self.mix_t / 90, 0, 0.7))   # 杯底的醬（可可已經畫在顏色裡）
             return
 
         # 熱牛奶飲品
@@ -520,8 +572,31 @@ class MilkRenderer:
         elif c["milk"] <= 0.05:
             if e > 0.05:
                 self.paint_liquid_espresso(p)
+            elif c["water"] > 0.05:                               # 抹茶、紅茶的底
+                nl = self.noshot_look(real)
+                col = nl[0] if nl else WATER
+                p.setBrush(vgrad(ly, yb, [(0, C(mix(col, "#ffffff", 0.1), 225)), (1, C(mix(col, "#000000", 0.1), 240))]))
+                p.drawPolygon(body)
+                if real in ("matcha_latte", "iced_matcha_latte"):  # 刷出來的細泡
+                    p.setBrush(C(mix(col, "#e8f0c8", 0.5 * self.topping.get("whisk", 0.0)), 240))
+                    p.drawEllipse(QPointF(cx, ly), rx, ry)
             self.paint_syrup_layer(p, e)
             return
+        elif not has_shot(real):
+            f = c["milk"] / max(1.0, liquid)
+            nl = self.noshot_look(real)
+            esp_bot = mix(self.milk_col(), "#b89870", 0.35)
+            if nl is not None:
+                esp_bot = nl[0]
+                latte = mix(nl[0], self.milk_col(), clamp(0.62 - 0.55 * nl[1] + 0.2 * f, 0.25, 0.85))
+            else:
+                latte = mix(self.milk_col(), SYRUPS[self.syrup_kind]["color"], 0.16 if c["syrup"] > 0 else 0.0)
+            foam_frac = clamp(c["foam"] / max(1.0, self.cup_volume()), 0, 0.6)
+            stops = [(0, C(FOAM, 252)), (max(0.01, foam_frac * 0.75), C(mix(FOAM, latte, 0.12), 252)),
+                     (min(0.98, foam_frac + 0.05), C(mix(latte, self.milk_col(), 0.25), 252)),
+                     (min(0.99, foam_frac + 0.12), C(latte, 252)), (1, C(mix(latte, esp_bot, 0.3), 252))]
+            p.setBrush(vgrad(ly, yb, stops))
+            p.drawPolygon(body)
         else:
             f = c["milk"] / max(1.0, c["milk"] + e)
             esp_top, esp_bot = self.espresso_color()
@@ -560,9 +635,9 @@ class MilkRenderer:
         return MILK_KINDS.get(kind, MILK_KINDS["dairy"])["color"]
 
     # ───────────── 新飲品的杯中畫面（機身座標） ─────────────
-    def paint_syrup_layer(self, p, e):
-        """杯底的巧克力醬／香草糖漿（比重大，沉在最下面）"""
-        g = self.contents["syrup"]
+    def paint_syrup_layer(self, p, e, mixed=0.0):
+        """杯底的巧克力醬／香草糖漿（比重大，沉在最下面）；mixed：冰飲裡慢慢拌開（0–1，越大越薄越淡）"""
+        g = self.contents["syrup"] * (1 - mixed)
         if g <= 0.05:
             return
         cup = self.cup
@@ -608,8 +683,8 @@ class MilkRenderer:
         p.setBrush(vgrad(ly, yb, stops))
         p.drawPolygon(body)
 
-    def paint_tonic(self, p, ly, cx, rx, ry, yb, body, e, w, look):
-        """濃縮通寧：清澈的通寧水、往上冒的氣泡，濃縮浮在最上層"""
+    def paint_tonic(self, p, ly, cx, rx, ry, yb, body, e, w, look, water=TONIC, alpha=(60, 80), bubbles=True):
+        """濃縮通寧：清澈的通寧水、往上冒的氣泡，濃縮浮在最上層（柳橙咖啡、義式蘇打換 water 的顏色與透明度）"""
         total = max(1.0, e + w)
         ef = e / total
         mk = clamp(self.mix_t / 240.0, 0, 0.45)                 # 擴散得很慢，分層維持很久
@@ -619,13 +694,18 @@ class MilkRenderer:
             boundary = clamp(ef * 1.25, 0.04, 0.95)
             stops = [(0, C(mix(esp_top, look["crema"], 0.3), 240)),
                      (boundary, C(esp_bot, 235)),
-                     (clamp(boundary + 0.05 + 0.3 * mk, 0, 0.99), C(mix(TONIC, look["amber"], 0.35 + 0.4 * mk), 120)),
-                     (1, C(mix(TONIC, look["amber"], 0.25 * mk), 70))]
+                     (clamp(boundary + 0.05 + 0.3 * mk, 0, 0.99), C(mix(water, look["amber"], 0.35 + 0.4 * mk),
+                                                                     max(120, alpha[0]))),
+                     (1, C(mix(water, look["amber"], 0.25 * mk), max(70, alpha[1] - 10)))]
         else:
             boundary = 0.0
-            stops = [(0, C(TONIC, 60)), (1, C(TONIC, 80))]
+            stops = [(0, C(water, alpha[0])), (1, C(water, alpha[1]))]
         p.setBrush(vgrad(ly, yb, stops))
         p.drawPolygon(body)
+        if not bubbles:
+            p.setBrush(C(mix(look["crema"], water, 0.3) if ef > 0.005 else mix(water, "#ffffff", 0.3), 240))
+            p.drawEllipse(QPointF(cx, ly), rx, ry)
+            return
         # 氣泡
         p.save()
         p.setClipPath(self.cup.inner_path())
@@ -649,6 +729,63 @@ class MilkRenderer:
         else:
             p.setBrush(C("#ffffff", 70))
         p.drawEllipse(QPointF(cx, ly), rx, ry)
+
+    def paint_wall_syrup(self, p, ly):
+        """黑糖鮮奶：黑糖漿掛在杯壁上的虎紋（從杯口往下流的一條條紋路，泡在牛奶裡慢慢化開）"""
+        g = self.contents["syrup"]
+        if g <= 0.05:
+            return
+        cup = self.cup
+        col = SYRUPS[self.syrup_kind]["color"]
+        fade = clamp(1 - self.mix_t / 260, 0.35, 1)
+        top = cup.T + 6
+        yb = cup.liquid_bottom
+        p.save()
+        p.setClipPath(cup.inner_path())
+        rnd = random.Random(17)
+        for i in range(9):
+            f = (i + 0.5) / 9
+            y0 = lerp(top, top + 20, rnd.random())
+            length = (yb - y0) * rnd.uniform(0.55, 1.0)
+            w = rnd.uniform(2.5, 5.0) * cup.k
+            path = QPainterPath()
+            for j in range(13):
+                y = y0 + length * j / 12
+                l, r = cup.cup_x(y)
+                x = lerp(l + 2, r - 2, f) + math.sin(j * 0.9 + i * 2.1) * 2.2
+                (path.lineTo if j else path.moveTo)(QPointF(x, y))
+            under = 1.0 if y0 >= ly else 0.7                  # 液面以上的部分顏色比較深（沒泡到牛奶）
+            p.setPen(QPen(C(col, int(150 * fade * under)), w, Qt.SolidLine, Qt.RoundCap))
+            p.drawPath(path)
+        p.restore()
+        p.setPen(Qt.NoPen)
+
+    def paint_garnish(self, p, kind, ly, cx, rx):
+        """檸檬美式：兩片檸檬靠著杯壁、一半泡在咖啡裡"""
+        rind, pulp = GARNISHES[kind]
+        cup = self.cup
+        p.save()
+        p.setClipPath(cup.inner_path())
+        for dx, k, tilt, dy in ((0.36, 0.4, 0.55, 0.75), (-0.42, 0.34, 0.8, 1.6)):
+            r = rx * k
+            x, y = cx + rx * dx, ly + r * dy                  # 一片靠在杯壁、一片沉在冰塊之間
+            p.save()
+            p.translate(x, y)
+            p.scale(tilt, 1.0)
+            p.setPen(Qt.NoPen)
+            p.setBrush(C(rind, 235))
+            p.drawEllipse(QPointF(0, 0), r, r)
+            p.setBrush(C("#fffbe8", 235))
+            p.drawEllipse(QPointF(0, 0), r * 0.86, r * 0.86)
+            p.setBrush(C(pulp, 230))
+            p.drawEllipse(QPointF(0, 0), r * 0.78, r * 0.78)
+            p.setPen(QPen(C("#fffbe8", 220), 1.0))
+            for a in range(8):
+                ang = a * math.pi / 4
+                p.drawLine(QPointF(0, 0), QPointF(math.cos(ang) * r * 0.76, math.sin(ang) * r * 0.76))
+            p.restore()
+        p.restore()
+        p.setPen(Qt.NoPen)
 
     def paint_whip_dome(self, p, ly, cx, rx, ry):
         """鮮奶油：一圈圈往上堆的螺旋（側面）＋可可粉"""
@@ -893,8 +1030,8 @@ class MilkRenderer:
             col = self.espresso_color()[0]
         else:
             col = {"water": WATER, "cold_water": WATER, "tonic": TONIC, "cold_milk": self.milk_col(), "hot_milk": FOAM,
-                   **{k: v["color"] for k, v in SYRUPS.items()}}[liquid]
-        watery = liquid in ("water", "cold_water", "tonic")
+                   "matcha": WATER, "tea": WATER, **COLD_LOOK, **{k: v["color"] for k, v in SYRUPS.items()}}[liquid]
+        watery = liquid in ("water", "cold_water", "tonic", "matcha", "tea", "soda")
         alpha = 120 if watery else 245
         w0 = 3.0 if watery else (2.2 if liquid in SYRUPS else 3.6)
         squeeze = v["kind"] == "squeeze"           # 擠瓶倒著：濃稠的醬從瓶嘴直直往下掉（瓶子左右移，落點跟著瓶嘴）
@@ -984,7 +1121,7 @@ class MilkRenderer:
         f = QFont(self.ui, 4.5)
         f.setBold(True)
         p.setFont(f)
-        p.drawText(QRectF(-11, 32, 22, 12), Qt.AlignCenter, "TONIC")
+        p.drawText(QRectF(-11, 32, 22, 12), Qt.AlignCenter, "SODA" if v.get("liquid") == "soda" else "TONIC")
 
     def paint_scoop(self, p, v):
         """冰淇淋勺（原點＝勺口中心）：把手往右上；勺子裡有一球冰淇淋"""
@@ -1005,6 +1142,8 @@ class MilkRenderer:
         p.fillPath(bowl, hgrad(-16, 16, [(0, C("#6b7177")), (0.4, C("#f2f4f5")), (1, C("#5d646b"))]))
 
     def paint_pitcher(self, p):
+        p.save()
+        p.scale(vessels.PITCHER_K, vessels.PITCHER_K)           # 杯身、把手、溫度標籤照 1 倍的形狀畫
         body = QPainterPath()
         body.moveTo(0, 0)
         body.lineTo(8, 4)
@@ -1034,6 +1173,7 @@ class MilkRenderer:
             p.setFont(f)
             p.setPen(C("#ffc566"))
             p.drawText(QRectF(12, 16, 19, 11), Qt.AlignCenter, f"{ss.milk_temp:.0f}°")
+        p.restore()
 
     def paint_kettle(self, p):
         spout = QPainterPath(QPointF(0, 0))
@@ -1106,18 +1246,19 @@ class MilkRenderer:
         glass = vessels.bottle()
         p.fillPath(glass, C("#ffffff", 30))
         water = v.get("liquid") == "cold_water"
-        self._liquid_in(p, glass, v.get("content", v.get("fill", 1.0) * 0.8), WATER if water else MILK,
-                        110 if water else 240)
+        juice = v.get("liquid") == "orange"
+        self._liquid_in(p, glass, v.get("content", v.get("fill", 1.0) * 0.8),
+                        COLD_LOOK["orange"] if juice else (WATER if water else MILK), 110 if water else 240)
         p.setPen(QPen(C("#ffffff", 170), 1.1))
         p.setBrush(Qt.NoBrush)
         p.drawPath(glass)
         p.fillPath(rrect(-10, 22, -7, 50, 1.5), C("#ffffff", 110))
-        p.fillPath(rrect(-13, 30, 13, 40, 0), C("#4aa0b8" if water else "#3d6fa8", 200))        # 標籤
+        p.fillPath(rrect(-13, 30, 13, 40, 0), C("#e07a20" if juice else ("#4aa0b8" if water else "#3d6fa8"), 200))   # 標籤
         p.setPen(C("#ffffff"))
-        f = QFont(self.ui, 5 if not water else 4.5)
+        f = QFont(self.ui, 5 if not (water or juice) else 4.5)
         f.setBold(True)
         p.setFont(f)
-        p.drawText(QRectF(-13, 30, 26, 10), Qt.AlignCenter, "WATER" if water else "MILK")
+        p.drawText(QRectF(-13, 30, 26, 10), Qt.AlignCenter, "JUICE" if juice else ("WATER" if water else "MILK"))
 
     def jug_glass(self):
         return vessels.jug()
@@ -1250,7 +1391,8 @@ class MilkRenderer:
                     ph = (self.anim_t * 1.5 + rnd.random()) % 1.0
                     yy = lerp(y + 6, top, ph)
                     xx = x + rnd.uniform(-13, 13) * (0.6 + 0.6 * ph)
-                    p.setBrush(C(DUSTS.get(tool.get("dust"), COCOA), int(200 * (1 - 0.5 * ph))))
+                    p.setBrush(C(DUSTS.get(tool.get("dust")) or TOOL_DUST.get(tool.get("dust"), COCOA),
+                                 int(200 * (1 - 0.5 * ph))))
                     p.drawEllipse(QPointF(xx, yy), 0.7, 0.7)
             p.setPen(QPen(C("#5d646b"), 2.4, Qt.SolidLine, Qt.RoundCap))
             p.drawLine(QPointF(x + 15, y), QPointF(x + 40, y - 9))
@@ -1265,7 +1407,7 @@ class MilkRenderer:
             p.setPen(QPen(C("#3e2414", 120), 0.5))
             for i in range(-12, 13, 3):
                 p.drawLine(QPointF(x + i, y - 2), QPointF(x + i * 0.8, y + 7))
-            p.setBrush(C(DUSTS.get(tool.get("dust"), COCOA), 230))
+            p.setBrush(C(DUSTS.get(tool.get("dust")) or TOOL_DUST.get(tool.get("dust"), COCOA), 230))
             p.setPen(Qt.NoPen)
             p.drawEllipse(QPointF(x, y - 3), 15, 3)
             p.setPen(QPen(C("#e3e7ea"), 1.2))
@@ -1313,6 +1455,39 @@ class MilkRenderer:
             p.setFont(f)
             p.setPen(C("#fff4e0"))
             p.drawText(QRectF(x - 10, y - 40, 20, 16), Qt.AlignCenter, "CARAMEL")
+        elif kind == "whisk":
+            # 茶筅：伸進杯裡左右快速刷，刷頭是一圈細竹絲
+            sweep = math.sin(self.anim_t * 24) if active else 0.0
+            p.translate(cx + sweep * rx * 0.45, ly + 2 - 10 * (1 - k if active else 1))
+            p.rotate(sweep * 9)
+            p.setPen(QPen(C("#e6d49c"), 0.8))
+            for i in range(-6, 7):
+                p.drawLine(QPointF(i * 0.8, -14), QPointF(i * 1.5, 2))
+            p.setPen(Qt.NoPen)
+            p.fillPath(rrect(-3, -54, 3, -12, 2), hgrad(-3, 3, [(0, C("#a8884a")), (0.5, C("#ead8a2")), (1, C("#94743c"))]))
+            p.fillPath(rrect(-5, -16, 5, -11, 1.5), C("#c4aa70"))
+        elif kind == "teabag":
+            # 茶包：線掛在杯口右邊，茶包泡在熱水裡上下提一提，茶色慢慢出來
+            bob = math.sin(self.anim_t * 2.6) * 4 if active else -6 * (1 - k)
+            bx, by = cx + rx * 0.1, ly + 4 + bob
+            tx, ty = cup.TR + 4, cup.T + 6
+            p.setPen(QPen(C("#f4f0e6", 220), 0.7))
+            p.setBrush(Qt.NoBrush)
+            path = QPainterPath(QPointF(bx, by - 12))
+            path.quadTo(QPointF((bx + cup.TR) / 2, cup.T - 14), QPointF(cup.TR - 2, cup.T - 1))
+            path.lineTo(QPointF(tx, ty))
+            p.drawPath(path)
+            p.setPen(Qt.NoPen)
+            p.fillPath(rrect(tx - 5, ty, tx + 5, ty + 9, 1), C("#c8402a"))
+            bag = rrect(bx - 9, by - 12, bx + 9, by + 10, 2)
+            p.fillPath(bag, C("#efe6d2", 230))
+            rnd = random.Random(8)
+            for i in range(22):
+                p.setBrush(C("#4a2410", 160))
+                p.drawEllipse(QPointF(bx + rnd.uniform(-7, 7), by + rnd.uniform(-2, 8)), 0.9, 0.7)
+            p.setPen(QPen(C("#d8ccb4"), 0.7))
+            p.setBrush(Qt.NoBrush)
+            p.drawPath(bag)
         p.restore()
 
     # ───────────── 拉花卡片（視窗座標） ─────────────
@@ -1329,7 +1504,15 @@ class MilkRenderer:
     def current_art_image(self):
         st = self.art_state()
         s = self.shot
-        if s is None:
+        kind = self.drink_kind()
+        if not has_shot(kind):                                # 沒有濃縮：底色是茶、抹茶、可可，或帶一點醬色的牛奶
+            nl = self.noshot_look(kind)
+            if nl is not None:
+                crema, base = mix(nl[0], "#2a1a0a", 0.15), mix(nl[0], "#f4eee4", 0.5)
+            else:
+                base = mix(self.milk_col(), SYRUPS[self.syrup_kind]["color"], 0.2 if self.contents["syrup"] > 0 else 0.05)
+                crema = mix(base, "#b89060", 0.45)
+        elif s is None:
             crema, base = "#9a5a2a", "#c89a6a"
         else:
             look = ROAST_LOOK[s.p.roast]
@@ -1344,14 +1527,19 @@ class MilkRenderer:
             pattern, k, q, seed, tops = "heart", 0.0, 0.5, 1, {}
         else:
             pattern, k, q, seed, tops = st
+        size = self.art_size()
         key = (pattern, round(k * 80), round(q, 2), seed, crema, base,
-               tuple(sorted((a, round(v * 50)) for a, v in tops.items())))
+               tuple(sorted((a, round(v * 50)) for a, v in tops.items())), size)
         cache = getattr(self, "_art_cache", None)
         if cache and cache[0] == key:
             return cache[1]
-        img = make_art(pattern, k, q, seed, base, crema, tops=tops)
+        img = make_art(pattern, k, q, seed, base, crema, size, tops=tops)
         self._art_cache = (key, img)
         return img
+
+    def art_size(self):
+        """拉花圖的邊長（像素）：拉花卡片上直徑 84 個場景單位，照視窗縮放與螢幕 dpr 算，32 一階（最小 128）"""
+        return max(128, math.ceil(84 * self.scale_f * self.devicePixelRatioF() / 32) * 32)
 
     def art_rect(self, with_chart):
         w, h = 124, 120

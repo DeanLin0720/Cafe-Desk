@@ -88,10 +88,12 @@ def test_multi_slots_toggle_and_limit(desk):
     assert desk.decor_sel()["paintings"] == ["art_beans", "art_latte", "art_hills", "art_photo"]
     assert desk.use_decor("art_latte") and "art_latte" not in desk.decor_sel()["paintings"], "再按一次拿下來"
     assert desk.use_decor("art_latte") and desk.decor_sel()["paintings"][-1] == "art_latte"
-    for k in ("plant_pot", "plant_vase", "plant_hang", "plant_cactus", "plant_fern"):
+    for k in ("plant_pot", "plant_vase", "plant_hang", "plant_cactus", "plant_fern", "plant_ivy"):
         desk.buy_decor(k)
         desk.use_decor(k)
     assert len(desk.decor_sel()["plants"]) == decor.MAX_PLANTS
+    assert desk.buy_decor("plant_tulip") and desk.use_decor("plant_tulip"), "檯面滿了：換下最早擺的檯面植物，吊盆不動"
+    assert desk.decor_sel()["plants"] == ["plant_vase", "plant_hang", "plant_cactus", "plant_fern", "plant_ivy", "plant_tulip"]
     assert desk.buy_decor("art_poster") and desk.use_decor("art_poster") and len(desk.decor_sel()["paintings"]) == decor.MAX_PAINTINGS, "掛畫位置滿了：最早擺的換下來"
     assert "art_beans" not in desk.decor_sel()["paintings"] and desk.decor_sel()["paintings"][-1] == "art_poster"
 
@@ -209,9 +211,12 @@ def test_machine_paint_color_changes_the_operating_screen(desk, unlocked, key):
 
 
 @pytest.mark.parametrize("day, key", [("2026-02-10", "valentine"), ("2026-10-25", "halloween"), ("2026-12-20", "christmas"),
+                                      ("2026-12-31", "newyear"), ("2026-03-10", "white_day"), ("2026-04-02", "children"),
+                                      ("2026-08-07", "father"), ("2026-09-28", "coffee_day"), ("2026-02-18", "spring_festival"),
+                                      ("2026-04-06", "easter"), ("2026-05-08", "mother"), ("2026-11-26", "thanksgiving"),
                                       ("2026-08-01", None)])
 def test_festival_decorations_follow_the_date(desk, qapp, monkeypatch, day, key):
-    """情人節、萬聖節、聖誕節期間櫃檯畫面掛節日裝飾（可以在右鍵選單關掉），平常日子什麼都沒有"""
+    """節日期間櫃檯畫面掛節日裝飾（佈置視窗可以關掉），平常日子什麼都沒有"""
     from cafe_desk.render import shop
     monkeypatch.setenv("CAFE_DESK_DATE", day)
     calls = []
@@ -231,7 +236,8 @@ def test_festival_decorations_follow_the_date(desk, qapp, monkeypatch, day, key)
         assert not calls and desk.festival_decor_key() is None
 
 
-@pytest.mark.parametrize("day", ["2026-02-10", "2026-10-25", "2026-12-20"])
+@pytest.mark.parametrize("day", ["2026-02-10", "2026-10-25", "2026-12-20", "2026-12-31", "2026-03-10", "2026-04-02",
+                                 "2026-08-07", "2026-09-28", "2026-02-18", "2026-04-06", "2026-05-08", "2026-11-26"])
 def test_festival_decorations_really_paint(desk, qapp, monkeypatch, day):
     monkeypatch.setenv("CAFE_DESK_DATE", day)
     desk.set_order_mode(True)
@@ -272,7 +278,7 @@ def test_layout_tab_changes_decor_and_back_counter(desk, qapp):
     assert "art_poster" not in desk.decor_sel()["paintings"] and not tiles()["復古海報"].isChecked()
     desk.build_menu()
     assert not hasattr(desk, "back_gear_acts"), "後檯設備只在佈置分頁調整"
-    assert "設定" in [a.text() for a in desk.menu.actions()]
+    assert "設定 / Setting" in [a.text() for a in desk.menu.actions()]
     dlg.close()
 
 
@@ -310,3 +316,45 @@ def test_machine_screen_backdrop_follows_wall_and_cabinet(desk, qapp):
     assert mid != before, "牆面"
     assert desk.buy_decor("cab_navy") and desk.use_decor("cab_navy")
     assert desk.host.grab().toImage() != mid, "後檯櫃子"
+
+
+def test_machine_screen_backdrop_shows_wall_pattern(desk, qapp, monkeypatch):
+    """紅磚、地鐵磚、木牆板在咖啡機畫面的背景也畫出紋理（不只換顏色）；背景存成圖，沒變就不重畫"""
+    from cafe_desk import desk as desk_mod
+    drawn = []
+    monkeypatch.setattr(desk_mod, "paint_wall_pattern", lambda p, pat, *a, **kw: drawn.append(pat))
+    desk.counter_view = False
+    _cash(desk)
+    for key in ("brick", "subway", "panel"):
+        assert desk.buy_decor(key) and desk.use_decor(key)
+        desk.host.grab()
+        desk.host.grab()
+        assert drawn.count(key) == 1, (key, drawn)
+
+
+def test_machine_screen_backdrop_has_cabinet_drawers(desk, qapp, monkeypatch):
+    """咖啡機畫面的檯面下也畫後檯櫃子的抽屜（跟櫃檯畫面同一套），換了櫃子就用新的顏色與把手重畫"""
+    cabs = []
+    orig = type(desk).paint_back_drawers
+    monkeypatch.setattr(type(desk), "paint_back_drawers", lambda self, p, *a: (cabs.append(a[-1]["cab"]), orig(self, p, *a)))
+    desk.counter_view = False
+    desk._backdrop_cache = None
+    desk.host.grab()
+    assert cabs and cabs[-1] == decor.palette({}, decor.selection({}, []))["cab"], "預設的暖木抽屜"
+    _cash(desk)
+    assert desk.buy_decor("cab_white") and desk.use_decor("cab_white")
+    desk.host.grab()
+    assert cabs[-1] == decor.LOOK["cab_white"]["cab"]
+
+
+def test_plant_spots_prefer_home_then_free_spot():
+    """植物先放偏好的位置，被佔了換同類的空位；原本五款的位置不變；selection 擋掉超過位置數的"""
+    assert decor.plant_spots(["plant_pot", "plant_cactus", "plant_vase", "plant_fern", "plant_hang"]) == [
+        ("plant_pot", False, 0), ("plant_cactus", False, 1), ("plant_vase", False, 2), ("plant_fern", False, 3), ("plant_hang", True, 0)]
+    assert decor.plant_spots(["plant_pot", "plant_succulent", "plant_ivy"]) == [
+        ("plant_pot", False, 0), ("plant_succulent", False, 1), ("plant_ivy", True, 1)]
+    stand = [k for k, v in decor.ITEMS.items() if v[0] == "plants" and k not in decor.HANGING]
+    owned = [f"decor_{k}" for k in decor.ITEMS]
+    sel = decor.selection({"plants": stand}, owned)
+    assert len(sel["plants"]) == decor.STAND_SPOTS and len(decor.plant_spots(sel["plants"])) == decor.STAND_SPOTS
+    assert set(decor.PLANT_HOME) == {k for k, v in decor.ITEMS.items() if v[0] == "plants"}

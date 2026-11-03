@@ -24,14 +24,25 @@ ORDER_WEIGHTS = {"espresso": 0.07, "ristretto": 0.03, "lungo": 0.03, "doppio": 0
                  "iced_americano": 0.1, "latte": 0.18, "cappuccino": 0.12, "flat_white": 0.08,
                  "cortado": 0.05, "macchiato": 0.04, "iced_latte": 0.13, "mocha": 0.09,
                  "caramel_macchiato": 0.1, "espresso_tonic": 0.06, "affogato": 0.06, "pour_over": 0.06,
-                 "cold_drip": 0.07, "moka_pot": 0.05, "siphon": 0.05}
-ART_MILK = ("latte", "cappuccino", "flat_white", "cortado")
-OAT_OK = ("latte", "cappuccino", "flat_white", "cortado", "iced_latte", "mocha", "caramel_macchiato") + FESTIVAL_DRINKS
+                 "cold_drip": 0.07, "moka_pot": 0.05, "siphon": 0.05,
+                 # 1.7 加的飲品：每種比原本的少一點，合起來約占三成
+                 "con_panna": 0.025, "vienna": 0.03, "lemon_americano": 0.035, "orange_coffee": 0.025,
+                 "vanilla_latte": 0.045, "hazelnut_latte": 0.035, "coconut_latte": 0.03, "iced_vanilla_latte": 0.04,
+                 "iced_mocha": 0.035, "iced_caramel_latte": 0.04, "dirty_latte": 0.035, "coffee_float": 0.025,
+                 "hot_cocoa": 0.035, "honey_milk": 0.02, "ginger_milk": 0.02, "matcha_latte": 0.04, "tea_latte": 0.03,
+                 "iced_matcha_latte": 0.035, "milk_tea": 0.035, "brown_sugar_milk": 0.03, "italian_soda": 0.025,
+                 "cocoa_float": 0.02, "iced_pour_over": 0.035}
+ART_MILK = ("latte", "cappuccino", "flat_white", "cortado", "vanilla_latte", "hazelnut_latte", "coconut_latte",
+            "matcha_latte", "tea_latte")
+OAT_OK = ("latte", "cappuccino", "flat_white", "cortado", "iced_latte", "mocha", "caramel_macchiato",
+          "vanilla_latte", "hazelnut_latte", "iced_vanilla_latte", "iced_mocha", "iced_caramel_latte", "dirty_latte",
+          "hot_cocoa", "matcha_latte", "tea_latte", "iced_matcha_latte", "milk_tea") + FESTIVAL_DRINKS
+COCONUT_OK = ("latte", "iced_latte", "vanilla_latte", "hazelnut_latte", "matcha_latte", "iced_matcha_latte")   # 可以換椰奶
 
 # (種類, 值) → 訂單上的文字
 MOD_TEXT = {
     ("temp", "low"): "不要太燙", ("temp", "high"): "熱一點",
-    ("milk", "oat"): "換燕麥奶", ("milk", "soy"): "換豆奶", ("milk", "almond"): "換杏仁奶",
+    ("milk", "oat"): "換燕麥奶", ("milk", "soy"): "換豆奶", ("milk", "almond"): "換杏仁奶", ("milk", "coconut"): "換椰奶",
     ("whip", "no"): "不要鮮奶油", ("scoop", "big"): "冰淇淋多一點",
     ("foam", "more"): "多一點奶泡", ("foam", "less"): "奶泡少一點",
     ("art", "heart"): "想要愛心", ("art", "tulip"): "想要鬱金香", ("art", "rosetta"): "想要葉子",
@@ -46,7 +57,13 @@ BEAN_ASK_P = 0.1               # 營業模式：這位客人是衝著精品豆�
 PRICES = {"espresso": 70, "ristretto": 70, "lungo": 75, "doppio": 90, "americano": 90, "iced_americano": 95,
           "latte": 120, "cappuccino": 120, "flat_white": 125, "cortado": 110, "macchiato": 90, "iced_latte": 125,
           "mocha": 140, "caramel_macchiato": 145, "espresso_tonic": 130, "affogato": 135,
-          "pour_over": 160, "cold_drip": 170, "moka_pot": 120, "siphon": 180}
+          "pour_over": 160, "cold_drip": 170, "moka_pot": 120, "siphon": 180,
+          "con_panna": 95, "vienna": 130, "lemon_americano": 120, "orange_coffee": 140, "vanilla_latte": 135,
+          "hazelnut_latte": 135, "coconut_latte": 140, "iced_vanilla_latte": 140, "iced_mocha": 150,
+          "iced_caramel_latte": 150, "dirty_latte": 150, "coffee_float": 150, "hot_cocoa": 120, "honey_milk": 100,
+          "ginger_milk": 100, "matcha_latte": 140, "tea_latte": 120, "iced_matcha_latte": 145, "milk_tea": 100,
+          "brown_sugar_milk": 120, "italian_soda": 110, "cocoa_float": 140, "iced_pour_over": 170,
+          "strawberry_milk": 120}
 FESTIVAL_PRICE = 150
 
 # 手沖、虹吸壺、摩卡壺一杯比較久：點這些的客人比較願意等（耐心乘上這個倍數，依飲品的沖煮方式）
@@ -58,7 +75,9 @@ ORDER_WEIGHT_DRINK = 0.65     # 最後分數：飲品本身的比重（其餘是
 TO_GO_P = 0.4                  # 營業模式外帶的比例（只是外觀：價格與小費一樣）
 # 大中小杯：只有加奶／加水的飲品分；價格加減、出現的比例
 SIZE_DRINKS = ("americano", "iced_americano", "espresso_tonic", "latte", "cappuccino", "mocha",
-               "caramel_macchiato", "iced_latte") + FESTIVAL_DRINKS
+               "caramel_macchiato", "iced_latte") + FESTIVAL_DRINKS + (
+               "vienna", "lemon_americano", "vanilla_latte", "hazelnut_latte", "coconut_latte", "iced_vanilla_latte",
+               "iced_mocha", "iced_caramel_latte", "hot_cocoa", "matcha_latte", "tea_latte", "iced_matcha_latte")
 SIZE_PRICE = {"S": -10, "M": 0, "L": 20}
 # 一張單幾杯（營業模式）：(杯數, 比例)；多杯的客人耐心加長
 PARTY_SIZES = ((1, 0.75), (2, 0.2), (3, 0.05))
@@ -136,7 +155,9 @@ def mod_pool(drink):
         pool += [("temp", "low"), ("temp", "high")]
     if drink in OAT_OK:
         pool += [("milk", "oat"), ("milk", "oat"), ("milk", "soy"), ("milk", "almond")]
-    if drink == "mocha":
+    if drink in COCONUT_OK:
+        pool += [("milk", "coconut")]
+    if drink in ("mocha", "iced_mocha"):
         pool += [("whip", "no")]
     if drink == "affogato":
         pool += [("scoop", "big")]
@@ -147,7 +168,7 @@ def mod_pool(drink):
         pool += [("art", a) for a in arts]
     if drink == "cappuccino":
         pool += [("cocoa", "no")]
-    if drink in ("americano", "iced_americano"):
+    if drink in ("americano", "iced_americano", "lemon_americano", "vienna"):
         pool += [("water", "less"), ("water", "more")]
     if family == "iced" or drink == "cold_drip":
         pool += [("ice", "less"), ("ice", "more")]

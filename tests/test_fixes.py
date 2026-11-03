@@ -85,7 +85,8 @@ def test_stamp_follows_fake_date():
 
 
 def test_paper_theme(desk):
-    """右鍵、系統匣選單與各視窗都套用紙張風格；成就頁是收據"""
+    """右鍵、系統匣選單與各視窗都套用紙張風格；成就頁是卡片、說明頁是收據"""
+    from PySide6.QtWidgets import QFrame
     from cafe_desk import theme
     from cafe_desk.records import RecordsDialog, Receipt
     assert theme.SHEET in desk.menu.styleSheet()
@@ -95,7 +96,8 @@ def test_paper_theme(desk):
     desk.open_about()
     assert theme.PAPER in desk.settings_dlg.styleSheet() and theme.PAPER in desk.about_dlg.styleSheet()
     dlg = RecordsDialog(desk)
-    assert theme.PAPER in dlg.styleSheet() and dlg.findChild(Receipt) is not None
+    assert theme.PAPER in dlg.styleSheet() and any(f.objectName() == "card" for f in dlg.findChildren(QFrame))
+    assert desk.about_dlg.findChild(Receipt) is not None, "說明頁維持收據"
     dlg.grab()
     for d in (dlg, desk.settings_dlg, desk.about_dlg):
         d.close()
@@ -145,3 +147,19 @@ def test_barista_temps_are_tidy(desk):
         for _ in range(20):
             d = brew.barista_dial(desk.dp, roast, rnd)
             assert d.po_temp * 2 == int(d.po_temp * 2)
+
+
+def test_second_cup_chart_keeps_painter_state(desk):
+    """第二杯還沒開始萃取、不畫曲線卡片時不能留下 p.save()（後面的通知、收據會跟著變半透明，Qt 也會一直警告）"""
+    from PySide6.QtGui import QImage, QPainter
+    desk.card_alpha = 0.5
+    desk.machine.g = 1
+    desk.shot = None
+    img = QImage(32, 32, QImage.Format_ARGB32_Premultiplied)
+    p = QPainter(img)
+    try:
+        desk.paint_chart(p)
+        assert p.opacity() == 1.0
+    finally:
+        p.end()
+        desk.machine.g = 0

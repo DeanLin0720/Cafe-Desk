@@ -17,6 +17,11 @@ DANGER = "QPushButton { color: #a8321e; border-color: #d29a86; }"     # 無法�
 
 
 class AboutDialog(QDialog):
+    def moveEvent(self, e):
+        if self.isVisible():
+            self.app.window_dragging()              # 拖動時主畫面暫停繪圖，視窗才跟得上滑鼠
+        super().moveEvent(e)
+
     def __init__(self, app):
         super().__init__(None)
         self.app = app
