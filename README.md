@@ -103,6 +103,33 @@
 - **圖鑑**：紀錄與收集冊的「圖鑑」頁有每種飲品與設備的圖，還沒做過或沒解鎖的是剪影；「說明」頁寫各模式的差別與解鎖條件。
 - 營業時參數由咖啡師自己調，結束營業後還原你原本的咖啡機、飲品與參數；播放速度只影響手動與自動模式。
 
+### 商店、佈置與紀錄
+
+<table width="100%">
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/store.png" alt="商店：設備升級" width="420"><br><b>商店：設備升級</b><br>用營業額買咖啡機與磨豆機升級，另有店面裝潢、咖啡豆、食材分頁</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/store_desserts.png" alt="商店：甜點" width="420"><br><b>商店：甜點</b><br>一盤一盤進貨，擺進櫃檯的玻璃櫥窗，可以勾自動補貨</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/layout.png" alt="佈置" width="420"><br><b>佈置</b><br>挑後檯的咖啡機、設備與裝潢，上面的預覽跟著變</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/achievements.png" alt="成就" width="420"><br><b>成就</b><br>72 個成就，分級的有銅／銀／金，解鎖的寫上日期</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/challenges.png" alt="挑戰" width="420"><br><b>挑戰</b><br>每日與每週挑戰，集章換稱號與限定裝潢</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/book.png" alt="圖鑑" width="420"><br><b>圖鑑</b><br>飲品是遊戲裡實際做出來的照片，另有設備、牛奶、豆子、食材、甜點、裝潢</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/today.png" alt="今天" width="420"><br><b>今天</b><br>杯數、平均分數、營業額，最好的一杯與做過的飲品</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/shop_level.png" alt="店鋪" width="420"><br><b>店鋪</b><br>店鋪等級與咖啡師稱號的進度、最近幾天的營業</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/customers.png" alt="客人" width="420"><br><b>客人</b><br>熟客的常點飲品與習慣，等級越高小費越多、越有耐心</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/recent.png" alt="近期紀錄" width="420"><br><b>近期紀錄</b><br>近兩週的圖表與最近幾杯，加購的甜點併在那一杯</td>
+  </tr>
+</table>
+
+商店與佈置各是獨立的視窗；成就、挑戰、圖鑑和營運紀錄都在「紀錄與收集冊」。截圖是玩到後期的存檔。
+
 ## 下載（Windows）
 
 到 [Releases](https://github.com/DeanLin0720/Cafe-Desk/releases/latest) 下載 `CafeDesk-vX.Y.Z-win64.7z`，解壓後執行 `CafeDesk.exe`，不需要安裝 Python。
@@ -290,6 +317,33 @@ When the barista takes an order, the customer pays at the POS first (customers w
 - **Store**: spend your revenue on machine and grinder upgrades (PID kit, precision burrs, pro frother, flat burrs, ghost-tooth burrs…) and specialty beans (Geisha, Blue Mountain, Kona), even during business; spending never lowers your shop level.
 - **Collection book**: the Collection tab of the records window pictures every drink and piece of equipment, with silhouettes for what you haven't made or unlocked yet; the Guide tab explains the modes and unlocks.
 - The barista sets the parameters during business, and your own machine, drink and settings come back when business ends; playback speed only applies in manual and auto modes.
+
+### Store, layout and records
+
+<table width="100%">
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/store_en.png" alt="Store: upgrades" width="420"><br><b>Store: upgrades</b><br>Spend revenue on machine and grinder upgrades; other tabs sell shop decor, beans and ingredients</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/store_desserts_en.png" alt="Store: desserts" width="420"><br><b>Store: desserts</b><br>Stock them by the tray for the glass case on the counter, with an auto-restock option</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/layout_en.png" alt="Layout" width="420"><br><b>Layout</b><br>Pick the back-counter machine, gear and decor, and the preview above follows along</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/achievements_en.png" alt="Achievements" width="420"><br><b>Achievements</b><br>72 achievements, tiered sets in bronze / silver / gold, with the date you unlocked each one</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/challenges_en.png" alt="Challenges" width="420"><br><b>Challenges</b><br>Daily and weekly challenges earn stamps for titles and exclusive decor</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/book_en.png" alt="Collection" width="420"><br><b>Collection</b><br>Drink pictures are real cups made in the game; there are also pages for gear, milk, beans, ingredients, desserts and decor</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/today_en.png" alt="Today" width="420"><br><b>Today</b><br>Cups, average score and revenue, plus the best cup and the drinks you made</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/shop_level_en.png" alt="Shop" width="420"><br><b>Shop</b><br>Shop level and barista title progress, and recent business days</td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/images/customers_en.png" alt="Customers" width="420"><br><b>Customers</b><br>Regulars' favorite drinks and habits; higher levels tip more and wait longer</td>
+    <td width="50%" align="center" valign="top"><img src="docs/images/recent_en.png" alt="History" width="420"><br><b>History</b><br>A two-week chart and recent cups, with dessert add-ons shown on their cup</td>
+  </tr>
+</table>
+
+The store and layout each have their own window; achievements, challenges, the collection and business records live in "Records and collection". These screenshots come from a late-game save.
 
 ## Download (Windows)
 

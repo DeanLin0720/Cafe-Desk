@@ -194,7 +194,7 @@ EN = {
     "到「佈置」分頁更換": "Change it in the Layout tab",
     "只改外觀、不影響平衡，改的是櫃檯畫面。一般款花錢包，標「章」的限定款用挑戰章數兌換（現有 {s} 個章）。這裡只能購買，要更換或拿下來到「佈置」分頁。": "Cosmetic only, no effect on balance; it changes the counter view. Regular styles use your wallet, styles marked with stamps are exchanged for challenge stamps ({s} stamps now). You can only buy here; change or remove them in the Layout tab.",
     "營運紀錄": "Operations",
-    "成就與挑戰": "Achievements & challenges",
+    "成就與挑戰": "Achievements and challenges",
     # ───── 佈置分頁 ─────
     "佈置": "Layout",
     "後檯": "Back counter",
