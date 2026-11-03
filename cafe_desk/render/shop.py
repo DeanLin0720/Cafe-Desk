@@ -1160,6 +1160,13 @@ def paint_plant(p, kind, x, y):
     p.restore()
 
 
+def menu_boards():
+    """吊掛的四塊菜單看板：[(x, y, 寬, 高)…]"""
+    n, bw, bh = 4, 150, 70
+    gap = (MENU_X1 - MENU_X0 - n * bw) / (n - 1)
+    return [(MENU_X0 + i * (bw + gap), -84, bw, bh) for i in range(n)]
+
+
 def paint_lamps(p, kind, W):
     """吊燈：pendant（暖黃球燈）、industrial（黑色圓罩）、lantern（白色紙燈籠）、edison（裸燈泡）；從天花板垂下來，亮光往下打"""
     p.save()
@@ -1680,11 +1687,7 @@ class ShopRenderer:
         p.setPen(Qt.NoPen)
         # 吊掛的菜單看板（四塊；第二塊是熱賣前三，第一、三塊畫一杯飲品，第四塊是其他品項）
         title, top3 = self.stats.top_drinks(3)
-        n, bw, bh = 4, 150, 70
-        gap = (MENU_X1 - MENU_X0 - n * bw) / (n - 1)
-        for i in range(n):
-            bx = MENU_X0 + i * (bw + gap)
-            by = -84
+        for i, (bx, by, bw, bh) in enumerate(menu_boards()):
             p.setPen(QPen(C("#111111"), 1))
             for wx in (bx + 20, bx + bw - 20):
                 p.drawLine(QPointF(wx, -TOP_PAD), QPointF(wx, by))
@@ -1794,7 +1797,14 @@ class ShopRenderer:
         for (x, kind) in zip(PAINT_X, sel["paintings"]):
             paint_painting(p, kind, x, PAINT_Y)
         if sel["lighting"] in ("pendant", "industrial", "lantern", "edison"):
+            p.save()
+            clip = QPainterPath()                                           # 吊燈的線從看板後面經過，不要蓋到看板上的字
+            clip.addRect(QRectF(-W, -2 * TOP_PAD, 3 * W, 4 * W))
+            for bx, by, bw, bh in menu_boards():
+                clip = clip.subtracted(rrect(bx - 5, by - 5, bx + bw + 5, by + bh + 5, 4))
+            p.setClipPath(clip, Qt.IntersectClip)
             paint_lamps(p, sel["lighting"], W)
+            p.restore()
         elif sel["lighting"] == "fairy":
             paint_fairy_lights(p, 150, W - 150, -96)
         elif sel["lighting"] == "neon_sign":

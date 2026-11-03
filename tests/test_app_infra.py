@@ -169,3 +169,17 @@ def test_intro_language_switch(desk, qapp):
     finally:
         desk.set_language("zh")
         desk.intro_dlg.close()
+
+
+def test_english_text_has_no_bare_ampersand():
+    """英文對照不寫 &：選單、分頁、按鈕會把它當成快速鍵符號而不顯示"""
+    from cafe_desk import i18n
+    assert [v for v in i18n.EN.values() if "&" in v.replace("&&", "")] == []
+
+
+def test_milk_swap_drink_names_are_translated():
+    """客人換植物奶時品名去掉「熱」（Order.title）：去掉後的名字也要有英文"""
+    from cafe_desk import i18n
+    from cafe_desk.drinks import DRINKS
+    names = [d["name"].replace("熱", "") for d in DRINKS.values() if "熱" in d["name"]]
+    assert names and all(n in i18n.EN for n in names)

@@ -358,3 +358,18 @@ def test_plant_spots_prefer_home_then_free_spot():
     sel = decor.selection({"plants": stand}, owned)
     assert len(sel["plants"]) == decor.STAND_SPOTS and len(decor.plant_spots(sel["plants"])) == decor.STAND_SPOTS
     assert set(decor.PLANT_HOME) == {k for k, v in decor.ITEMS.items() if v[0] == "plants"}
+
+
+def test_lamp_cords_pass_behind_menu_boards(desk, qapp, monkeypatch):
+    """吊燈的線不蓋到菜單看板：畫吊燈時看板的範圍被裁掉，看板外面照畫"""
+    from PySide6.QtCore import QPointF
+    from cafe_desk.render import shop
+    seen = []
+    monkeypatch.setattr(shop, "paint_lamps", lambda p, kind, W: seen.append(p.clipPath()))
+    _cash(desk)
+    assert desk.buy_decor("pendant") and desk.use_decor("pendant")
+    desk.layout_preview(640)
+    assert seen
+    bx, by, bw, bh = shop.menu_boards()[0]
+    assert not seen[-1].contains(QPointF(bx + bw / 2, by + bh / 2))
+    assert seen[-1].contains(QPointF(bx + bw / 2, by + bh + 40))
